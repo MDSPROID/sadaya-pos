@@ -22,6 +22,7 @@ import {
  * Helper function to prepare order data and items for saving to the database.
  * This separates the data transformation logic from the main save function.
  */
+
 const prepareOrderDataForSave = async (
   formData: OrderFormData,
   userId: string,
@@ -68,6 +69,147 @@ const prepareOrderDataForSave = async (
 
   return { orderDataToSave, itemsToInsert };
 };
+
+// >>>>>>>>>>>> IMPROVE DATA CUSTOMER 
+
+// Normalisasi nomor telepon: buang non-digit, ubah awalan 0 -> 62 (opsional, sesuaikan kebutuhan)
+const normalizePhone = (raw?: string) => {
+  if (!raw) return "";
+  const digits = raw.replace(/\D+/g, "");
+  if (digits.startsWith("0")) return "62" + digits.slice(1);
+  return digits;
+};
+
+// Pastikan customer ada & up-to-date. Kembalikan ID customer yang “benar” untuk dipakai order.
+const ensureCustomerByPhoneOrId = async (
+  formData: OrderFormData
+): Promise<{ customerId: string | null; displayName: string; displayPhone: string; displayAddress: string; }> => {
+  const name = formData.customer_name?.trim() || "";
+  const phoneRaw = formData.customer_phone?.trim() || "";
+  const address = formData.customer_address?.trim() || "";
+  const notes = formData.customer_notes?.trim() || "";
+  const normalized = normalizePhone(phoneRaw);
+
+  // Helper untuk update sebagian field (hanya yang ada nilainya)
+  const buildUpdate = () => {
+    const upd: Record<string, any> = {};
+    if (name) upd.nama_pelanggan = name;
+    if (phoneRaw) {
+      upd.telepon = phoneRaw;
+      upd.telepon_normalized = normalized; // pastikan kolom ini ada; lihat catatan di bawah
+    }
+    if (address) upd.alamat = address;
+    if (notes) upd.catatan = notes;
+    return upd;
+  };
+
+  // 1) Jika phone ada → coba cari berdasarkan phone_normalized
+  if (normalized) {
+    const { data: existingByPhone, error: findByPhoneErr } = await supabase
+      .from("customers")
+      .select("*")
+      .eq("telepon_normalized", normalized)
+      .maybeSingle(); // akan return null jika tidak ada
+
+    if (findByPhoneErr && findByPhoneErr.code !== "PGRST116") {
+      // PGRST116 = no rows
+      throw findByPhoneErr;
+    }
+
+    if (existingByPhone) {
+      // Update data customer yang ditemukan dari phone (merge data terbaru dari form)
+      const updatePayload = buildUpdate();
+      if (Object.keys(updatePayload).length > 0) {
+        const { error: updErr } = await supabase
+          .from("customers")
+          .update(updatePayload)
+          .eq("id", existingByPhone.id);
+        if (updErr) throw updErr;
+      }
+
+      return {
+        customerId: existingByPhone.id,
+        displayName: existingByPhone.nama_pelanggan ?? name,
+        displayPhone: existingByPhone.telepon ?? phoneRaw,
+        displayAddress: existingByPhone.alamat ?? address,
+      };
+    }
+
+    // Tidak ketemu by phone
+    if (formData.customer_id) {
+      // Jika sudah ada id → update customer tersebut dengan phone baru + field lain
+      const updatePayload = buildUpdate();
+      if (Object.keys(updatePayload).length > 0) {
+        const { error: updErr } = await supabase
+          .from("customers")
+          .update(updatePayload)
+          .eq("id", formData.customer_id);
+        if (updErr) throw updErr;
+      }
+      return {
+        customerId: formData.customer_id,
+        displayName: name,
+        displayPhone: phoneRaw,
+        displayAddress: address,
+      };
+    }
+
+    // Tidak ada id dan tidak ada yang match phone → buat baru
+    const insertPayload = {
+      nama_pelanggan: name || "(Tanpa Nama)",
+      telepon: phoneRaw,
+      telepon_normalized: normalized,
+      alamat: address || null,
+      catatan: notes || null,
+    };
+    const { data: inserted, error: insErr } = await supabase
+      .from("customers")
+      .insert(insertPayload)
+      .select("id, nama_pelanggan, telepon, alamat")
+      .single();
+    if (insErr) throw insErr;
+
+    return {
+      customerId: inserted.id,
+      displayName: inserted.nama_pelanggan ?? name,
+      displayPhone: inserted.telepon ?? phoneRaw,
+      displayAddress: inserted.alamat ?? address,
+    };
+  }
+
+  // 2) Phone kosong → kalau ada id, tetap update field lain (nama/alamat/notes)
+  if (formData.customer_id) {
+    const updatePayload = buildUpdate();
+    // Hapus field phone dari update jika kosong
+    if (!phoneRaw) {
+      delete updatePayload.telepon;
+      delete updatePayload.telepon_normalized;
+    }
+    if (Object.keys(updatePayload).length > 0) {
+      const { error: updErr } = await supabase
+        .from("customers")
+        .update(updatePayload)
+        .eq("id", formData.customer_id);
+      if (updErr) throw updErr;
+    }
+    return {
+      customerId: formData.customer_id,
+      displayName: name,
+      displayPhone: phoneRaw,
+      displayAddress: address,
+    };
+  }
+
+  // 3) Tidak ada phone & id → biarkan null (akan tersimpan sebagai display_* saja pada order)
+  return {
+    customerId: null,
+    displayName: name,
+    displayPhone: phoneRaw,
+    displayAddress: address,
+  };
+};
+
+// >>>>>>>>>>>> END IMPROVE DATA CUSTOMER 
 
 export const useSalesOrder = (
   loadOrderId?: string,
@@ -393,10 +535,15 @@ export const useSalesOrder = (
       showError('Keranjang belanja kosong.');
       return;
     }
-    if (!orderFormData.customer_id && !orderFormData.customer_name) {
-      showError('Pilih pelanggan atau masukkan nama pelanggan.');
+
+    if (!orderFormData.customer_id && !orderFormData.customer_phone && !orderFormData.customer_name) {
+      showError('Isi minimal nama atau telepon pelanggan.');
       return;
     }
+    // if (!orderFormData.customer_id && !orderFormData.customer_name) {
+    //   showError('Pilih pelanggan atau masukkan nama pelanggan.');
+    //   return;
+    // }
     if (loadingNotaSettings) {
       showError('Pengaturan nota sedang dimuat. Mohon coba lagi.');
       return;
@@ -423,6 +570,18 @@ export const useSalesOrder = (
           .eq('id', loadOrderId);
         if (deleteOrderError) throw deleteOrderError;
       }
+
+      // >>>>>>>>>>>> TAMBAHAN: pastikan customer berdasarkan phone / id
+      const resolved = await ensureCustomerByPhoneOrId(orderFormData);
+      // Bentuk formData baru untuk disimpan agar konsisten
+      const formDataWithCustomer: OrderFormData = {
+        ...orderFormData,
+        customer_id: resolved.customerId,            // pakai ID hasil resolve (bisa null)
+        customer_name: resolved.displayName || orderFormData.customer_name,
+        customer_phone: resolved.displayPhone || orderFormData.customer_phone,
+        customer_address: resolved.displayAddress || orderFormData.customer_address,
+      };
+      // <<<<<<<<<<<<< TAMBAHAN SELESAI
 
       // Use the helper function to prepare data
       const { orderDataToSave, itemsToInsert } = await prepareOrderDataForSave(
