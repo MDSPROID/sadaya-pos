@@ -1,0 +1,11 @@
+{
+  "dependencies": {
+    "@supabase/supabase-js": "^2.52.1",
+    "canvas": "^3.1.2",
+    "cors": "^2.8.5",
+    "escpos": "^3.0.0-alpha.6",
+    "escpos-usb": "^3.0.0-alpha.4",
+    "express": "^4.19.2",
+    "fs": "^0.0.1-security"
+  }
+}
