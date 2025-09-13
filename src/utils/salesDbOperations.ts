@@ -88,23 +88,44 @@ export const saveSalesOrder = async (
 
   if (itemsError) throw itemsError;
 
-  // Update product stock
-  for (const item of itemsToInsert) {
-    const { data: productData, error: productFetchError } = await supabase
-      .from('produk')
-      .select('stok')
-      .eq('id', item.product_id)
-      .single();
+  // Update product stock pending or paid
+  // for (const item of itemsToInsert) {
+  //   const { data: productData, error: productFetchError } = await supabase
+  //     .from('produk')
+  //     .select('stok')
+  //     .eq('id', item.product_id)
+  //     .single();
 
-    if (productFetchError) throw productFetchError;
+  //   if (productFetchError) throw productFetchError;
 
-    const newStock = (productData?.stok || 0) - item.quantity;
-    const { error: stockUpdateError } = await supabase
-      .from('produk')
-      .update({ stok: newStock })
-      .eq('id', item.product_id);
+  //   const newStock = (productData?.stok || 0) - item.quantity;
+  //   const { error: stockUpdateError } = await supabase
+  //     .from('produk')
+  //     .update({ stok: newStock })
+  //     .eq('id', item.product_id);
 
-    if (stockUpdateError) throw stockUpdateError;
+  //   if (stockUpdateError) throw stockUpdateError;
+  // }
+
+  // Update product stock only when paid
+  if (status === 'paid') {
+    for (const item of itemsToInsert) {
+      const { data: productData, error: productFetchError } = await supabase
+        .from('produk')
+        .select('stok')
+        .eq('id', item.product_id)
+        .single();
+
+      if (productFetchError) throw productFetchError;
+
+      const newStock = (productData?.stok || 0) - item.quantity;
+      const { error: stockUpdateError } = await supabase
+        .from('produk')
+        .update({ stok: newStock })
+        .eq('id', item.product_id);
+
+      if (stockUpdateError) throw stockUpdateError;
+    }
   }
 
   // Log activity
@@ -142,3 +163,116 @@ export const saveSalesOrder = async (
     await sendPrintRequest(notaPrintData);
   }
 };
+
+/**
+ * Updates an existing sales order and its items. Replaces all items with the provided list.
+ * Keeps the existing invoice number. Adjusts stock only when status is 'paid'.
+ */
+export const updateSalesOrder = async (
+  orderId: string,
+  orderData: OrderDataToSave,
+  itemsToUpsert: OrderItemToSave[],
+  currentUserId: string,
+  status: 'pending' | 'paid',
+  paymentDetails: PaymentDetails | undefined,
+) => {
+  // Update the main order (exclude invoice_number to preserve it)
+  const {
+    invoice_number: _ignoreInvoice,
+    ...updatePayload
+  } = orderData as any;
+
+  const { data: updatedOrder, error: orderUpdateError } = await supabase
+    .from('orders')
+    .update(updatePayload)
+    .eq('id', orderId)
+    .select()
+    .single();
+
+  if (orderUpdateError) throw orderUpdateError;
+
+  // Replace items: delete existing then insert new
+  const { error: deleteItemsError } = await supabase
+    .from('order_items')
+    .delete()
+    .eq('order_id', orderId);
+
+  if (deleteItemsError) throw deleteItemsError;
+
+  const itemsWithOrderId = itemsToUpsert.map(item => ({
+    product_id: item.product_id,
+    product_name: item.product_name,
+    quantity: item.quantity,
+    unit_price: item.unit_price,
+    discount_per_item: item.discount_per_item,
+    subtotal_per_item: item.subtotal_per_item,
+    dimensions: item.dimensions,
+    notes_per_item: item.notes_per_item,
+    designer_id: item.designer_id,
+    order_id: orderId,
+  }));
+
+  if (itemsWithOrderId.length > 0) {
+    const { error: itemsError } = await supabase
+      .from('order_items')
+      .insert(itemsWithOrderId);
+    if (itemsError) throw itemsError;
+  }
+
+  // Adjust stock only when paid
+  if (status === 'paid') {
+    for (const item of itemsToUpsert) {
+      const { data: productData, error: productFetchError } = await supabase
+        .from('produk')
+        .select('stok')
+        .eq('id', item.product_id)
+        .single();
+
+      if (productFetchError) throw productFetchError;
+
+      const newStock = (productData?.stok || 0) - item.quantity;
+      const { error: stockUpdateError } = await supabase
+        .from('produk')
+        .update({ stok: newStock })
+        .eq('id', item.product_id);
+
+      if (stockUpdateError) throw stockUpdateError;
+    }
+  }
+
+  // Log activity
+  await supabase.from('activity_logs').insert([{
+    user_id: currentUserId,
+    action: `Melanjutkan pesanan (${orderId})`,
+    details: { order_id: orderId, customer_name: orderData.customer_display_name, final_amount: orderData.final_amount, status: status },
+  }]);
+
+  // Send print request if status is 'paid'
+  if (status === 'paid' && paymentDetails) {
+    const notaPrintData = {
+      tanggal: updatedOrder.created_at,
+      pelanggan: orderData.customer_display_name || 'Umum',
+      items: itemsToUpsert.map(item => ({
+        nama: item.product_name,
+        qty: item.quantity,
+        unit_price: item.unit_price,
+        subtotal: item.subtotal_per_item,
+        keterangan: item.notes_per_item,
+        dimensions: item.dimensions,
+      })),
+      total: orderData.final_amount,
+      invoice_number: updatedOrder.invoice_number,
+      kasir_id: currentUserId,
+      payment_status: status,
+      paid_amount: paymentDetails.paid_amount,
+      dp_amount: paymentDetails.dp_amount,
+      change_amount: (paymentDetails.paid_amount + paymentDetails.dp_amount) - orderData.final_amount,
+      payment_method: paymentDetails.payment_method,
+      bank_name: paymentDetails.bank_name || null,
+      customer_phone: orderData.customer_display_phone || '0',
+      customer_name: orderData.customer_display_name || 'UMUM',
+    };
+    await sendPrintRequest(notaPrintData);
+  }
+};
+
