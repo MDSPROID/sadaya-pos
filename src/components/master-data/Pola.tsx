@@ -1,35 +1,151 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Plus, Edit, Trash2, Search, Eye, Grid3X3 } from 'lucide-react';
-import { polaData } from '../../utils/dummyData';
+import { supabase } from '../../integrations/supabase/client';
+import { showSuccess, showError, showLoading, dismissToast } from '../../utils/toast';
+
+interface PolaItem {
+  id: string;
+  nama: string;
+  ukuran: string;
+  deskripsi: string;
+}
 
 const Pola: React.FC = () => {
-  const [data, setData] = useState(polaData);
+  const [data, setData] = useState<PolaItem[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit' | 'view'>('add');
-  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [selectedItem, setSelectedItem] = useState<Partial<PolaItem>>({});
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredData = data.filter(item =>
+  const initialPolaForm: Partial<PolaItem> = {
+    nama: '',
+    ukuran: '',
+    deskripsi: '',
+  };
+
+  const fetchPola = async () => {
+    setLoading(true);
+    setError(null);
+    const { data: polaList, error } = await supabase
+      .from('pola')
+      .select('*')
+      .order('nama', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching pola:', error);
+      showError('Gagal memuat data pola.');
+      setError(error.message);
+    } else {
+      setData(polaList || []);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchPola();
+  }, []);
+
+  const filteredData = data.filter((item: PolaItem) =>
     item.nama.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.ukuran.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const openModal = (mode: 'add' | 'edit' | 'view', item?: any) => {
+  const openModal = (mode: 'add' | 'edit' | 'view', item?: PolaItem) => {
     setModalMode(mode);
-    setSelectedItem(item || {});
+    if (mode === 'add') {
+      setSelectedItem(initialPolaForm);
+    } else {
+      setSelectedItem(item || {});
+    }
     setShowModal(true);
   };
 
   const closeModal = () => {
     setShowModal(false);
-    setSelectedItem(null);
+    setSelectedItem({});
   };
 
-  const handleDelete = (id: number) => {
-    if (confirm('Yakin ingin menghapus data ini?')) {
-      setData(data.filter(item => item.id !== id));
-    }
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setSelectedItem((prev: Partial<PolaItem>) => ({ ...prev, [name]: value }));
   };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const toastId = showLoading(modalMode === 'add' ? 'Menambah pola...' : 'Menyimpan perubahan...');
+
+    if (modalMode === 'add') {
+      const { data: newPola, error } = await supabase
+        .from('pola')
+        .insert([selectedItem])
+        .select()
+        .single();
+
+      if (error) {
+        showError('Gagal menambah pola: ' + error.message);
+      } else {
+        setData((prev: PolaItem[]) => [...prev, newPola]);
+        showSuccess('Pola berhasil ditambahkan!');
+        closeModal();
+      }
+    } else if (modalMode === 'edit') {
+      const { data: updatedPola, error } = await supabase
+        .from('pola')
+        .update(selectedItem)
+        .eq('id', selectedItem.id)
+        .select()
+        .single();
+
+      if (error) {
+        showError('Gagal menyimpan perubahan: ' + error.message);
+      } else {
+        setData((prev: PolaItem[]) => prev.map((item: PolaItem) => (item.id === updatedPola.id ? updatedPola : item)));
+        showSuccess('Perubahan berhasil disimpan!');
+        closeModal();
+      }
+    }
+    dismissToast(toastId);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Yakin ingin menghapus data ini?')) {
+      return;
+    }
+    const toastId = showLoading('Menghapus pola...');
+    const { error } = await supabase
+      .from('pola')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      showError('Gagal menghapus pola: ' + error.message);
+    } else {
+      setData((prev: PolaItem[]) => prev.filter((item: PolaItem) => item.id !== id));
+      showSuccess('Pola berhasil dihapus!');
+    }
+    dismissToast(toastId);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <p className="text-gray-600">Memuat data pola...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center p-4 text-red-600">
+        <p>Error: {error}</p>
+        <button onClick={fetchPola} className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+          Coba Lagi
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -56,7 +172,7 @@ const Pola: React.FC = () => {
             type="text"
             placeholder="Cari pola..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
@@ -64,7 +180,7 @@ const Pola: React.FC = () => {
 
       {/* Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredData.map((item) => (
+        {filteredData.map((item: PolaItem) => (
           <div key={item.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div className="flex items-start space-x-4">
               <div className="h-12 w-12 bg-indigo-100 rounded-lg flex items-center justify-center">
@@ -108,7 +224,7 @@ const Pola: React.FC = () => {
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
+            <form onSubmit={handleSubmit} className="p-6">
               <h3 className="text-lg font-semibold mb-4">
                 {modalMode === 'add' ? 'Tambah Pola' :
                  modalMode === 'edit' ? 'Edit Pola' : 'Detail Pola'}
@@ -116,37 +232,48 @@ const Pola: React.FC = () => {
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="nama" className="block text-sm font-medium text-gray-700 mb-1">
                     Nama Pola
                   </label>
                   <input
                     type="text"
-                    defaultValue={selectedItem?.nama || ''}
+                    id="nama"
+                    name="nama"
+                    value={selectedItem?.nama || ''}
+                    onChange={handleChange}
                     disabled={modalMode === 'view'}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+                    required
                   />
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="ukuran" className="block text-sm font-medium text-gray-700 mb-1">
                     Ukuran
                   </label>
-                  <input
-                    type="text"
-                    defaultValue={selectedItem?.ukuran || ''}
-                    disabled={modalMode === 'view'}
-                    placeholder="contoh: 100x70 cm atau Ø 50 cm"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
-                  />
+                    <input
+                      type="text"
+                      id="ukuran"
+                      name="ukuran"
+                      value={selectedItem?.ukuran || ''}
+                      onChange={handleChange}
+                      disabled={modalMode === 'view'}
+                      placeholder="contoh: 100x70 cm atau Ø 50 cm"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+                      required
+                    />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="deskripsi" className="block text-sm font-medium text-gray-700 mb-1">
                     Deskripsi
                   </label>
                   <textarea
+                    id="deskripsi"
+                    name="deskripsi"
                     rows={4}
-                    defaultValue={selectedItem?.deskripsi || ''}
+                    value={selectedItem?.deskripsi || ''}
+                    onChange={handleChange}
                     disabled={modalMode === 'view'}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
                   />
@@ -155,6 +282,7 @@ const Pola: React.FC = () => {
 
               <div className="flex justify-end space-x-3 mt-6">
                 <button
+                  type="button"
                   onClick={closeModal}
                   className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
@@ -162,14 +290,14 @@ const Pola: React.FC = () => {
                 </button>
                 {modalMode !== 'view' && (
                   <button
-                    onClick={closeModal}
+                    type="submit"
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                   >
                     {modalMode === 'add' ? 'Tambah' : 'Simpan'}
                   </button>
                 )}
               </div>
-            </div>
+            </form>
           </div>
         </div>
       )}
