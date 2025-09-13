@@ -4,7 +4,7 @@ import { showSuccess, showError, showLoading, dismissToast } from '../utils/toas
 import { useSession } from '../components/SessionContextProvider';
 import { useNotaSettings } from './useNotaSettings';
 import { generateInvoiceNumber } from '../utils/invoiceGenerator';
-import { saveSalesOrder } from '../utils/salesDbOperations';
+import { saveSalesOrder, updateSalesOrder } from '../utils/salesDbOperations';
 import { useFormPersistence } from './useFormPersistence';
 import {
   Product,
@@ -280,7 +280,7 @@ export const useSalesOrder = (
       subtotal = unitPrice * area * itemQuantity;
     }
 
-    const additionalCost = itemAdditionalOptions.reduce((total, option) => {
+    const additionalCost = itemAdditionalOptions.reduce((total: number, option: AdditionalOption) => {
       return total + (option.selected && option.quantity > 0 ? option.cost * option.quantity : 0);
     }, 0);
     subtotal += additionalCost;
@@ -299,12 +299,12 @@ export const useSalesOrder = (
   }, []);
 
   useEffect(() => {
-    const newTotalAmount = orderFormData.items.reduce((sum, item) => sum + item.subtotal_per_item, 0);
-    const newDiscountAmount = orderFormData.items.reduce((sum, item) => sum + item.discount_per_item, 0);
+    const newTotalAmount = orderFormData.items.reduce((sum: number, item: OrderItem) => sum + item.subtotal_per_item, 0);
+    const newDiscountAmount = orderFormData.items.reduce((sum: number, item: OrderItem) => sum + item.discount_per_item, 0);
     const newTaxAmount = 0;
     const newCartFinalAmount = newTotalAmount - newDiscountAmount + newTaxAmount;
 
-    setOrderFormData(prev => ({
+    setOrderFormData((prev: OrderFormData) => ({
       ...prev,
       total_amount: newTotalAmount,
       discount_amount: newDiscountAmount,
@@ -351,7 +351,7 @@ export const useSalesOrder = (
 
         if (itemsError) throw itemsError;
 
-        const loadedItems: OrderItem[] = (orderItemsData || []).map(item => {
+        const loadedItems: OrderItem[] = (orderItemsData || []).map((item: any) => {
           const productDetail = productOptions.find(p => p.id === item.product_id);
           const designerDetail = designerOptions.find(d => d.id === item.designer_id);
 
@@ -419,13 +419,13 @@ export const useSalesOrder = (
     customerOptions,
   ]);
 
-  const handleFormChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleFormChange = useCallback((e: any) => {
     const { name, value } = e.target;
-    setOrderFormData(prev => ({ ...prev, [name]: value }));
+    setOrderFormData((prev: OrderFormData) => ({ ...prev, [name]: value }));
   }, [setOrderFormData]);
 
   const handleSelectCustomer = useCallback((customer: { id: string; nama_pelanggan: string; telepon: string | null; alamat: string | null; }) => {
-    setOrderFormData(prev => ({
+    setOrderFormData((prev: OrderFormData) => ({
       ...prev,
       customer_id: customer.id,
       customer_name: customer.nama_pelanggan,
@@ -480,7 +480,7 @@ export const useSalesOrder = (
       subtotal = unitPrice * area * itemQuantity;
     }
 
-    const additionalCost = itemAdditionalOptions.reduce((total, option) => {
+    const additionalCost = itemAdditionalOptions.reduce((total: number, option: AdditionalOption) => {
       return total + (option.selected && option.quantity > 0 ? option.cost * option.quantity : 0);
     }, 0);
     subtotal += additionalCost;
@@ -496,7 +496,7 @@ export const useSalesOrder = (
       subtotal_per_item: subtotal,
       dimensions: {
         ...itemDimensions,
-        additional_options: itemAdditionalOptions.filter(opt => opt.selected && opt.quantity > 0),
+        additional_options: itemAdditionalOptions.filter((opt: AdditionalOption) => opt.selected && opt.quantity > 0),
       },
       notes_per_item: itemNotes,
       designer_id: null,
@@ -506,7 +506,7 @@ export const useSalesOrder = (
       mesin_nama: selectedProduct.mesin?.nama || null,
     };
 
-    setOrderFormData(prev => ({
+    setOrderFormData((prev: OrderFormData) => ({
       ...prev,
       items: [...prev.items, newItem],
     }));
@@ -515,16 +515,16 @@ export const useSalesOrder = (
   }, [selectedProduct, itemQuantity, itemNotes, itemDimensions, itemDiscount, itemAdditionalOptions, resetCurrentItemForm, setOrderFormData]);
 
   const handleRemoveItem = useCallback((tempId: string) => {
-    setOrderFormData(prev => ({
+    setOrderFormData((prev: OrderFormData) => ({
       ...prev,
       items: prev.items.filter(item => item.tempId !== tempId),
     }));
   }, [setOrderFormData]);
 
   const handleUpdateItemDesigner = useCallback((tempId: string, designerId: string, designerName: string) => {
-    setOrderFormData(prev => ({
+    setOrderFormData((prev: OrderFormData) => ({
       ...prev,
-      items: prev.items.map(item =>
+      items: prev.items.map((item: OrderItem) =>
         item.tempId === tempId ? { ...item, designer_id: designerId, designer_name: designerName } : item
       ),
     }));
@@ -556,21 +556,6 @@ export const useSalesOrder = (
     const toastId = showLoading('Menyimpan pesanan...');
 
     try {
-      // If loading an existing pending order, delete it first
-      if (loadOrderId && status === 'paid') {
-        const { error: deleteItemsError } = await supabase
-          .from('order_items')
-          .delete()
-          .eq('order_id', loadOrderId);
-        if (deleteItemsError) throw deleteItemsError;
-
-        const { error: deleteOrderError } = await supabase
-          .from('orders')
-          .delete()
-          .eq('id', loadOrderId);
-        if (deleteOrderError) throw deleteOrderError;
-      }
-
       // >>>>>>>>>>>> TAMBAHAN: pastikan customer berdasarkan phone / id
       // const resolved = await ensureCustomerByPhoneOrId(orderFormData);
       // // Bentuk formData baru untuk disimpan agar konsisten
@@ -592,13 +577,25 @@ export const useSalesOrder = (
         paymentDetails
       );
 
-      await saveSalesOrder(
-        orderDataToSave,
-        itemsToInsert,
-        currentUserId,
-        status,
-        paymentDetails,
-      );
+      if (loadOrderId) {
+        // Update existing pending order instead of delete/insert
+        await updateSalesOrder(
+          loadOrderId,
+          orderDataToSave,
+          itemsToInsert,
+          currentUserId,
+          status,
+          paymentDetails,
+        );
+      } else {
+        await saveSalesOrder(
+          orderDataToSave,
+          itemsToInsert,
+          currentUserId,
+          status,
+          paymentDetails,
+        );
+      }
 
       showSuccess(`Pesanan berhasil disimpan sebagai ${status === 'pending' ? 'Pending' : 'Lunas'}!`);
       
