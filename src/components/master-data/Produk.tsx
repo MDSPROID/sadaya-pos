@@ -138,15 +138,29 @@ const Produk: React.FC = () => {
     setCurrentPage(page);
   };
 
+  
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVal = e.target.value;
+    setSearchTerm(newVal);
+    setCurrentPage(1);
+
+    // Opsi A: hanya filter client-side (paling simpel). Tidak perlu panggil fetch.
+    // Opsi B (opsional): kalau mau server-side search, debounce & panggil fetchProduk override:
+    // if (typingTimer.current) window.clearTimeout(typingTimer.current);
+    // typingTimer.current = window.setTimeout(() => {
+    //   fetchProduk({ searchTerm: newVal, page: 1 });
+    // }, 300);
+  };
+
   const totalPages = Math.ceil(totalCount / pageSize);
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <p className="text-gray-600">Memuat data produk...</p>
-      </div>
-    );
-  }
+  // if (loading) {
+  //   return (
+  //     <div className="flex justify-center items-center h-64">
+  //       <p className="text-gray-600">Memuat data produk...</p>
+  //     </div>
+  //   );
+  // }
 
   if (error) {
     return (
@@ -163,11 +177,13 @@ const Produk: React.FC = () => {
     <div className="space-y-6">
       <ProdukTable
         data={allProdukData}
+        loading={loading}
         searchTerm={searchTerm}
-        onSearchChange={(e) => {
-          setSearchTerm(e.target.value);
-          setCurrentPage(1);
-        }}
+        onSearchChange={handleSearchChange}
+        // onSearchChange={(e) => {
+        //   setSearchTerm(e.target.value);
+        //   setCurrentPage(1);
+        // }}
         onOpenModal={openModal}
         onDelete={handleDelete}
       />

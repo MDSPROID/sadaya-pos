@@ -5,6 +5,7 @@ import { formatCurrency } from '../../../utils/formatters'; // Assuming you have
 
 interface ProdukTableProps {
   data: ProdukItem[];
+  loading?: boolean;
   searchTerm: string;
   onSearchChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onOpenModal: (mode: ModalMode, item?: ProdukItem) => void;
@@ -13,6 +14,7 @@ interface ProdukTableProps {
 
 const ProdukTable: React.FC<ProdukTableProps> = ({
   data,
+  loading = false,
   searchTerm,
   onSearchChange,
   onOpenModal,
@@ -57,7 +59,12 @@ const ProdukTable: React.FC<ProdukTableProps> = ({
 
       {/* Table */}
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
+          {loading && (
+            <div className="absolute inset-0 bg-white/40 flex items-center justify-center z-10">
+              <span className="text-gray-600 text-sm">Memuat data…</span>
+            </div>
+          )}
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>

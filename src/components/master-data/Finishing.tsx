@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Search, Eye } from 'lucide-react';
 import { supabase } from '../../integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '../../utils/toast';
@@ -18,6 +18,9 @@ interface FinishingItem {
   kategori_id: string | null;
   kategori: { nama: string } | null;
 }
+
+// helper: aman untuk toLowerCase/includes
+const s = (v: unknown) => (v ?? '').toString().toLowerCase();
 
 const Finishing: React.FC = () => {
   const [data, setData] = useState<FinishingItem[]>([]);
@@ -86,11 +89,27 @@ const Finishing: React.FC = () => {
     fetchKategoriOptions();
   }, []);
 
-  const filteredData = data.filter(item =>
-    (item.nama.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.deskripsi.toLowerCase().includes(searchTerm.toLowerCase())) &&
-    (selectedKategoriFilter === '' || item.kategori?.nama === selectedKategoriFilter)
-  );
+  // opsi pencarian finishing
+  // const filteredData = data.filter(item =>
+  //   (item.nama.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  //   item.deskripsi.toLowerCase().includes(searchTerm.toLowerCase())) &&
+  //   (selectedKategoriFilter === '' || item.kategori?.nama === selectedKategoriFilter)
+  // );
+  const filteredData = useMemo(() => {
+    const q = s(searchTerm);
+    const selected = s(selectedKategoriFilter);
+
+    return data.filter((item) => {
+      const nama = s(item.nama);
+      const deskripsi = s(item.deskripsi);
+      const kategoriNama = s(item.kategori?.nama);
+
+      const matchesSearch = nama.includes(q) || deskripsi.includes(q);
+      const matchesKategori = selected ? kategoriNama === selected : true;
+
+      return matchesSearch && matchesKategori;
+    });
+  }, [data, searchTerm, selectedKategoriFilter]);
 
   const openModal = (mode: 'add' | 'edit' | 'view', item?: FinishingItem) => {
     setModalMode(mode);
@@ -215,7 +234,7 @@ const Finishing: React.FC = () => {
 
       {/* Search and Filter */}
       <div className="bg-white rounded-lg shadow-sm p-6 flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
+        <div className="relative flex-[2]">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
           <input
             type="text"
@@ -225,7 +244,9 @@ const Finishing: React.FC = () => {
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
-        <div className="relative flex-1">
+
+          {/* Filter kategori + pencarian kategori */}
+        <div className="relative flex-[1]">
           <select
             value={selectedKategoriFilter}
             onChange={(e) => setSelectedKategoriFilter(e.target.value)}

@@ -10,29 +10,34 @@ interface PendingOrderItem {
   customer_display_phone: string | null;
   pelanggan: Array<{ nama_pelanggan: string; telepon: string | null }> | null;
   kasir_id: string | null;
-  // Mengubah tipe profiles menjadi objek tunggal atau null
   profiles: { first_name: string | null; last_name: string | null } | null;
   total_amount: number;
   notes: string | null;
   pickup_date: string | null;
   priority: string;
   durasi_tunggu: number;
+  invoice_number?: string | null;
+  discount_amount?: number;
+  tax_amount?: number;
+  final_amount?: number;
 }
 
 interface HistoryPendingSalesTableProps {
   data: PendingOrderItem[];
+  loading?: boolean;
   searchTerm: string;
   onSearchChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   durationFilter: string;
   onDurationFilterChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   onRefresh: () => void;
-  onContinue: (orderId: string) => void; // Keep orderId here as we only pass the ID
+  onContinue: (orderId: string) => void;
   onDelete: (orderId: string) => void;
   onRekap: () => void;
 }
 
 const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
   data,
+  loading = false,
   searchTerm,
   onSearchChange,
   durationFilter,
@@ -47,7 +52,9 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
       {/* Filter Section */}
       <div className="bg-white rounded-lg shadow-sm p-6 flex flex-col md:flex-row gap-4 items-center">
         <div className="flex items-center gap-2 w-full md:w-auto">
-          <label htmlFor="durationFilter" className="text-sm font-medium text-gray-700">Durasi Tunggu:</label>
+          <label htmlFor="durationFilter" className="text-sm font-medium text-gray-700">
+            Durasi Tunggu:
+          </label>
           <select
             id="durationFilter"
             value={durationFilter}
@@ -60,8 +67,9 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
             <option value=">14">&gt;14 Hari</option>
           </select>
         </div>
+
         <div className="relative flex-1 w-full md:w-auto">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
           <input
             type="text"
             placeholder="Cari faktur, nama pemesan, HP..."
@@ -70,60 +78,63 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
-        <button
-          onClick={onRefresh}
-          className="flex items-center px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors w-full md:w-auto justify-center"
-        >
-          <RefreshCcw className="h-5 w-5 mr-2" />
-          Refresh
-        </button>
+
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={loading}
+            className={`flex items-center px-4 py-2 rounded-lg transition-colors w-full md:w-auto justify-center
+              ${loading ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}
+            `}
+            title="Muat Ulang"
+          >
+            <RefreshCcw className={`h-5 w-5 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'Memuat…' : 'Refresh'}
+          </button>
+        </div>
       </div>
 
       {/* Table */}
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
+          {loading && (
+            <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center z-10">
+              <div className="text-gray-700 text-sm">Memuat data…</div>
+            </div>
+          )}
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  No.
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Faktur
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Nama Pemesan
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  HP
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Jumlah
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Keterangan
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Petugas
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  PC
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Tanggal
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Durasi Tunggu
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Aksi
-                </th>
+                {[
+                  'No.',
+                  'Faktur',
+                  'Nama Pemesan',
+                  'HP',
+                  'Jumlah',
+                  'Keterangan',
+                  'Petugas',
+                  'PC',
+                  'Tanggal',
+                  'Durasi Tunggu',
+                  'Aksi',
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {data.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                  <td
+                    colSpan={11}
+                    className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center"
+                  >
                     Tidak ada data penjualan tertunda.
                   </td>
                 </tr>
@@ -134,15 +145,19 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
                       {index + 1}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {item.id.substring(0, 8)}...
+                      {(item.invoice_number || item.id)?.toString().substring(0, 10)}…
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
-                        {item.customer_display_name || item.pelanggan?.[0]?.nama_pelanggan || 'N/A'}
+                        {item.customer_display_name ||
+                          item.pelanggan?.[0]?.nama_pelanggan ||
+                          'N/A'}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {item.customer_display_phone || item.pelanggan?.[0]?.telepon || '0'}
+                      {item.customer_display_phone ||
+                        item.pelanggan?.[0]?.telepon ||
+                        '0'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       Rp {item.total_amount.toLocaleString('id-ID')}
@@ -151,10 +166,12 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
                       {item.notes || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {item.profiles?.first_name || item.profiles?.last_name || 'N/A'}
+                      {item.profiles?.first_name ||
+                        item.profiles?.last_name ||
+                        'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      Server {/* Placeholder as per image */}
+                      Server
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {new Date(item.order_date).toLocaleDateString('id-ID')}
@@ -165,6 +182,7 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex space-x-2">
                         <button
+                          type="button"
                           onClick={() => onContinue(item.id)}
                           className="text-green-600 hover:text-green-900"
                           title="Lanjutkan Transaksi"
@@ -172,6 +190,7 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
                           <Play className="h-5 w-5" />
                         </button>
                         <button
+                          type="button"
                           onClick={() => onDelete(item.id)}
                           className="text-red-600 hover:text-red-900"
                           title="Hapus Transaksi"
@@ -191,6 +210,7 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
       {/* Action Buttons */}
       <div className="flex justify-end space-x-3 mt-6">
         <button
+          type="button"
           onClick={onRekap}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >

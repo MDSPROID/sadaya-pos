@@ -536,14 +536,14 @@ export const useSalesOrder = (
       return;
     }
 
-    if (!orderFormData.customer_id && !orderFormData.customer_phone && !orderFormData.customer_name) {
-      showError('Isi minimal nama atau telepon pelanggan.');
-      return;
-    }
-    // if (!orderFormData.customer_id && !orderFormData.customer_name) {
-    //   showError('Pilih pelanggan atau masukkan nama pelanggan.');
+    // if (!orderFormData.customer_id && !orderFormData.customer_phone && !orderFormData.customer_name) {
+    //   showError('Isi minimal nama atau telepon pelanggan.');
     //   return;
     // }
+    if (!orderFormData.customer_id && !orderFormData.customer_name) {
+      showError('Pilih pelanggan atau masukkan nama pelanggan.');
+      return;
+    }
     if (loadingNotaSettings) {
       showError('Pengaturan nota sedang dimuat. Mohon coba lagi.');
       return;
@@ -572,15 +572,15 @@ export const useSalesOrder = (
       }
 
       // >>>>>>>>>>>> TAMBAHAN: pastikan customer berdasarkan phone / id
-      const resolved = await ensureCustomerByPhoneOrId(orderFormData);
-      // Bentuk formData baru untuk disimpan agar konsisten
-      const formDataWithCustomer: OrderFormData = {
-        ...orderFormData,
-        customer_id: resolved.customerId,            // pakai ID hasil resolve (bisa null)
-        customer_name: resolved.displayName || orderFormData.customer_name,
-        customer_phone: resolved.displayPhone || orderFormData.customer_phone,
-        customer_address: resolved.displayAddress || orderFormData.customer_address,
-      };
+      // const resolved = await ensureCustomerByPhoneOrId(orderFormData);
+      // // Bentuk formData baru untuk disimpan agar konsisten
+      // const formDataWithCustomer: OrderFormData = {
+      //   ...orderFormData,
+      //   customer_id: resolved.customerId,            // pakai ID hasil resolve (bisa null)
+      //   customer_name: resolved.displayName || orderFormData.customer_name,
+      //   customer_phone: resolved.displayPhone || orderFormData.customer_phone,
+      //   customer_address: resolved.displayAddress || orderFormData.customer_address,
+      // };
       // <<<<<<<<<<<<< TAMBAHAN SELESAI
 
       // Use the helper function to prepare data

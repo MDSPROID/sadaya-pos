@@ -110,6 +110,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const handleSave = () => {
     const filteredAdditionalOptions = additionalOptions.filter(opt => opt.selected && opt.quantity > 0);
     onSave(quantity, dimensions, filteredAdditionalOptions);
+    onClose();
   };
 
   if (!isOpen) return null;

@@ -16,14 +16,20 @@ interface PelangganItem {
 
 interface PelangganTableProps {
   data: PelangganItem[];
+  loading?: boolean;
   openModal: (mode: 'add' | 'edit' | 'view', item?: PelangganItem) => void;
   handleDelete: (id: string) => void;
 }
 
-const PelangganTable: React.FC<PelangganTableProps> = ({ data, openModal, handleDelete }) => {
+const PelangganTable: React.FC<PelangganTableProps> = ({ data, loading = false, openModal, handleDelete }) => {
   return (
     <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
+        {loading && (
+          <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center z-10">
+            <span className="text-sm text-gray-700">Memuat data pelanggan…</span>
+          </div>
+        )}
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>

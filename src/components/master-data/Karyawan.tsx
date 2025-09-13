@@ -3,6 +3,7 @@ import { Plus, Edit, Trash2, Search, Eye } from 'lucide-react';
 import { supabase } from '../../integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '../../utils/toast';
 import { useFormPersistence } from '../../hooks/useFormPersistence';
+import { indoAuthError } from '../../utils/translateAuthError';
 
 interface RoleOption {
   id: string;
@@ -142,7 +143,8 @@ const Karyawan: React.FC = () => {
       });
 
       if (authError) {
-        showError('Gagal menambah karyawan: ' + authError.message);
+        // showError('Gagal menambah karyawan: ' + authError.message);
+        showError(indoAuthError(authError));
       } else {
         showSuccess('Karyawan berhasil ditambahkan! Akun dibuat.');
         closeModal();

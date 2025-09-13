@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '../../utils/toast';
 
@@ -11,8 +11,19 @@ import Pagination from '../Pagination';
 import { usePelangganData, PelangganItem } from '../../hooks/usePelangganData';
 import { useFormPersistence } from '../../hooks/useFormPersistence';
 
+// helper debounce sederhana
+function useDebouncedValue<T>(value: T, delay = 350) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+  return debounced;
+}
+
 const Pelanggan: React.FC = () => {
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTermInput, setSearchTermInput] = useState('');
+  const debouncedSearch = useDebouncedValue(searchTermInput, 350);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
 
@@ -52,7 +63,7 @@ const Pelanggan: React.FC = () => {
     loading,
     error,
     fetchPelanggan,
-  } = usePelangganData({ searchTerm, currentPage, pageSize });
+  } = usePelangganData({ searchTerm: debouncedSearch , currentPage, pageSize });
 
   const openModal = (mode: 'add' | 'edit' | 'view', item?: PelangganItem) => {
     setModalMode(mode);
@@ -145,36 +156,51 @@ const Pelanggan: React.FC = () => {
 
   const totalPages = Math.ceil(totalCount / pageSize);
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <p className="text-gray-600">Memuat data pelanggan...</p>
-      </div>
-    );
-  }
+  // if (loading) {
+  //   return (
+  //     <div className="flex justify-center items-center h-64">
+  //       <p className="text-gray-600">Memuat data pelanggan...</p>
+  //     </div>
+  //   );
+  // }
 
-  if (error) {
-    return (
-      <div className="text-center p-4 text-red-600">
-        <p>Error: {error}</p>
-        <button onClick={fetchPelanggan} className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-          Coba Lagi
-        </button>
-      </div>
-    );
-  }
+  // if (error) {
+  //   return (
+  //     <div className="text-center p-4 text-red-600">
+  //       <p>Error: {error}</p>
+  //       <button onClick={fetchPelanggan} className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+  //         Coba Lagi
+  //       </button>
+  //     </div>
+  //   );
+  // }
+
+  const inlineError = error ? (
+    <div className="p-3 rounded-md bg-red-50 text-red-700 text-sm">
+      {error}{' '}
+      <button type="button" onClick={fetchPelanggan} className="underline hover:no-underline">
+        Coba lagi
+      </button>
+    </div>
+  ) : null;
 
   return (
     <div className="space-y-6">
       <PelangganHeader onAddClick={() => openModal('add')} />
+      {inlineError}
       <PelangganSearch
-        searchTerm={searchTerm}
+        searchTerm={searchTermInput}
         onSearchChange={(term) => {
-          setSearchTerm(term);
+          setSearchTermInput(term);
           setCurrentPage(1);
         }}
       />
-      <PelangganTable data={data} openModal={openModal} handleDelete={handleDelete} />
+      <PelangganTable 
+        data={data} 
+        loading={loading}
+        openModal={openModal} 
+        handleDelete={handleDelete} 
+      />
 
       <Pagination
         currentPage={currentPage}
