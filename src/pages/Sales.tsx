@@ -15,6 +15,7 @@ import SelectCustomerModal from '../components/sales/SelectCustomerModal';
 import SelectProductModal from '../components/sales/SelectProductModal';
 import ProductDetailModal from '../components/sales/ProductDetailModal';
 import PaymentModal from '../components/sales/PaymentModal';
+import PrinterStatusBadge from '../components/sales/PrinterStatusBadge';
 
 const Sales: React.FC = () => {
   const location = useLocation();
@@ -143,7 +144,10 @@ const Sales: React.FC = () => {
 
   return (
     <div className="h-full w-full space-y-6 p-6 bg-gray-100 flex flex-col">
-      <h1 className="text-3xl font-bold text-gray-900 mb-6 flex-shrink-0">Transaksi Penjualan</h1>
+      <div className="flex items-center justify-between mb-6 flex-shrink-0">
+        <h1 className="text-3xl font-bold text-gray-900">Transaksi Penjualan</h1>
+        <PrinterStatusBadge />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden">
         {/* Left Column: Customer Info & Product Input */}
