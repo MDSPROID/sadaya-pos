@@ -37,8 +37,14 @@ export const sendPrintRequest = async (notaData: NotaData) => {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Gagal mengirim permintaan cetak ke agen lokal.');
+      const errorData = await response.json().catch(() => ({}));
+      const msg = errorData?.message || 'Gagal mengirim permintaan cetak ke agen lokal.';
+      // Jika agent mengembalikan 503 dengan pesan printer belum dipasang → tampilkan notif user-friendly
+      if (response.status === 503) {
+        showError(msg);
+        return;
+      }
+      throw new Error(msg);
     }
 
     const result = await response.json();

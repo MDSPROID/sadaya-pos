@@ -18,8 +18,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 app.use(cors({ origin: '*', methods: ['POST'], allowedHeaders: ['Content-Type'] }));
 app.use(express.json());
 
-// ===== USB Device =====
-function createUsbDevice() {
+// ===== USB Device (lazy create, do not crash if not found) =====
+function tryCreateUsbDevice() {
   const vidHex = process.env.PRINTER_VID; // e.g. "04B8"
   const pidHex = process.env.PRINTER_PID; // e.g. "0202"
   try {
@@ -32,12 +32,10 @@ function createUsbDevice() {
     console.log('Using default USB() detection (no PRINTER_VID/PRINTER_PID set)');
     return new USB();
   } catch (err) {
-    console.error('USB printer not found. On Windows, install libusbK via Zadig and/or set PRINTER_VID/PRINTER_PID.');
-    throw err;
+    console.warn('USB printer not available. If on Windows, install libusbK via Zadig and/or set PRINTER_VID/PRINTER_PID.');
+    return null;
   }
 }
-
-const device = createUsbDevice();
 
 // ===== Utils =====
 function formatLine(leftText, rightText, totalWidth = 42) {
@@ -105,6 +103,12 @@ function printImageLogo(printer) {
 // ===== Cetak Nota =====
 const printReceipt = async (notaData, callback) => {
   let printer;
+  const device = tryCreateUsbDevice();
+  if (!device) {
+    const noPrinterErr = new Error('PRINTER_NOT_AVAILABLE');
+    noPrinterErr.code = 'PRINTER_NOT_AVAILABLE';
+    return callback(noPrinterErr);
+  }
   try {
     const { data: appSettings }  = await supabase.from('app_settings').select('*').single();
     const { data: notaSettings } = await supabase.from('nota_settings').select('footer_penjualan').single();
@@ -125,7 +129,9 @@ const printReceipt = async (notaData, callback) => {
     device.open(async (error) => {
       if (error) {
         console.error('Error opening printer device:', error);
-        return callback(error);
+        const openErr = new Error('PRINTER_OPEN_FAILED');
+        openErr.code = 'PRINTER_OPEN_FAILED';
+        return callback(openErr);
       }
 
       printer = new escpos.Printer(device);
@@ -218,13 +224,22 @@ app.post('/print-nota', (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid nota data. "items" array is required.' });
   }
   printReceipt(notaData, (error) => {
-    if (error) return res.status(500).json({ success: false, message: 'Print failed', error: error.message });
+    if (error) {
+      if (error.code === 'PRINTER_NOT_AVAILABLE') {
+        return res.status(503).json({ success: false, message: 'Printer belum dipasang atau driver belum terpasang.' });
+      }
+      if (error.code === 'PRINTER_OPEN_FAILED') {
+        return res.status(503).json({ success: false, message: 'Gagal membuka printer. Periksa koneksi/driver.' });
+      }
+      return res.status(500).json({ success: false, message: 'Print failed', error: error.message });
+    }
     res.json({ success: true, message: 'Receipt printed successfully!' });
   });
 });
 
 app.get('/', (_, res) => {
-  res.send('<h1>🖨️ POS Print Agent is Running!</h1><p>Ready to print receipts.</p><code>POST /print-nota</code>');
+  const available = !!tryCreateUsbDevice();
+  res.send(`<h1>🖨️ POS Print Agent is Running!</h1><p>Ready to print receipts.</p><code>POST /print-nota</code><p>Printer available: ${available}</p>`);
 });
 
 app.listen(PORT, () => console.log(`✅ POS Print Agent listening on port ${PORT}`));
