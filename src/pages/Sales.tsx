@@ -4,6 +4,8 @@ import { useSalesOrder } from '../hooks/useSalesOrder';
 import { showError } from '../utils/toast';
 import { useLocation,useNavigate } from 'react-router-dom';
 import { useHistoryPendingSalesData } from '../hooks/useHistoryPendingSalesData'; // Import useHistoryPendingSalesData
+import { isPrinterAvailable } from '../utils/printAgent';
+import PrinterStatusBadge from '../components/sales/PrinterStatusBadge';
 
 // Import modular components
 import CustomerForm from '../components/sales/CustomerForm';
@@ -37,6 +39,7 @@ const Sales: React.FC = () => {
 
   const {
     orderFormData,
+    resetOrderForm,
     selectedProduct,
     itemQuantity,
     setItemQuantity,
@@ -79,6 +82,15 @@ const Sales: React.FC = () => {
     setShowPaymentModal(true);
   };
 
+  // Ensure clean form when arriving for new sales (no loadOrderId)
+  React.useEffect(() => {
+    if (!loadOrderId) {
+      resetOrderForm();
+    }
+    // Only run when loadOrderId changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadOrderId]);
+
   const handleProcessPayment = async (paymentDetails: {
     dp_amount: number;
     paid_amount: number;
@@ -88,10 +100,27 @@ const Sales: React.FC = () => {
     tempo_active: boolean;
     tempo_date?: string;
   }) => {
+
+    // Cek ketersediaan printer. Jika tidak tersedia, tawarkan opsi lanjut tanpa cetak atau batal.
+    const available = await isPrinterAvailable();
+    if (!available) {
+      // Simpan transaksi dengan skipPrint, lalu arahkan sesuai alur
+      await handleSaveOrder('paid', paymentDetails, { skipPrint: true });
+      setShowPaymentModal(false);
+      if (loadOrderId) {
+        navigate('/dashboard/history-pending');
+      } else {
+        navigate('/dashboard/sales', { replace: true });
+      }
+      return;
+    }
+    
     await handleSaveOrder('paid', paymentDetails);
     setShowPaymentModal(false);
     if (loadOrderId) {
       navigate('/dashboard/history-pending');
+    } else {
+      navigate('/dashboard/sales', { replace: true });
     }
   };
 
@@ -116,7 +145,11 @@ const Sales: React.FC = () => {
 
   return (
     <div className="h-full w-full space-y-6 p-6 bg-gray-100 flex flex-col">
-      <h1 className="text-3xl font-bold text-gray-900 mb-6 flex-shrink-0">Transaksi Penjualan</h1>
+      {/* <h1 className="text-3xl font-bold text-gray-900 mb-6 flex-shrink-0">Transaksi Penjualan</h1> */}
+      <div className="flex items-center justify-between mb-6 flex-shrink-0">
+        <h1 className="text-3xl font-bold text-gray-900">Transaksi Penjualan</h1>
+        <PrinterStatusBadge />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden">
         {/* Left Column: Customer Info & Product Input */}
@@ -160,6 +193,8 @@ const Sales: React.FC = () => {
               await handleSaveOrder('pending');
               if (loadOrderId) {
                 navigate('/dashboard/history-pending');
+              } else {
+                navigate('/dashboard/sales', { replace: true });
               }
             }}
             // onSavePending={() => handleSaveOrder('pending')}

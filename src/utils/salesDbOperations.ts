@@ -58,6 +58,7 @@ export const saveSalesOrder = async (
   currentUserId: string,
   status: 'pending' | 'paid',
   paymentDetails: PaymentDetails | undefined,
+  options?: { skipPrint?: boolean },
 ) => {
   // Insert the main order
   const { data: newOrder, error: orderError } = await supabase
@@ -136,7 +137,8 @@ export const saveSalesOrder = async (
   }]);
 
   // Send print request if status is 'paid'
-  if (status === 'paid' && paymentDetails) {
+  // if (status === 'paid' && paymentDetails) {
+  if (status === 'paid' && paymentDetails && !options?.skipPrint) {
     const notaPrintData = {
       tanggal: newOrder.created_at, // Pass the raw timestamp
       pelanggan: orderData.customer_display_name || 'Umum',
@@ -175,6 +177,7 @@ export const updateSalesOrder = async (
   currentUserId: string,
   status: 'pending' | 'paid',
   paymentDetails: PaymentDetails | undefined,
+  options?: { skipPrint?: boolean },
 ) => {
   // Update the main order (exclude invoice_number to preserve it)
   const {
@@ -248,7 +251,8 @@ export const updateSalesOrder = async (
   }]);
 
   // Send print request if status is 'paid'
-  if (status === 'paid' && paymentDetails) {
+  // if (status === 'paid' && paymentDetails) {
+  if (status === 'paid' && paymentDetails && !options?.skipPrint) {
     const notaPrintData = {
       tanggal: updatedOrder.created_at,
       pelanggan: orderData.customer_display_name || 'Umum',

@@ -299,6 +299,12 @@ export const useSalesOrder = (
     setItemAdditionalOptions([]);
   }, []);
 
+  const resetOrderForm = useCallback(() => {
+    setOrderFormData(initialOrderFormData);
+    resetCurrentItemForm();
+    clearOrderFormData();
+  }, [initialOrderFormData, resetCurrentItemForm, clearOrderFormData, setOrderFormData]);
+
   useEffect(() => {
     // const newTotalAmount = orderFormData.items.reduce((sum, item) => sum + item.subtotal_per_item, 0);
     // const newDiscountAmount = orderFormData.items.reduce((sum, item) => sum + item.discount_per_item, 0);
@@ -505,7 +511,8 @@ export const useSalesOrder = (
       subtotal_per_item: subtotal,
       dimensions: {
         ...itemDimensions,
-        additional_options: itemAdditionalOptions.filter(opt => opt.selected && opt.quantity > 0),
+        // additional_options: itemAdditionalOptions.filter(opt => opt.selected && opt.quantity > 0),
+        additional_options: itemAdditionalOptions.filter((opt: AdditionalOption) => opt.selected && opt.quantity > 0),
       },
       notes_per_item: itemNotes,
       designer_id: null,
@@ -543,7 +550,12 @@ export const useSalesOrder = (
     }));
   }, [setOrderFormData]);
 
-  const handleSaveOrder = useCallback(async (status: 'pending' | 'paid', paymentDetails?: PaymentDetails) => {
+  // const handleSaveOrder = useCallback(async (status: 'pending' | 'paid', paymentDetails?: PaymentDetails) => {
+  const handleSaveOrder = useCallback(async (
+    status: 'pending' | 'paid',
+    paymentDetails?: PaymentDetails,
+    options?: { skipPrint?: boolean }
+  ) => {
     if (orderFormData.items.length === 0) {
       showError('Keranjang belanja kosong.');
       return;
@@ -622,6 +634,7 @@ export const useSalesOrder = (
           currentUserId,
           status,
           paymentDetails,
+          options,
         );
       } else {
         await saveSalesOrder(
@@ -630,10 +643,16 @@ export const useSalesOrder = (
           currentUserId,
           status,
           paymentDetails,
+          options,
         );
       }
 
-      showSuccess(`Pesanan berhasil disimpan sebagai ${status === 'pending' ? 'Pending' : 'Lunas'}!`);
+      // showSuccess(`Pesanan berhasil disimpan sebagai ${status === 'pending' ? 'Pending' : 'Lunas'}!`);
+      if (loadOrderId) {
+        showSuccess(`Transaksi diperbarui sebagai ${status === 'pending' ? 'Pending' : 'Lunas'}.`);
+      } else {
+        showSuccess(`Transaksi baru ${status === 'pending' ? 'disimpan sebagai Pending' : 'Lunas'}.`);
+      }
       
       setOrderFormData(initialOrderFormData);
       resetCurrentItemForm();
@@ -677,5 +696,6 @@ export const useSalesOrder = (
     handleUpdateItemDesigner,
     handleSaveOrder,
     isDraftLoaded,
+    resetOrderForm,
   };
 };
