@@ -92,6 +92,8 @@ const Sales: React.FC = () => {
     setShowPaymentModal(false);
     if (loadOrderId) {
       navigate('/dashboard/history-pending');
+    } else {
+      navigate('/dashboard/sales', { replace: true });
     }
   };
 
@@ -160,6 +162,8 @@ const Sales: React.FC = () => {
               await handleSaveOrder('pending');
               if (loadOrderId) {
                 navigate('/dashboard/history-pending');
+              } else {
+                navigate('/dashboard/sales', { replace: true });
               }
             }}
             // onSavePending={() => handleSaveOrder('pending')}
