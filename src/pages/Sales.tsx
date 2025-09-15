@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useSalesData } from '../hooks/useSalesData';
 import { useSalesOrder } from '../hooks/useSalesOrder';
 import { showError } from '../utils/toast';
-import { useLocation } from 'react-router-dom';
+import { useLocation,useNavigate } from 'react-router-dom';
 import { useHistoryPendingSalesData } from '../hooks/useHistoryPendingSalesData'; // Import useHistoryPendingSalesData
 
 // Import modular components
@@ -17,6 +17,7 @@ import PaymentModal from '../components/sales/PaymentModal';
 
 const Sales: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const loadOrderId = (location.state as { loadOrderId?: string })?.loadOrderId;
 
   const {
@@ -89,6 +90,9 @@ const Sales: React.FC = () => {
   }) => {
     await handleSaveOrder('paid', paymentDetails);
     setShowPaymentModal(false);
+    if (loadOrderId) {
+      navigate('/dashboard/history-pending');
+    }
   };
 
   if (loadingData) {
@@ -152,7 +156,13 @@ const Sales: React.FC = () => {
             taxAmount={orderFormData.tax_amount}
             cartFinalAmount={orderFormData.final_amount}
             currentItemSubtotal={currentItemSubtotal}
-            onSavePending={() => handleSaveOrder('pending')}
+            onSavePending={async () => {
+              await handleSaveOrder('pending');
+              if (loadOrderId) {
+                navigate('/dashboard/history-pending');
+              }
+            }}
+            // onSavePending={() => handleSaveOrder('pending')}
             onOpenPaymentModal={handleOpenPaymentModal}
           />
         </div>
