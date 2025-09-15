@@ -19,7 +19,25 @@ app.use(cors({ origin: '*', methods: ['POST'], allowedHeaders: ['Content-Type'] 
 app.use(express.json());
 
 // ===== USB Device =====
-const device = new USB();
+function createUsbDevice() {
+  const vidHex = process.env.PRINTER_VID; // e.g. "04B8"
+  const pidHex = process.env.PRINTER_PID; // e.g. "0202"
+  try {
+    if (vidHex && pidHex) {
+      const vid = parseInt(vidHex, 16);
+      const pid = parseInt(pidHex, 16);
+      console.log(`Using USB printer VID=0x${vid.toString(16)} PID=0x${pid.toString(16)}`);
+      return new USB(vid, pid);
+    }
+    console.log('Using default USB() detection (no PRINTER_VID/PRINTER_PID set)');
+    return new USB();
+  } catch (err) {
+    console.error('USB printer not found. On Windows, install libusbK via Zadig and/or set PRINTER_VID/PRINTER_PID.');
+    throw err;
+  }
+}
+
+const device = createUsbDevice();
 
 // ===== Utils =====
 function formatLine(leftText, rightText, totalWidth = 42) {
