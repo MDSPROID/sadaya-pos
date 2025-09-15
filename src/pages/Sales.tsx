@@ -4,6 +4,7 @@ import { useSalesOrder } from '../hooks/useSalesOrder';
 import { showError } from '../utils/toast';
 import { useLocation,useNavigate } from 'react-router-dom';
 import { useHistoryPendingSalesData } from '../hooks/useHistoryPendingSalesData'; // Import useHistoryPendingSalesData
+import { isPrinterAvailable } from '../utils/printAgent';
 
 // Import modular components
 import CustomerForm from '../components/sales/CustomerForm';
@@ -98,6 +99,20 @@ const Sales: React.FC = () => {
     tempo_active: boolean;
     tempo_date?: string;
   }) => {
+    // Cek ketersediaan printer. Jika tidak tersedia, tawarkan opsi lanjut tanpa cetak atau batal.
+    const available = await isPrinterAvailable();
+    if (!available) {
+      // Simpan transaksi dengan skipPrint, lalu arahkan sesuai alur
+      await handleSaveOrder('paid', paymentDetails, { skipPrint: true });
+      setShowPaymentModal(false);
+      if (loadOrderId) {
+        navigate('/dashboard/history-pending');
+      } else {
+        navigate('/dashboard/sales', { replace: true });
+      }
+      return;
+    }
+
     await handleSaveOrder('paid', paymentDetails);
     setShowPaymentModal(false);
     if (loadOrderId) {

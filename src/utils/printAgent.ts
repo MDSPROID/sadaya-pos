@@ -1,6 +1,7 @@
 import { showError, showSuccess } from './toast';
 
 const PRINT_AGENT_URL = 'http://localhost:8080/print-nota'; // URL agen lokal Anda
+const PRINT_AGENT_HEALTH_URL = 'http://localhost:8080/health';
 
 interface NotaItem {
   nama: string;
@@ -53,5 +54,19 @@ export const sendPrintRequest = async (notaData: NotaData) => {
   } catch (error: any) {
     showError('Gagal mencetak nota: ' + error.message + '. Pastikan agen pencetak lokal berjalan.');
     console.error('Error sending print request to local agent:', error);
+  }
+};
+
+export const isPrinterAvailable = async (): Promise<boolean> => {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1500);
+    const res = await fetch(PRINT_AGENT_HEALTH_URL, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) return false;
+    const data = await res.json().catch(() => ({}));
+    return !!data?.printerAvailable;
+  } catch {
+    return false;
   }
 };

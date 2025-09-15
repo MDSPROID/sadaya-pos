@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
+import { isPrinterAvailable } from '../../utils/printAgent';
 
 interface BankOption {
   id: string;
@@ -22,7 +23,7 @@ interface PaymentModalProps {
     bank_name?: string;
     tempo_active: boolean;
     tempo_date?: string;
-  }) => void;
+  }, options?: { skipPrint?: boolean }) => void;
 }
 
 const PaymentModal: React.FC<PaymentModalProps> = ({
@@ -38,6 +39,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const [paidAmount, setPaidAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank_transfer'>('cash');
   const [selectedBankId, setSelectedBankId] = useState<string>('');
+  const [printerWarning, setPrinterWarning] = useState<string | null>(null);
+  const [showPrintFallback, setShowPrintFallback] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -47,6 +50,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       setPaidAmount(0);
       setPaymentMethod('cash');
       setSelectedBankId('');
+      setPrinterWarning(null);
+      setShowPrintFallback(false);
     }
   }, [isOpen]);
 
@@ -62,7 +67,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const change = totalPaid > finalAmount ? totalPaid - finalAmount : 0;
   const isEnough = totalPaid >= finalAmount;
 
-  const handlePaymentSubmit = (e: React.FormEvent) => {
+  const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isEnough && !bayarTempo) {
       alert('Jumlah pembayaran belum cukup!');
@@ -70,6 +75,12 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     }
 
     const selectedBank = bankOptions.find(bank => bank.id === selectedBankId);
+    const available = await isPrinterAvailable();
+    if (!available) {
+      setPrinterWarning('Printer bermasalah atau offline. Anda bisa lanjut bayar tanpa cetak nota atau batalkan transaksi.');
+      setShowPrintFallback(true);
+      return;
+    }
 
     onProcessPayment({
       dp_amount: dpAmount,
@@ -218,21 +229,54 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             )}
           </div>
 
-          <div className="flex justify-end space-x-3 mt-6">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              Batalkan
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-            >
-              Bayar & Cetak Nota
-            </button>
-          </div>
+          {printerWarning && (
+            <div className="p-3 rounded bg-yellow-50 text-yellow-800 border border-yellow-200">
+              {printerWarning}
+            </div>
+          )}
+
+          {showPrintFallback ? (
+            <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => onProcessPayment({
+                  dp_amount: dpAmount,
+                  paid_amount: paidAmount,
+                  payment_method: paymentMethod,
+                  bank_id: selectedBankId || undefined,
+                  bank_name: bankOptions.find(b => b.id === selectedBankId)?.nama_bank || undefined,
+                  tempo_active: bayarTempo,
+                  tempo_date: bayarTempo ? tempoDate : undefined,
+                })}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Lanjut Bayar tanpa Cetak
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Batalkan Transaksi
+              </button>
+            </div>
+          ) : (
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Batalkan
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                Bayar & Cetak Nota
+              </button>
+            </div>
+          )}
         </form>
       </div>
     </div>

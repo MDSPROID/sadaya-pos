@@ -549,7 +549,11 @@ export const useSalesOrder = (
     }));
   }, [setOrderFormData]);
 
-  const handleSaveOrder = useCallback(async (status: 'pending' | 'paid', paymentDetails?: PaymentDetails) => {
+  const handleSaveOrder = useCallback(async (
+    status: 'pending' | 'paid',
+    paymentDetails?: PaymentDetails,
+    options?: { skipPrint?: boolean }
+  ) => {
     if (orderFormData.items.length === 0) {
       showError('Keranjang belanja kosong.');
       return;
@@ -628,6 +632,7 @@ export const useSalesOrder = (
           currentUserId,
           status,
           paymentDetails,
+          options,
         );
       } else {
         await saveSalesOrder(
@@ -636,6 +641,7 @@ export const useSalesOrder = (
           currentUserId,
           status,
           paymentDetails,
+          options,
         );
       }
 

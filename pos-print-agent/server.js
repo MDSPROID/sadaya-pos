@@ -242,4 +242,10 @@ app.get('/', (_, res) => {
   res.send(`<h1>🖨️ POS Print Agent is Running!</h1><p>Ready to print receipts.</p><code>POST /print-nota</code><p>Printer available: ${available}</p>`);
 });
 
+// Health check (JSON)
+app.get('/health', (_, res) => {
+  const available = !!tryCreateUsbDevice();
+  res.json({ ok: true, printerAvailable: available });
+});
+
 app.listen(PORT, () => console.log(`✅ POS Print Agent listening on port ${PORT}`));
