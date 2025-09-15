@@ -505,7 +505,7 @@ export const useSalesOrder = (
       subtotal_per_item: subtotal,
       dimensions: {
         ...itemDimensions,
-        additional_options: itemAdditionalOptions.filter(opt => opt.selected && opt.quantity > 0),
+        additional_options: itemAdditionalOptions.filter((opt: AdditionalOption) => opt.selected && opt.quantity > 0),
       },
       notes_per_item: itemNotes,
       designer_id: null,
@@ -633,7 +633,11 @@ export const useSalesOrder = (
         );
       }
 
-      showSuccess(`Pesanan berhasil disimpan sebagai ${status === 'pending' ? 'Pending' : 'Lunas'}!`);
+      if (loadOrderId) {
+        showSuccess(`Transaksi diperbarui sebagai ${status === 'pending' ? 'Pending' : 'Lunas'}.`);
+      } else {
+        showSuccess(`Transaksi baru ${status === 'pending' ? 'disimpan sebagai Pending' : 'Lunas'}. Form direset.`);
+      }
       
       setOrderFormData(initialOrderFormData);
       resetCurrentItemForm();
