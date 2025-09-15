@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '../utils/toast';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface AppSettings {
   id: string;
@@ -126,11 +127,25 @@ export const useAppSettings = (isAdminOrSuperAdmin: boolean) => {
     }
 
     const toastId = showLoading('Mengunggah logo...');
+    // const fileExtension = file.name.split('.').pop();
+    const uniqueSuffix = `${Date.now()}-${uuidv4()}`;
     const fileExtension = file.name.split('.').pop();
-    const fileName = `logo.${fileExtension}`; // Always name it logo.ext
+    const fileName = `logo-${uniqueSuffix}.${fileExtension}`;
+    // const fileName = `logo.${fileExtension}`; // Always name it logo.ext
     const filePath = `${fileName}`;
 
     try {
+
+      // hapus file lama jika ada
+      if (settings.logo_url) {
+        // Ambil nama file lama dari URL
+        const parts = settings.logo_url.split('/');
+        const oldFileName = parts[parts.length - 1];
+        if (oldFileName) {
+          await supabase.storage.from('app-logos').remove([oldFileName]);
+        }
+      }
+
       // Upload file to Supabase storage
       const { error: uploadError } = await supabase.storage
         .from('app-logos')

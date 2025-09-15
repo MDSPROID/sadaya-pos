@@ -20,7 +20,8 @@
     "react-hot-toast": "^2.5.2",
     "react-router-dom": "^7.7.1",
     "recharts": "^3.1.2",
-    "sharp": "^0.34.3"
+    "sharp": "^0.34.3",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@dyad-sh/react-vite-component-tagger": "^0.8.0",
