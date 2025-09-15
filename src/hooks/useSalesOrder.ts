@@ -299,6 +299,12 @@ export const useSalesOrder = (
     setItemAdditionalOptions([]);
   }, []);
 
+  const resetOrderForm = useCallback(() => {
+    setOrderFormData(initialOrderFormData);
+    resetCurrentItemForm();
+    clearOrderFormData();
+  }, [initialOrderFormData, resetCurrentItemForm, clearOrderFormData, setOrderFormData]);
+
   useEffect(() => {
     // const newTotalAmount = orderFormData.items.reduce((sum, item) => sum + item.subtotal_per_item, 0);
     // const newDiscountAmount = orderFormData.items.reduce((sum, item) => sum + item.discount_per_item, 0);
@@ -681,5 +687,6 @@ export const useSalesOrder = (
     handleUpdateItemDesigner,
     handleSaveOrder,
     isDraftLoaded,
+    resetOrderForm,
   };
 };

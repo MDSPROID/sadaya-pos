@@ -37,6 +37,7 @@ const Sales: React.FC = () => {
 
   const {
     orderFormData,
+    resetOrderForm,
     selectedProduct,
     itemQuantity,
     setItemQuantity,
@@ -78,6 +79,15 @@ const Sales: React.FC = () => {
     }
     setShowPaymentModal(true);
   };
+
+  // Ensure clean form when arriving for new sales (no loadOrderId)
+  React.useEffect(() => {
+    if (!loadOrderId) {
+      resetOrderForm();
+    }
+    // Only run when loadOrderId changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadOrderId]);
 
   const handleProcessPayment = async (paymentDetails: {
     dp_amount: number;
