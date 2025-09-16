@@ -6,6 +6,7 @@ import { useLocation,useNavigate } from 'react-router-dom';
 import { useHistoryPendingSalesData } from '../hooks/useHistoryPendingSalesData'; // Import useHistoryPendingSalesData
 import { isPrinterAvailable } from '../utils/printAgent';
 import PrinterStatusBadge from '../components/sales/PrinterStatusBadge';
+import { supabase } from '../integrations/supabase/client';
 
 // Import modular components
 import CustomerForm from '../components/sales/CustomerForm';
@@ -39,6 +40,7 @@ const Sales: React.FC = () => {
 
   const {
     orderFormData,
+    setOrderFormData,
     resetOrderForm,
     selectedProduct,
     itemQuantity,
@@ -65,6 +67,106 @@ const Sales: React.FC = () => {
   const [showSelectProductModal, setShowSelectProductModal] = useState(false);
   const [showProductDetailModal, setShowProductDetailModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showSaveCustomerConfirm, setShowSaveCustomerConfirm] = useState(false);
+  const [postConfirmAction, setPostConfirmAction] = useState<'pending' | 'payment' | null>(null);
+  const [savingCustomer, setSavingCustomer] = useState(false);
+
+  const normalizePhone = (raw?: string) => {
+    if (!raw) return '';
+    let digits = raw.replace(/\D+/g, '');
+  
+    // Hilangkan leading 0 ketika akan diprefix 62
+    if (digits.startsWith('0')) digits = digits.slice(1);
+  
+    // Hilangkan leading 62 ganda (kalau user input sudah 62... lalu kamu tambah 62 lagi)
+    if (digits.startsWith('62')) digits = digits.slice(2);
+  
+    return '62' + digits; // hasil akhir selalu '62' + nomor
+  };
+
+  const checkCustomerExistsByPhone = async (phoneRaw: string) => {
+    const normalized = normalizePhone(phoneRaw);
+  
+    // Aman untuk OR multi-kolom + limit
+    const { data, error } = await supabase
+      .from('customers')
+      .select('id')
+      .or(
+        `telepon_normalized.eq.${normalized},telepon.eq.${phoneRaw}`
+      )
+      .limit(1);
+  
+    if (error) {
+      // Log saja, jangan blokir alur: anggap tidak ada supaya tetap munculkan konfirmasi
+      console.warn('checkCustomerExistsByPhone error', error);
+      return false;
+    }
+    return Array.isArray(data) && data.length > 0;
+  };
+
+  const maybeAskToSaveCustomer = async (nextAction: 'pending' | 'payment'): Promise<boolean> => {
+    if (loadOrderId) return true; // Skip when continuing pending
+    if (orderFormData.customer_id) return true; // Already chosen existing customer
+    const phoneRaw = (orderFormData.customer_phone || '').trim();
+    // const phoneRaw = (orderFormData.customer_phone || orderFormData.customer_display_phone || '').trim();
+    if (!phoneRaw) return true; // No phone provided, nothing to check
+
+    const exists = await checkCustomerExistsByPhone(phoneRaw);
+    if (exists) return true;
+
+    // const normalized = normalizePhone(phoneRaw);
+    // const { data: existingByPhone, error } = await supabase
+    //   .from('customers')
+    //   .select('id')
+    //   .or(`telepon_normalized.eq.${normalized},telepon.eq.${phoneRaw}`)
+    //   .maybeSingle();
+
+    // if (error && (error as any).code !== 'PGRST116') {
+    //   return true; // on error, don't block
+    // }
+
+    // if (existingByPhone && (existingByPhone as any).id) {
+    //   return true; // exists
+    // }
+
+    setPostConfirmAction(nextAction);
+    setShowSaveCustomerConfirm(true);
+    return false; // wait for confirmation
+  };
+
+  const saveCustomerNow = async () => {
+    setSavingCustomer(true);
+    const name = (orderFormData.customer_name || '').trim() || '(Tanpa Nama)';
+    const phoneRaw = (orderFormData.customer_phone || '').trim();
+    const address = (orderFormData.customer_address || '').trim();
+    const notes = (orderFormData.customer_notes || '').trim();
+    const normalized = normalizePhone(phoneRaw);
+
+    const { data: inserted, error } = await supabase
+      .from('customers')
+      .insert({
+        nama_pelanggan: name,
+        telepon: phoneRaw || null,
+        telepon_normalized: phoneRaw ? normalized : null,
+        alamat: address || null,
+        catatan: notes || null,
+      })
+      .select('id')
+      .single();
+
+    setSavingCustomer(false);
+    setShowSaveCustomerConfirm(false);
+    if (error) {
+      return false;
+    }
+    if (inserted && (inserted as any).id) {
+      setOrderFormData((prev: any) => ({
+        ...prev,
+        customer_id: (inserted as any).id,
+      }));
+    }
+    return true;
+  };
 
   const handleOpenProductDetailModal = () => {
     if (!selectedProduct) {
@@ -74,11 +176,13 @@ const Sales: React.FC = () => {
     setShowProductDetailModal(true);
   };
 
-  const handleOpenPaymentModal = () => {
+  const handleOpenPaymentModal = async () => {
     if (orderFormData.items.length === 0) {
       showError('Keranjang belanja kosong. Tambahkan item terlebih dahulu.');
       return;
     }
+    const canProceed = await maybeAskToSaveCustomer('payment');
+    if (!canProceed) return;
     setShowPaymentModal(true);
   };
 
@@ -190,6 +294,11 @@ const Sales: React.FC = () => {
             cartFinalAmount={orderFormData.final_amount}
             currentItemSubtotal={currentItemSubtotal}
             onSavePending={async () => {
+              // For new insert, check customer existence first
+              if (!loadOrderId) {
+                const canProceed = await maybeAskToSaveCustomer('pending');
+                if (!canProceed) return;
+              }
               await handleSaveOrder('pending');
               if (loadOrderId) {
                 navigate('/dashboard/history-pending');
@@ -197,7 +306,6 @@ const Sales: React.FC = () => {
                 navigate('/dashboard/sales', { replace: true });
               }
             }}
-            // onSavePending={() => handleSaveOrder('pending')}
             onOpenPaymentModal={handleOpenPaymentModal}
           />
         </div>
@@ -239,6 +347,59 @@ const Sales: React.FC = () => {
           bankOptions={bankOptions}
           onProcessPayment={handleProcessPayment}
         />
+      )}
+
+{showSaveCustomerConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h3 className="text-xl font-semibold mb-3 text-gray-900">Konfirmasi</h3>
+            <p className="text-gray-700 mb-6">Apakah ingin menyimpan data pembeli di database?</p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={async () => {
+                  const ok = await saveCustomerNow();
+                  if (!ok) return;
+                  if (postConfirmAction === 'pending') {
+                    await handleSaveOrder('pending');
+                    if (loadOrderId) {
+                      navigate('/dashboard/history-pending');
+                    } else {
+                      navigate('/dashboard/sales', { replace: true });
+                    }
+                  } else if (postConfirmAction === 'payment') {
+                    setShowPaymentModal(true);
+                  }
+                }}
+                disabled={savingCustomer}
+                className={`px-4 py-2 rounded-lg text-white ${savingCustomer ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+              >
+                Ya
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSaveCustomerConfirm(false);
+                  if (postConfirmAction === 'pending') {
+                    (async () => {
+                      await handleSaveOrder('pending');
+                      if (loadOrderId) {
+                        navigate('/dashboard/history-pending');
+                      } else {
+                        navigate('/dashboard/sales', { replace: true });
+                      }
+                    })();
+                  } else if (postConfirmAction === 'payment') {
+                    setShowPaymentModal(true);
+                  }
+                }}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                Tidak
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
