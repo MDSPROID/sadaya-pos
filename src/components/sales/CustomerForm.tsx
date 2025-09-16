@@ -68,7 +68,20 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ formData, onFormChange, onS
             id="customer_phone"
             name="customer_phone"
             value={formData.customer_phone}
-            onChange={onFormChange}
+            onChange={(e) => {
+              let onlyDigits = e.target.value.replace(/\D/g, '');
+              if (onlyDigits.length > 16) {
+                onlyDigits = onlyDigits.slice(0, 16);
+              }
+              onFormChange({
+                target: {
+                  name: 'customer_phone',
+                  value: onlyDigits,
+                },
+              } as any);
+            }}
+            maxLength={16} 
+            inputMode="numeric"
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             placeholder="Nomor Telepon"
           />

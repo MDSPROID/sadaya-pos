@@ -89,7 +89,7 @@ const Sales: React.FC = () => {
   
     // Aman untuk OR multi-kolom + limit
     const { data, error } = await supabase
-      .from('customers')
+      .from('pelanggan')
       .select('id')
       .or(
         `telepon_normalized.eq.${normalized},telepon.eq.${phoneRaw}`
@@ -114,21 +114,6 @@ const Sales: React.FC = () => {
     const exists = await checkCustomerExistsByPhone(phoneRaw);
     if (exists) return true;
 
-    // const normalized = normalizePhone(phoneRaw);
-    // const { data: existingByPhone, error } = await supabase
-    //   .from('customers')
-    //   .select('id')
-    //   .or(`telepon_normalized.eq.${normalized},telepon.eq.${phoneRaw}`)
-    //   .maybeSingle();
-
-    // if (error && (error as any).code !== 'PGRST116') {
-    //   return true; // on error, don't block
-    // }
-
-    // if (existingByPhone && (existingByPhone as any).id) {
-    //   return true; // exists
-    // }
-
     setPostConfirmAction(nextAction);
     setShowSaveCustomerConfirm(true);
     return false; // wait for confirmation
@@ -136,36 +121,82 @@ const Sales: React.FC = () => {
 
   const saveCustomerNow = async () => {
     setSavingCustomer(true);
-    const name = (orderFormData.customer_name || '').trim() || '(Tanpa Nama)';
-    const phoneRaw = (orderFormData.customer_phone || '').trim();
-    const address = (orderFormData.customer_address || '').trim();
-    const notes = (orderFormData.customer_notes || '').trim();
-    const normalized = normalizePhone(phoneRaw);
-
-    const { data: inserted, error } = await supabase
-      .from('customers')
-      .insert({
-        nama_pelanggan: name,
-        telepon: phoneRaw || null,
-        telepon_normalized: phoneRaw ? normalized : null,
-        alamat: address || null,
-        catatan: notes || null,
-      })
-      .select('id')
-      .single();
-
-    setSavingCustomer(false);
-    setShowSaveCustomerConfirm(false);
-    if (error) {
+    try {
+      const name =
+        (orderFormData.customer_name ||
+          (orderFormData as any).customer_display_name ||
+          '').trim() || '(Tanpa Nama)';
+  
+      const phoneRaw =
+        (orderFormData.customer_phone ||
+          (orderFormData as any).customer_display_phone ||
+          '').trim();
+  
+      const address = (orderFormData.customer_address || '').trim();
+      const notes = (orderFormData.customer_notes || '').trim();
+      const normalized = phoneRaw ? normalizePhone(phoneRaw) : null;
+  
+      // 1) Upsert TANPA .single() → biar dapat array
+      const upsertRes = await supabase
+        .from('pelanggan')
+        .upsert(
+          {
+            nama_pelanggan: name,
+            telepon: normalized || null,
+            // telepon_normalized: normalized, // boleh null kalau phone kosong
+            alamat: address || null,
+            catatan: notes || null,
+          },
+          // { onConflict: 'telepon_normalized' }
+        )
+        .select('id'); // <= array
+  
+      if (upsertRes.error) {
+        console.error('upsert pelanggan error:', upsertRes.error);
+        showError(upsertRes.error.message || 'Gagal menyimpan data pelanggan.');
+        return false;
+      }
+  
+      // 2) Ambil ID dari hasil upsert (bisa kosong jika "no-op")
+      let newId = upsertRes.data?.[0]?.id;
+  
+      // 3) Fallback: kalau kosong, cari lagi berdasarkan telepon_normalized atau telepon
+      if (!newId) {
+        const findRes = await supabase
+          .from('pelanggan')
+          .select('id')
+          .or(
+            normalized && phoneRaw
+              ? `telepon_normalized.eq.${normalized},telepon.eq.${phoneRaw}`
+              : phoneRaw
+              ? `telepon.eq.${phoneRaw}`
+              : 'id.gt.0' // dummy agar tidak error saat keduanya kosong
+          )
+          .limit(1);
+  
+        if (findRes.error) {
+          console.warn('find-after-upsert error:', findRes.error);
+        } else {
+          newId = findRes.data?.[0]?.id;
+        }
+      }
+  
+      if (!newId) {
+        // Kalau tetap tidak ketemu, tampilkan pesan jelas
+        showError('Pelanggan tidak ditemukan setelah disimpan. Cek RLS/Policy dan unique index.');
+        return false;
+      }
+  
+      setOrderFormData((prev: any) => ({ ...prev, customer_id: newId }));
+      return true;
+    } catch (e: any) {
+      console.error('saveCustomerNow exception', e);
+      showError(e?.message || 'Terjadi kesalahan saat menyimpan pelanggan.');
       return false;
+    } finally {
+      setSavingCustomer(false);
+      setShowSaveCustomerConfirm(false);
     }
-    if (inserted && (inserted as any).id) {
-      setOrderFormData((prev: any) => ({
-        ...prev,
-        customer_id: (inserted as any).id,
-      }));
-    }
-    return true;
   };
 
   const handleOpenProductDetailModal = () => {
