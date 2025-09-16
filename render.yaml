@@ -1,0 +1,51 @@
+services:
+  # ==========================
+  # 1) Printer Server (Node)
+  # ==========================
+  - type: web
+    name: pos-print-agent
+    env: node
+    plan: free
+    rootDir: pos-print-agent
+    autoDeploy: true
+    buildCommand: |
+      npm ci
+    startCommand: |
+      npm start
+    # Pastikan server listen ke process.env.PORT (bukan hardcode 8080).
+    # Contoh:
+    #   const port = process.env.PORT || 8080;
+    #   app.listen(port, () => console.log(`Listening on ${port}`));
+
+    # (Opsional tapi direkomendasikan) CORS untuk mengizinkan POS mengakses API
+    envVars:
+      - key: CORS_ORIGIN
+        value: "*"
+
+  # ==========================
+  # 2) React POS (Static Site)
+  # ==========================
+  - type: static_site
+    name: pos-frontend
+    plan: free
+    rootDir: .
+    autoDeploy: true
+    # --- pilih salah satu: npm atau pnpm ---
+    # Jika pakai NPM (ada package-lock.json)
+    buildCommand: npm ci && npm run build
+    # Jika kamu pakai PNPM, ganti dengan:
+    # buildCommand: corepack enable && pnpm i --frozen-lockfile && pnpm build
+    staticPublishPath: dist
+
+    # ENV untuk build React (Vite). Set Supabase + URL server printer.
+    envVars:
+      - key: VITE_SUPABASE_URL
+        # isi nilainya di dashboard Render atau ubah di sini:
+        value: "https://cyhrvgyxldfghfqsasca.supabase.co"
+      - key: VITE_SUPABASE_ANON_KEY
+        value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5aHJ2Z3l4bGRmZ2hmcXNhc2NhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM3MDY3NTMsImV4cCI6MjA2OTI4Mjc1M30.q9yh7W-8mPi-a7mMA7FVapo8VfZe_CaS9l3B2rRi3oI"
+      - key: VITE_PRINTER_SERVER_URL
+        fromService:
+          type: web
+          name: pos-print-agent
+          envVarKey: RENDER_EXTERNAL_URL
