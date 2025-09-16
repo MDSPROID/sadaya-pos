@@ -18,6 +18,7 @@ interface KaryawanItem {
   roles: { nama: string } | null;
   email?: string;
   password?: string;
+  gaji?: number | null;
 }
 
 const Karyawan: React.FC = () => {
@@ -35,6 +36,7 @@ const Karyawan: React.FC = () => {
     role_id: '',
     email: '',
     password: '',
+    gaji: null,
   };
 
   const [selectedItem, setSelectedItem, clearSelectedItem] = useFormPersistence<Partial<KaryawanItem>>({
@@ -114,6 +116,11 @@ const Karyawan: React.FC = () => {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+    if (name === 'gaji') {
+      const numeric = value === '' ? null : Number(value);
+      setSelectedItem(prev => ({ ...prev, gaji: Number.isFinite(numeric as number) ? (numeric as number) : null }));
+      return;
+    }
     setSelectedItem(prev => ({ ...prev, [name]: value }));
   };
 
@@ -122,7 +129,7 @@ const Karyawan: React.FC = () => {
     const toastId = showLoading(modalMode === 'add' ? 'Menambah karyawan...' : 'Menyimpan perubahan...');
 
     if (modalMode === 'add') {
-      const { email, password, first_name, last_name, role_id } = selectedItem;
+      const { email, password, first_name, last_name, role_id, gaji } = selectedItem;
 
       if (!email || !password || !first_name || !role_id) {
         showError('Email, Password, Nama Depan, dan Jabatan harus diisi.');
@@ -130,7 +137,7 @@ const Karyawan: React.FC = () => {
         return;
       }
 
-      const { error: authError } = await supabase.auth.signUp({
+      const { data: signUpRes, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -138,6 +145,7 @@ const Karyawan: React.FC = () => {
             first_name,
             last_name,
             role_id,
+            gaji: typeof gaji === 'number' ? gaji : null,
           },
         },
       });
@@ -146,6 +154,13 @@ const Karyawan: React.FC = () => {
         // showError('Gagal menambah karyawan: ' + authError.message);
         showError(indoAuthError(authError));
       } else {
+        // Ensure gaji is saved into profiles table as well
+        if (typeof gaji === 'number' && signUpRes?.user?.id) {
+          await supabase
+            .from('profiles')
+            .update({ gaji })
+            .eq('id', signUpRes.user.id);
+        }
         showSuccess('Karyawan berhasil ditambahkan! Akun dibuat.');
         closeModal();
         fetchKaryawan();
@@ -374,6 +389,23 @@ const Karyawan: React.FC = () => {
                       <option key={role.id} value={role.id}>{role.nama}</option>
                     ))}
                   </select>
+                </div>
+                <div>
+                  <label htmlFor="gaji" className="block text-sm font-medium text-gray-700 mb-1">
+                    Gaji (per bulan)
+                  </label>
+                  <input
+                    type="number"
+                    id="gaji"
+                    name="gaji"
+                    value={selectedItem?.gaji ?? ''}
+                    onChange={handleChange}
+                    disabled={modalMode === 'view'}
+                    min={0}
+                    step="1000"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+                    placeholder="Contoh: 3000000"
+                  />
                 </div>
               </div>
 
