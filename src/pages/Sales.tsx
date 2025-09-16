@@ -85,18 +85,26 @@ const Sales: React.FC = () => {
     if (!phoneRaw) return true; // No phone provided, nothing to check
 
     const normalized = normalizePhone(phoneRaw);
-    const { data: existingByPhone, error } = await supabase
+    // 1) Try to find by raw phone field (supports either exact raw or normalized string stored in telepon)
+    const { data: foundByTelepon } = await supabase
       .from('customers')
       .select('id')
-      .or(`telepon_normalized.eq.${normalized},telepon.eq.${phoneRaw}`)
+      .or(`telepon.eq.${phoneRaw},telepon.eq.${normalized}`)
       .maybeSingle();
 
-    if (error && (error as any).code !== 'PGRST116') {
-      return true; // on error, don't block
+    if (foundByTelepon && (foundByTelepon as any).id) {
+      return true;
     }
 
-    if (existingByPhone && (existingByPhone as any).id) {
-      return true; // exists
+    // 2) Best-effort lookup by telepon_normalized if the column exists
+    const { data: foundByNormalized } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('telepon_normalized', normalized)
+      .maybeSingle();
+
+    if (foundByNormalized && (foundByNormalized as any).id) {
+      return true;
     }
 
     setPostConfirmAction(nextAction);
