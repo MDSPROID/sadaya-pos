@@ -66,7 +66,9 @@ const Karyawan: React.FC = () => {
       showError('Gagal memuat data karyawan.');
       setError(error.message);
     } else {
-      setData(profilesList || []);
+      // Exclude soft-deleted users if fields exist
+      const cleaned = (profilesList || []).filter((p: any) => p?.is_active !== false && !p?.deleted_at);
+      setData(cleaned as any);
     }
     setLoading(false);
   };
@@ -190,10 +192,13 @@ const Karyawan: React.FC = () => {
       return;
     }
     const toastId = showLoading('Menghapus karyawan...');
-    const { error } = await supabase
+    // Soft delete to avoid foreign key and RLS issues
+    const { data: updated, error } = await supabase
       .from('profiles')
-      .delete()
-      .eq('id', id);
+      .update({ is_active: false, deleted_at: new Date().toISOString() })
+      .eq('id', id)
+      .select('id')
+      .single();
 
     if (error) {
       showError('Gagal menghapus karyawan: ' + error.message);
