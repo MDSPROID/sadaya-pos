@@ -18,6 +18,8 @@ interface KaryawanItem {
   roles: { nama: string } | null;
   email?: string;
   password?: string;
+  gaji?: number | null;
+  is_active?: boolean | null;
 }
 
 const Karyawan: React.FC = () => {
@@ -35,6 +37,8 @@ const Karyawan: React.FC = () => {
     role_id: '',
     email: '',
     password: '',
+    gaji:null,
+    is_active: true,
   };
 
   const [selectedItem, setSelectedItem, clearSelectedItem] = useFormPersistence<Partial<KaryawanItem>>({
@@ -65,6 +69,9 @@ const Karyawan: React.FC = () => {
       setError(error.message);
     } else {
       setData(profilesList || []);
+      // Exclude soft-deleted users if fields exist
+      // const cleaned = (profilesList || []).filter((p: any) => p?.is_active !== false && !p?.deleted_at);
+      // setData(cleaned as any);
     }
     setLoading(false);
   };
@@ -114,6 +121,15 @@ const Karyawan: React.FC = () => {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+    if (name === 'gaji') {
+      const numeric = value === '' ? null : Number(value);
+      setSelectedItem(prev => ({ ...prev, gaji: Number.isFinite(numeric as number) ? (numeric as number) : null }));
+      return;
+    }
+    if (name === 'is_active') {
+      setSelectedItem(prev => ({ ...prev, is_active: value === 'true' }));
+      return;
+    }
     setSelectedItem(prev => ({ ...prev, [name]: value }));
   };
 
@@ -122,7 +138,7 @@ const Karyawan: React.FC = () => {
     const toastId = showLoading(modalMode === 'add' ? 'Menambah karyawan...' : 'Menyimpan perubahan...');
 
     if (modalMode === 'add') {
-      const { email, password, first_name, last_name, role_id } = selectedItem;
+      const { email, password, first_name, last_name, role_id, gaji } = selectedItem;
 
       if (!email || !password || !first_name || !role_id) {
         showError('Email, Password, Nama Depan, dan Jabatan harus diisi.');
@@ -130,7 +146,8 @@ const Karyawan: React.FC = () => {
         return;
       }
 
-      const { error: authError } = await supabase.auth.signUp({
+      // const { error: authError } = await supabase.auth.signUp({
+      const { data: signUpRes, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -138,6 +155,7 @@ const Karyawan: React.FC = () => {
             first_name,
             last_name,
             role_id,
+            gaji: typeof gaji === 'number' ? gaji : '',
           },
         },
       });
@@ -146,6 +164,13 @@ const Karyawan: React.FC = () => {
         // showError('Gagal menambah karyawan: ' + authError.message);
         showError(indoAuthError(authError));
       } else {
+        // Ensure gaji is saved into profiles table as well
+        if (typeof gaji === 'number' && signUpRes?.user?.id) {
+          await supabase
+            .from('profiles')
+            .update({ gaji })
+            .eq('id', signUpRes.user.id);
+        }
         showSuccess('Karyawan berhasil ditambahkan! Akun dibuat.');
         closeModal();
         fetchKaryawan();
@@ -170,23 +195,28 @@ const Karyawan: React.FC = () => {
     dismissToast(toastId);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Yakin ingin menghapus data ini?')) {
-      return;
-    }
-    const toastId = showLoading('Menghapus karyawan...');
+  const handleToggleActive = async (id: string, currentStatus: boolean | null) => {
+    const action = currentStatus ? 'Nonaktifkan' : 'Aktifkan';
+    if (!confirm(`Yakin ingin ${action.toLowerCase()} karyawan ini?`)) return;
+  
+    const toastId = showLoading(`${action} karyawan...`);
     const { error } = await supabase
       .from('profiles')
-      .delete()
+      .update({
+        is_active: !currentStatus,
+        deleted_at: !currentStatus ? null : new Date().toISOString(),
+      })
       .eq('id', id);
-
-    if (error) {
-      showError('Gagal menghapus karyawan: ' + error.message);
-    } else {
-      setData(data.filter(item => item.id !== id));
-      showSuccess('Karyawan berhasil dihapus!');
-    }
+  
     dismissToast(toastId);
+  
+    if (error) {
+      showError(`Gagal ${action.toLowerCase()} karyawan: ${error.message}`);
+      return;
+    }
+  
+    showSuccess(`Karyawan berhasil di${action.toLowerCase()}!`);
+    await fetchKaryawan(); // refresh data supaya UI update
   };
 
   if (loading) {
@@ -266,15 +296,26 @@ const Karyawan: React.FC = () => {
                       <Edit className="h-4 w-4" />
                     </button>
                     <button
-                      onClick={() => handleDelete(item.id)}
-                      className="text-red-600 hover:text-red-800"
+                      onClick={() => handleToggleActive(item.id, item.is_active ?? true)}
+                      className={item.is_active
+                        ? "text-red-600 hover:text-red-800"    // kalau aktif → tombol merah (Nonaktifkan)
+                        : "text-green-600 hover:text-green-800" // kalau nonaktif → tombol hijau (Aktifkan)
+                      }
+                      title={item.is_active ? "Nonaktifkan" : "Aktifkan"}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      {item.is_active ? (
+                        <Trash2 className="h-4 w-4" /> // ikon hapus untuk nonaktifkan
+                      ) : (
+                        <Plus className="h-4 w-4" /> // ikon plus untuk aktifkan
+                      )}
                     </button>
                   </div>
                 </div>
                 <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 mb-3">
                   {item.roles?.nama || 'N/A'}
+                </span>
+                <span className={`inline-flex px-2 py-1 ml-2 text-xs font-semibold rounded-full mb-3 ${item.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                  {item.is_active ? 'Aktif' : 'Tidak Aktif'}
                 </span>
               </div>
             </div>
@@ -293,38 +334,34 @@ const Karyawan: React.FC = () => {
               </h3>
               
               <div className="space-y-4">
-                {modalMode === 'add' && (
-                  <>
-                    <div>
-                      <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                        Email
-                      </label>
-                      <input
-                        type="email"
-                        id="email"
-                        name="email"
-                        value={selectedItem?.email || ''}
-                        onChange={handleChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                        Kata Sandi
-                      </label>
-                      <input
-                        type="password"
-                        id="password"
-                        name="password"
-                        value={selectedItem?.password || ''}
-                        onChange={handleChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        required
-                      />
-                    </div>
-                  </>
-                )}
+                <div>
+                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    value={selectedItem?.email || ''}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+                    Kata Sandi
+                  </label>
+                  <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    value={selectedItem?.password || ''}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
                 <div>
                   <label htmlFor="first_name" className="block text-sm font-medium text-gray-700 mb-1">
                     Nama Depan
@@ -375,6 +412,41 @@ const Karyawan: React.FC = () => {
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label htmlFor="gaji" className="block text-sm font-medium text-gray-700 mb-1">
+                    Gaji (per bulan)
+                  </label>
+                  <input
+                    type="number"
+                    id="gaji"
+                    name="gaji"
+                    value={selectedItem?.gaji ?? ''}
+                    onChange={handleChange}
+                    disabled={modalMode === 'view'}
+                    min={0}
+                    step="1000"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+                    placeholder="Contoh: 3000000"
+                  />
+                </div>
+                {modalMode !== 'add' && (
+                  <div>
+                    <label htmlFor="is_active" className="block text-sm font-medium text-gray-700 mb-1">
+                      Status
+                    </label>
+                    <select
+                      id="is_active"
+                      name="is_active"
+                      value={(selectedItem?.is_active ?? true) ? 'true' : 'false'}
+                      onChange={handleChange}
+                      disabled={modalMode === 'view'}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+                    >
+                      <option value="true">Aktif</option>
+                      <option value="false">Nonaktif</option>
+                    </select>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end space-x-3 mt-6">

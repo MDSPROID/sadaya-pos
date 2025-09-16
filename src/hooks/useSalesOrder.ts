@@ -565,6 +565,7 @@ export const useSalesOrder = (
     //   showError('Isi minimal nama atau telepon pelanggan.');
     //   return;
     // }
+
     if (!orderFormData.customer_id && !orderFormData.customer_name) {
       showError('Pilih pelanggan atau masukkan nama pelanggan.');
       return;
@@ -581,32 +582,6 @@ export const useSalesOrder = (
     const toastId = showLoading('Menyimpan pesanan...');
 
     try {
-      // // If loading an existing pending order, delete it first
-      // if (loadOrderId && status === 'paid') {
-      //   const { error: deleteItemsError } = await supabase
-      //     .from('order_items')
-      //     .delete()
-      //     .eq('order_id', loadOrderId);
-      //   if (deleteItemsError) throw deleteItemsError;
-
-      //   const { error: deleteOrderError } = await supabase
-      //     .from('orders')
-      //     .delete()
-      //     .eq('id', loadOrderId);
-      //   if (deleteOrderError) throw deleteOrderError;
-      // }
-
-      // >>>>>>>>>>>> TAMBAHAN: pastikan customer berdasarkan phone / id
-      // const resolved = await ensureCustomerByPhoneOrId(orderFormData);
-      // // Bentuk formData baru untuk disimpan agar konsisten
-      // const formDataWithCustomer: OrderFormData = {
-      //   ...orderFormData,
-      //   customer_id: resolved.customerId,            // pakai ID hasil resolve (bisa null)
-      //   customer_name: resolved.displayName || orderFormData.customer_name,
-      //   customer_phone: resolved.displayPhone || orderFormData.customer_phone,
-      //   customer_address: resolved.displayAddress || orderFormData.customer_address,
-      // };
-      // <<<<<<<<<<<<< TAMBAHAN SELESAI
 
       // Use the helper function to prepare data
       const { orderDataToSave, itemsToInsert } = await prepareOrderDataForSave(
@@ -616,14 +591,6 @@ export const useSalesOrder = (
         status,
         paymentDetails
       );
-
-      // await saveSalesOrder(
-      //   orderDataToSave,
-      //   itemsToInsert,
-      //   currentUserId,
-      //   status,
-      //   paymentDetails,
-      // );
 
       if (loadOrderId) {
         // Update existing pending order instead of delete/insert
