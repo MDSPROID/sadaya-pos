@@ -30,7 +30,7 @@ const prepareOrderDataForSave = async (
   status: 'pending' | 'paid',
   paymentDetails?: PaymentDetails
 ) => {
-  let orderNotes = formData.notes;
+  let orderNotes = formData.customer_notes; // Save "Catatan" into orders.notes
   if (paymentDetails) {
     orderNotes += `\nPayment Details: ${JSON.stringify(paymentDetails)}`;
   }

@@ -133,7 +133,7 @@ const Sales: React.FC = () => {
           '').trim();
   
       const address = (orderFormData.customer_address || '').trim();
-      const notes = (orderFormData.customer_notes || '').trim();
+      // Notes should be saved on orders, not pelanggan
       const normalized = phoneRaw ? normalizePhone(phoneRaw) : null;
   
       // 1) Upsert TANPA .single() → biar dapat array
@@ -145,7 +145,6 @@ const Sales: React.FC = () => {
             telepon: normalized || null,
             // telepon_normalized: normalized, // boleh null kalau phone kosong
             alamat: address || null,
-            catatan: notes || null,
           },
           // { onConflict: 'telepon_normalized' }
         )
