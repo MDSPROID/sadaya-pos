@@ -19,6 +19,7 @@ interface KaryawanItem {
   email?: string;
   password?: string;
   gaji?: number | null;
+  is_active?: boolean | null;
 }
 
 const Karyawan: React.FC = () => {
@@ -37,6 +38,7 @@ const Karyawan: React.FC = () => {
     email: '',
     password: '',
     gaji: null,
+    is_active: true,
   };
 
   const [selectedItem, setSelectedItem, clearSelectedItem] = useFormPersistence<Partial<KaryawanItem>>({
@@ -121,6 +123,10 @@ const Karyawan: React.FC = () => {
     if (name === 'gaji') {
       const numeric = value === '' ? null : Number(value);
       setSelectedItem(prev => ({ ...prev, gaji: Number.isFinite(numeric as number) ? (numeric as number) : null }));
+      return;
+    }
+    if (name === 'is_active') {
+      setSelectedItem(prev => ({ ...prev, is_active: value === 'true' }));
       return;
     }
     setSelectedItem(prev => ({ ...prev, [name]: value }));
@@ -395,6 +401,24 @@ const Karyawan: React.FC = () => {
                     ))}
                   </select>
                 </div>
+                {modalMode !== 'add' && (
+                  <div>
+                    <label htmlFor="is_active" className="block text-sm font-medium text-gray-700 mb-1">
+                      Status
+                    </label>
+                    <select
+                      id="is_active"
+                      name="is_active"
+                      value={(selectedItem?.is_active ?? true) ? 'true' : 'false'}
+                      onChange={handleChange}
+                      disabled={modalMode === 'view'}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+                    >
+                      <option value="true">Aktif</option>
+                      <option value="false">Nonaktif</option>
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label htmlFor="gaji" className="block text-sm font-medium text-gray-700 mb-1">
                     Gaji (per bulan)
