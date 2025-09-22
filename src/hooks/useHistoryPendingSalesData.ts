@@ -46,7 +46,7 @@ export const useHistoryPendingSalesData = ({
           customer_id,
           customer_display_name,
           customer_display_phone,
-          pelanggan(nama_pelanggan, telepon),
+          pelanggan(nama_pelanggan, telepon, catatan),
           kasir_id,
           profiles(first_name, last_name),
           total_amount,
@@ -95,6 +95,14 @@ export const useHistoryPendingSalesData = ({
           }
         }
 
+        const pelangganArr = Array.isArray(order.pelanggan)
+          ? order.pelanggan
+          : order.pelanggan
+          ? [order.pelanggan]
+          : [];
+
+        const pelanggan0 = pelangganArr[0] || null;
+
         return {
           ...order,
           pelanggan: Array.isArray(order.pelanggan)
@@ -107,6 +115,7 @@ export const useHistoryPendingSalesData = ({
           discount_amount: order.discount_amount || 0,
           tax_amount: order.tax_amount || 0,
           final_amount: order.final_amount || order.total_amount,
+          catatan_pelanggan: pelanggan0?.catatan ?? null,
           order_items: [], // tidak diambil di sini
         } as PendingOrderItem;
       });

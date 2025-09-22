@@ -20,31 +20,31 @@ const sidebarConfig: SidebarMenuItem[] = [
     icon: LayoutDashboard,
     allowedRoles: ['Super Admin', 'Admin', 'Kasir', 'Operator'], // Contoh peran yang diizinkan
   },
-  {
-    name: 'Transaksi', // Renamed from 'Penjualan'
-    icon: ReceiptText, // Changed icon to ReceiptText for general transactions
-    allowedRoles: ['Super Admin', 'Admin', 'Kasir', 'Operator'], // Combined roles for sales and purchases
-    children: [
-      {
-        name: 'Penjualan Baru', // Renamed from 'Transaksi Baru'
-        path: '/dashboard/sales',
-        icon: ShoppingCart,
-        allowedRoles: ['Super Admin', 'Admin', 'Kasir'],
-      },
-      {
-        name: 'Pembelian', // Moved here as a child of 'Transaksi'
-        path: '/dashboard/purchases',
-        icon: ShoppingBag,
-        allowedRoles: ['Super Admin', 'Admin', 'Operator'],
-      },
-      {
-        name: 'History Pending', // Renamed from 'History Pending Penjualan'
-        path: '/dashboard/history-pending',
-        icon: Clock,
-        allowedRoles: ['Super Admin', 'Admin', 'Kasir'],
-      },
-    ],
-  },
+  // {
+  //   name: 'Transaksi', // Renamed from 'Penjualan'
+  //   icon: ReceiptText, // Changed icon to ReceiptText for general transactions
+  //   allowedRoles: ['Super Admin', 'Admin', 'Kasir', 'Operator'], // Combined roles for sales and purchases
+  //   children: [
+  //     {
+  //       name: 'Penjualan Baru', // Renamed from 'Transaksi Baru'
+  //       path: '/dashboard/sales',
+  //       icon: ShoppingCart,
+  //       allowedRoles: ['Super Admin', 'Admin', 'Kasir'],
+  //     },
+  //     {
+  //       name: 'Pembelian', // Moved here as a child of 'Transaksi'
+  //       path: '/dashboard/purchases',
+  //       icon: ShoppingBag,
+  //       allowedRoles: ['Super Admin', 'Admin', 'Operator'],
+  //     },
+  //     {
+  //       name: 'History Pending', // Renamed from 'History Pending Penjualan'
+  //       path: '/dashboard/history-pending',
+  //       icon: Clock,
+  //       allowedRoles: ['Super Admin', 'Admin', 'Kasir'],
+  //     },
+  //   ],
+  // },
   {
     name: 'Master Data',
     icon: Users,

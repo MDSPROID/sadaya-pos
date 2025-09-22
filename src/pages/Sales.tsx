@@ -119,6 +119,22 @@ const Sales: React.FC = () => {
     return false; // wait for confirmation
   };
 
+  const persistCustomerNotes = async (): Promise<boolean> => {
+    const notes = (orderFormData.customer_notes || '').trim();
+    if (!orderFormData.customer_id) return true; // tidak ada customer -> tidak usah update
+    // Kalau mau tetap update walau kosong, kirim null
+    const { error } = await supabase
+      .from('pelanggan')
+      .update({ catatan: notes || null })
+      .eq('id', orderFormData.customer_id);
+
+    if (error) {
+      console.warn('persistCustomerNotes error', error);
+      return false;
+    }
+    return true;
+  };
+
   const saveCustomerNow = async () => {
     setSavingCustomer(true);
     try {
@@ -188,6 +204,7 @@ const Sales: React.FC = () => {
       }
   
       setOrderFormData((prev: any) => ({ ...prev, customer_id: newId }));
+      await persistCustomerNotes();
       return true;
     } catch (e: any) {
       console.error('saveCustomerNow exception', e);
@@ -222,9 +239,42 @@ const Sales: React.FC = () => {
     if (!loadOrderId) {
       resetOrderForm();
     }
+
+    const fillNotesFromCustomer = async () => {
+      // Hanya jalan kalau ini lanjutkan pending & sudah ada customer_id
+      if (!loadOrderId) return;
+      if (!orderFormData.customer_id) return;
+  
+      const { data, error } = await supabase
+        .from('pelanggan')
+        .select('catatan')
+        .eq('id', orderFormData.customer_id)
+        .limit(1)
+        .maybeSingle();
+  
+      if (error) {
+        console.warn('Gagal ambil catatan pelanggan:', error);
+        return;
+      }
+  
+      // Pilih salah satu kebijakan pengisian:
+      // 1) HANYA isi kalau textarea masih kosong (tidak menimpa yang sudah diketik user)
+      setOrderFormData((prev: any) => ({
+        ...prev,
+        customer_notes: prev.customer_notes?.trim()
+          ? prev.customer_notes
+          : (data?.catatan || ''),
+      }));
+  
+      // --- Atau, jika kamu ingin SELALU menimpa dari master pelanggan, gunakan ini:
+      // setOrderFormData((prev: any) => ({ ...prev, customer_notes: data?.catatan || '' }));
+    };
+  
+    fillNotesFromCustomer();
+
     // Only run when loadOrderId changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadOrderId]);
+  }, [loadOrderId, orderFormData.customer_id]);
 
   const handleProcessPayment = async (paymentDetails: {
     dp_amount: number;
@@ -248,6 +298,10 @@ const Sales: React.FC = () => {
         navigate('/dashboard/sales', { replace: true });
       }
       return;
+    }
+    
+    if (orderFormData.customer_id) {
+      await persistCustomerNotes();
     }
     
     await handleSaveOrder('paid', paymentDetails);
@@ -330,6 +384,9 @@ const Sales: React.FC = () => {
                 const canProceed = await maybeAskToSaveCustomer('pending');
                 if (!canProceed) return;
               }
+              if (orderFormData.customer_id) {
+                await persistCustomerNotes();
+              }
               await handleSaveOrder('pending');
               if (loadOrderId) {
                 navigate('/dashboard/history-pending');
@@ -345,10 +402,20 @@ const Sales: React.FC = () => {
       {/* Modals */}
       {showSelectCustomerModal && (
         <SelectCustomerModal
-          onClose={() => setShowSelectCustomerModal(false)}
-          onSelect={handleSelectCustomer}
-          customerOptions={customerOptions}
-        />
+        onClose={() => setShowSelectCustomerModal(false)}
+        onSelect={(c) => {
+          // jalankan handler lama (isi id, nama, phone, alamat, dll)
+          handleSelectCustomer(c);
+    
+          // isi input "Catatan" dari c.catatan
+          // SAFER: hanya isi kalau field catatan saat ini masih kosong
+          setOrderFormData((prev: any) => ({
+            ...prev,
+            customer_notes: c.catatan || ''
+          }));
+        }}
+        customerOptions={customerOptions}
+      />
       )}
       {showSelectProductModal && (
         <SelectProductModal

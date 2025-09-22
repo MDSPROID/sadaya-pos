@@ -1,5 +1,5 @@
 import React from 'react';
-import { Package, Users, UserCheck, Truck } from 'lucide-react';
+import { Package, Users, ShoppingCart, History, UserCheck, Truck } from 'lucide-react';
 import { useDashboardStats } from '../hooks/useDashboardStats';
 import { useActivityLogsData } from '../hooks/useActivityLogsData';
 import { useNavigate } from 'react-router-dom';
@@ -73,7 +73,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statsCards.map((stat, index) => {
           const Icon = stat.icon;
           return (
@@ -90,38 +90,59 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
             </div>
           );
         })}
-      </div>
+      </div> */}
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Aksi Cepat</h3>
-          <div className="space-y-3">
-            <button 
-              onClick={() => navigate('/dashboard/master-data/produk')}
-              className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
-            >
-              <div className="font-medium text-gray-900">Tambah Produk Baru</div>
-              <div className="text-sm text-gray-500">Kelola inventori produk digital printing</div>
-            </button>
-            <button 
-              onClick={() => navigate('/dashboard/master-data/karyawan')}
-              className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
-            >
-              <div className="font-medium text-gray-900">Daftar Karyawan</div>
-              <div className="text-sm text-gray-500">Tambah atau edit data karyawan</div>
-            </button>
-            <button 
-              onClick={() => navigate('/dashboard/master-data/pelanggan')}
-              className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
-            >
-              <div className="font-medium text-gray-900">Kelola Pelanggan</div>
-              <div className="text-sm text-gray-500">Update informasi pelanggan</div>
-            </button>
-          </div>
-        </div>
+      <div className="grid grid-cols-1">
+      <div className="bg-white rounded-lg shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Aksi Cepat</h3>
 
-        <div className="bg-white rounded-lg shadow-sm p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Penjualan Baru */}
+          <button
+            onClick={() => navigate("/dashboard/sales")}
+            className="flex flex-col items-center justify-center gap-2 w-full p-6 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors text-center"
+          >
+            <ShoppingCart className="w-8 h-8 text-indigo-600" />
+            <div>
+              <div className="font-medium text-gray-900">Penjualan Baru</div>
+              <div className="text-sm text-gray-500">
+                Tambahkan penjualan baru
+              </div>
+            </div>
+          </button>
+
+          {/* Pembelian */}
+          <button
+            onClick={() => navigate("/dashboard/purchases")}
+            className="flex flex-col items-center justify-center gap-2 w-full p-6 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors text-center"
+          >
+            <Truck className="w-8 h-8 text-green-600" />
+            <div>
+              <div className="font-medium text-gray-900">Pembelian</div>
+              <div className="text-sm text-gray-500">
+                Pembelian dari vendor / supplier
+              </div>
+            </div>
+          </button>
+
+          {/* History Pending */}
+          <button
+            onClick={() => navigate("/dashboard/history-pending")}
+            className="flex flex-col items-center justify-center gap-2 w-full p-6 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors text-center"
+          >
+            <History className="w-8 h-8 text-orange-600" />
+            <div>
+              <div className="font-medium text-gray-900">History Pending</div>
+              <div className="text-sm text-gray-500">
+                Informasi transaksi pending
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+        {/* <div className="bg-white rounded-lg shadow-sm p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Aktivitas Terbaru</h3>
           <div className="space-y-3">
             {recentActivities.length > 0 ? (
@@ -137,7 +158,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
               <p className="text-gray-500 text-sm">Tidak ada aktivitas terbaru.</p>
             )}
           </div>
-        </div>
+        </div> */}
       </div>
     </div>
   );

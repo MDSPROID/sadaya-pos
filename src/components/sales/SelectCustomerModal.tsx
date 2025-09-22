@@ -12,6 +12,7 @@ interface Customer {
   npwp: string | null;
   ppn: boolean;
   current_points: number;
+  catatan?: string | null;
 }
 
 interface SelectCustomerModalProps {
@@ -49,7 +50,10 @@ const SelectCustomerModal: React.FC<SelectCustomerModalProps> = ({ onClose, onSe
             filteredCustomers.map(c => (
               <button
                 key={c.id}
-                onClick={() => onSelect(c)}
+                onClick={() => {
+                  onSelect(c);
+                  onClose(); 
+                }}
                 className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
                 <p className="font-medium text-gray-900">{c.nama_pelanggan}</p>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search } from 'lucide-react';
+import { Search, Trash } from 'lucide-react';
 
 interface CustomerFormData {
   customer_id: string | null;
@@ -15,10 +15,28 @@ interface CustomerFormData {
 interface CustomerFormProps {
   formData: CustomerFormData;
   onFormChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => void;
-  onSelectCustomerClick: () => void;
+  onSelectCustomerClick: () => void;  
 }
 
 const CustomerForm: React.FC<CustomerFormProps> = ({ formData, onFormChange, onSelectCustomerClick }) => {
+  const hasSelected = Boolean(formData.customer_id);
+
+  const handleReset = () => {
+    // fallback clear fields
+    const clears: Array<{ name: keyof CustomerFormData; value: any }> = [
+      { name: 'customer_id', value: null },
+      { name: 'customer_name', value: '' },
+      { name: 'customer_phone', value: '' },
+      { name: 'customer_address', value: '' },
+      // kalau ingin sekalian kosongkan catatan, uncomment baris di bawah:
+      // { name: 'customer_notes', value: '' },
+    ];
+
+    clears.forEach(({ name, value }) =>
+      onFormChange({ target: { name, value } } as any)
+    );
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-sm p-6 flex-shrink-0">
       <h2 className="text-xl font-semibold text-gray-900 mb-4">Data Pembeli</h2>
@@ -43,6 +61,16 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ formData, onFormChange, onS
             >
               <Search className="h-5 w-5" />
             </button>
+            {hasSelected && (
+              <button
+                type="button"
+                onClick={handleReset}
+                className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                title="Hapus / reset data pembeli"
+              >
+                <Trash className="h-5 w-5" />
+              </button>
+            )}
           </div>
         </div>
         <div>
