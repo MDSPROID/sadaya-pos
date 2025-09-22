@@ -28,8 +28,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ formData, onFormChange, onS
       { name: 'customer_name', value: '' },
       { name: 'customer_phone', value: '' },
       { name: 'customer_address', value: '' },
-      // kalau ingin sekalian kosongkan catatan, uncomment baris di bawah:
-      // { name: 'customer_notes', value: '' },
+      { name: 'customer_notes', value: '' },
     ];
 
     clears.forEach(({ name, value }) =>

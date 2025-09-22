@@ -61,7 +61,7 @@ const Sales: React.FC = () => {
     handleRemoveItem,
     handleUpdateItemDesigner,
     handleSaveOrder,
-  } = useSalesOrder(loadOrderId, productOptions, designerOptions, customerOptions, fetchPendingSales); // Pass fetchPendingSales
+  } = useSalesOrder(loadOrderId, productOptions, designerOptions, customerOptions, fetchPendingSales);
 
   const [showSelectCustomerModal, setShowSelectCustomerModal] = useState(false);
   const [showSelectProductModal, setShowSelectProductModal] = useState(false);
@@ -159,7 +159,6 @@ const Sales: React.FC = () => {
           {
             nama_pelanggan: name,
             telepon: normalized || null,
-            // telepon_normalized: normalized, // boleh null kalau phone kosong
             alamat: address || null,
             catatan: notes || null,
           },
@@ -167,45 +166,42 @@ const Sales: React.FC = () => {
         )
         .select('id'); // <= array
   
-      if (upsertRes.error) {
-        console.error('upsert pelanggan error:', upsertRes.error);
-        showError(upsertRes.error.message || 'Gagal menyimpan data pelanggan.');
-        return false;
-      }
-  
-      // 2) Ambil ID dari hasil upsert (bisa kosong jika "no-op")
-      let newId = upsertRes.data?.[0]?.id;
-  
-      // 3) Fallback: kalau kosong, cari lagi berdasarkan telepon_normalized atau telepon
-      if (!newId) {
-        const findRes = await supabase
-          .from('pelanggan')
-          .select('id')
-          .or(
-            normalized && phoneRaw
-              ? `telepon_normalized.eq.${normalized},telepon.eq.${phoneRaw}`
-              : phoneRaw
-              ? `telepon.eq.${phoneRaw}`
-              : 'id.gt.0' // dummy agar tidak error saat keduanya kosong
-          )
-          .limit(1);
-  
-        if (findRes.error) {
-          console.warn('find-after-upsert error:', findRes.error);
-        } else {
-          newId = findRes.data?.[0]?.id;
+        if (upsertRes.error) {
+          console.error('upsert pelanggan error:', upsertRes.error);
+          showError(upsertRes.error.message || 'Gagal menyimpan data pelanggan.');
+          return false;
         }
-      }
   
-      if (!newId) {
-        // Kalau tetap tidak ketemu, tampilkan pesan jelas
-        showError('Pelanggan tidak ditemukan setelah disimpan. Cek RLS/Policy dan unique index.');
-        return false;
-      }
+        let newId = upsertRes.data?.[0]?.id;
   
-      setOrderFormData((prev: any) => ({ ...prev, customer_id: newId }));
-      await persistCustomerNotes();
-      return true;
+        if (!newId) {
+          const findRes = await supabase
+            .from('pelanggan')
+            .select('id')
+            .or(
+              normalized && phoneRaw
+                ? `telepon_normalized.eq.${normalized},telepon.eq.${phoneRaw}`
+                : phoneRaw
+                ? `telepon.eq.${phoneRaw}`
+                : 'id.gt.0'
+            )
+            .limit(1);
+  
+          if (findRes.error) {
+            console.warn('find-after-upsert error:', findRes.error);
+          } else {
+            newId = findRes.data?.[0]?.id;
+          }
+        }
+  
+        if (!newId) {
+          showError('Pelanggan tidak ditemukan setelah disimpan. Cek RLS/Policy dan unique index.');
+          return false;
+        }
+  
+        setOrderFormData((prev: any) => ({ ...prev, customer_id: newId }));
+        await persistCustomerNotes();
+        return true;
     } catch (e: any) {
       console.error('saveCustomerNow exception', e);
       showError(e?.message || 'Terjadi kesalahan saat menyimpan pelanggan.');
@@ -234,45 +230,45 @@ const Sales: React.FC = () => {
     setShowPaymentModal(true);
   };
 
-  // Ensure clean form when arriving for new sales (no loadOrderId)
-  React.useEffect(() => {
+   // --- EFFECT 1: reset form saat bukan melanjutkan pending
+   React.useEffect(() => {
     if (!loadOrderId) {
       resetOrderForm();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadOrderId]);
 
-    const fillNotesFromCustomer = async () => {
-      // Hanya jalan kalau ini lanjutkan pending & sudah ada customer_id
-      if (!loadOrderId) return;
-      if (!orderFormData.customer_id) return;
-  
+  // --- EFFECT 2: ambil catatan pelanggan dari master setiap kali customer_id berubah (khusus saat lanjut pending)
+  React.useEffect(() => {
+    if (!loadOrderId) return;
+    const cid = orderFormData.customer_id;
+    if (!cid) return;
+
+    let cancelled = false;
+    (async () => {
       const { data, error } = await supabase
         .from('pelanggan')
         .select('catatan')
-        .eq('id', orderFormData.customer_id)
-        .limit(1)
+        .eq('id', cid)
         .maybeSingle();
-  
+
+      if (cancelled) return;
+
       if (error) {
         console.warn('Gagal ambil catatan pelanggan:', error);
         return;
       }
-  
-      // Pilih salah satu kebijakan pengisian:
-      // 1) HANYA isi kalau textarea masih kosong (tidak menimpa yang sudah diketik user)
+
+      // Timpa textarea Catatan agar selalu mengikuti master pelanggan saat lanjut pending
       setOrderFormData((prev: any) => ({
         ...prev,
-        customer_notes: prev.customer_notes?.trim()
-          ? prev.customer_notes
-          : (data?.catatan || ''),
+        customer_notes: data?.catatan || '',
       }));
-  
-      // --- Atau, jika kamu ingin SELALU menimpa dari master pelanggan, gunakan ini:
-      // setOrderFormData((prev: any) => ({ ...prev, customer_notes: data?.catatan || '' }));
-    };
-  
-    fillNotesFromCustomer();
+    })();
 
-    // Only run when loadOrderId changes
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadOrderId, orderFormData.customer_id]);
 
@@ -402,20 +398,27 @@ const Sales: React.FC = () => {
       {/* Modals */}
       {showSelectCustomerModal && (
         <SelectCustomerModal
-        onClose={() => setShowSelectCustomerModal(false)}
-        onSelect={(c) => {
-          // jalankan handler lama (isi id, nama, phone, alamat, dll)
-          handleSelectCustomer(c);
-    
-          // isi input "Catatan" dari c.catatan
-          // SAFER: hanya isi kalau field catatan saat ini masih kosong
-          setOrderFormData((prev: any) => ({
-            ...prev,
-            customer_notes: c.catatan || ''
-          }));
-        }}
-        customerOptions={customerOptions}
-      />
+          onClose={() => setShowSelectCustomerModal(false)}
+          onSelect={(c) => {
+            // (opsional) tetap panggil handler dari hook kalau ada side-effect lain
+            if (handleSelectCustomer) {
+              handleSelectCustomer(c as any);
+            }
+      
+            // Pastikan form Data Pembeli terisi
+            setOrderFormData((prev: any) => ({
+              ...prev,
+              customer_id: c.id,
+              customer_name: c.nama_pelanggan || '',
+              customer_phone: c.telepon || '',
+              customer_address: c.alamat || '',
+              customer_notes: c.catatan || ''
+            }));
+      
+            setShowSelectCustomerModal(false);
+          }}
+          customerOptions={customerOptions}
+        />
       )}
       {showSelectProductModal && (
         <SelectProductModal

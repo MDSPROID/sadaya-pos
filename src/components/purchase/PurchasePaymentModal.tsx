@@ -17,6 +17,18 @@ interface PurchasePaymentModalProps {
   }) => void;
 }
 
+const formatRupiah = (value: number) =>
+  value.toLocaleString('id-ID', { minimumFractionDigits: 0 });
+
+const parseRupiah = (input: string): number => {
+  // ambil digit saja
+  const digits = input.replace(/[^\d]/g, '');
+  if (!digits) return 0;
+  // buang leading zero panjang (biar "00012" -> "12")
+  const normalized = digits.replace(/^0+(?=\d)/, '');
+  return normalized ? parseInt(normalized, 10) : 0;
+};
+
 const PurchasePaymentModal: React.FC<PurchasePaymentModalProps> = ({
   isOpen,
   onClose,
@@ -26,7 +38,7 @@ const PurchasePaymentModal: React.FC<PurchasePaymentModalProps> = ({
 }) => {
   const [bayarTempo, setBayarTempo] = useState(false);
   const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
-  const [paidAmount, setPaidAmount] = useState(0);
+  const [paidAmountRaw, setPaidAmountRaw] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank_transfer'>('cash');
   const [selectedBankId, setSelectedBankId] = useState<string>('');
 
@@ -34,7 +46,7 @@ const PurchasePaymentModal: React.FC<PurchasePaymentModalProps> = ({
     if (isOpen) {
       setBayarTempo(false);
       setDueDate(new Date().toISOString().split('T')[0]);
-      setPaidAmount(0);
+      setPaidAmountRaw(0);
       setPaymentMethod('cash');
       setSelectedBankId('');
     }
@@ -42,12 +54,12 @@ const PurchasePaymentModal: React.FC<PurchasePaymentModalProps> = ({
 
   if (!isOpen) return null;
 
-  const remainingToPay = finalAmount - paidAmount;
+  const remainingToPay = Math.max(finalAmount - paidAmountRaw, 0);
   const dueAmount = bayarTempo ? remainingToPay : 0;
 
   const handlePaymentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bayarTempo && paidAmount < finalAmount) {
+    if (!bayarTempo && paidAmountRaw  < finalAmount) {
       alert('Jumlah pembayaran belum cukup!');
       return;
     }
@@ -55,13 +67,19 @@ const PurchasePaymentModal: React.FC<PurchasePaymentModalProps> = ({
     const selectedBank = bankOptions.find(bank => bank.id === selectedBankId);
 
     onProcessPayment({
-      paid_amount: paidAmount,
+      paid_amount: paidAmountRaw ,
       payment_method: paymentMethod,
       bank_id: selectedBankId || undefined,
       bank_name: selectedBank?.nama_bank || undefined,
       due_amount: dueAmount,
       due_date: bayarTempo ? dueDate : undefined, // Changed null to undefined
     });
+  };
+
+  // handler input currency
+  const handlePaidChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    const numeric = parseRupiah(e.target.value);
+    setPaidAmountRaw(numeric);
   };
 
   return (
@@ -112,8 +130,10 @@ const PurchasePaymentModal: React.FC<PurchasePaymentModalProps> = ({
             <input
               type="text"
               id="paid_amount"
-              value={paidAmount === 0 ? '' : paidAmount}
-              onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
+              // tampilkan "0" kalau 0, bukan string kosong
+              value={paidAmountRaw === 0 ? '0' : formatRupiah(paidAmountRaw)}
+              onChange={handlePaidChange}
+              inputMode="numeric"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             />
           </div>

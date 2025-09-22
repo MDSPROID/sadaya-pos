@@ -36,19 +36,22 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 }) => {
   const [bayarTempo, setBayarTempo] = useState(false);
   const [tempoDate, setTempoDate] = useState(new Date().toISOString().split('T')[0]);
-  const [dpAmount, setDpAmount] = useState(0);
-  const [paidAmount, setPaidAmount] = useState(0);
+  const [dpAmountRaw, setDpAmountRaw] = useState(0);
+  const [paidAmountRaw, setPaidAmountRaw] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank_transfer'>('cash');
   const [selectedBankId, setSelectedBankId] = useState<string>('');
   const [printerWarning, setPrinterWarning] = useState<string | null>(null);
   const [showPrintFallback, setShowPrintFallback] = useState(false);
 
+  const formatRupiah = (value: number) =>
+    value.toLocaleString('id-ID', { minimumFractionDigits: 0 });
+
   useEffect(() => {
     if (isOpen) {
       setBayarTempo(false);
       setTempoDate(new Date().toISOString().split('T')[0]);
-      setDpAmount(0);
-      setPaidAmount(0);
+      setDpAmountRaw(0);
+      setPaidAmountRaw(0);
       setPaymentMethod('cash');
       setSelectedBankId('');
       setPrinterWarning(null);
@@ -58,15 +61,25 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
   useEffect(() => {
     if (!bayarTempo) {
-      setDpAmount(0);
+      setDpAmountRaw(0);
     }
   }, [bayarTempo]);
 
   if (!isOpen) return null;
 
-  const totalPaid = dpAmount + paidAmount;
+  const totalPaid = dpAmountRaw  + paidAmountRaw;
   const change = totalPaid > finalAmount ? totalPaid - finalAmount : 0;
   const isEnough = totalPaid >= finalAmount;
+
+  const handleCurrencyInput = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setter: React.Dispatch<React.SetStateAction<number>>
+  ) => {
+    // Hapus semua karakter non-digit
+    const raw = e.target.value.replace(/\D/g, '');
+    const numeric = parseInt(raw || '0', 10);
+    setter(numeric);
+  };
 
   // const handlePaymentSubmit = (e: React.FormEvent) => {
   const handlePaymentSubmit = async (e: React.FormEvent) => {
@@ -85,8 +98,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     }
 
     onProcessPayment({
-      dp_amount: dpAmount,
-      paid_amount: paidAmount,
+      dp_amount: dpAmountRaw,
+      paid_amount: paidAmountRaw,
       payment_method: paymentMethod,
       bank_id: selectedBankId || undefined,
       bank_name: selectedBank?.nama_bank || undefined,
@@ -143,9 +156,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             <input
               type="text"
               id="dp_amount"
-              value={dpAmount === 0 ? '' : dpAmount}
-              onChange={(e) => setDpAmount(parseFloat(e.target.value) || 0)}
+              // TAMPILKAN "0" kalau nilainya 0 (bukan string kosong)
+              value={dpAmountRaw === 0 ? '0' : formatRupiah(dpAmountRaw)}
+              onChange={(e) => handleCurrencyInput(e, setDpAmountRaw)}
               disabled={!bayarTempo}
+              inputMode="numeric"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
             />
           </div>
@@ -157,8 +172,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             <input
               type="text"
               id="paid_amount"
-              value={paidAmount === 0 ? '' : paidAmount}
-              onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
+              value={paidAmountRaw === 0 ? '0' : formatRupiah(paidAmountRaw)}
+              onChange={(e) => handleCurrencyInput(e, setPaidAmountRaw)}
+              inputMode="numeric"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -258,8 +274,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               <button
                 type="button"
                 onClick={() => onProcessPayment({
-                  dp_amount: dpAmount,
-                  paid_amount: paidAmount,
+                  dp_amount: dpAmountRaw,
+                  paid_amount: paidAmountRaw,
                   payment_method: paymentMethod,
                   bank_id: selectedBankId || undefined,
                   bank_name: bankOptions.find(b => b.id === selectedBankId)?.nama_bank || undefined,
