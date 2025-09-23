@@ -31,6 +31,7 @@ export const useSalesReports = ({ startDate, endDate }: UseSalesReportsProps) =>
     setLoading(true);
     setError(null);
     try {
+      // === 1) Harga pokok produk untuk hitung laba
       const { data: allProducts, error: productsError } = await supabase
         .from('produk')
         .select('id, harga_pokok');
@@ -43,10 +44,11 @@ export const useSalesReports = ({ startDate, endDate }: UseSalesReportsProps) =>
         }
       });
 
-      // Fetch all orders (paid and pending) within the date range for the main table data
+      // === 2) Ambil orders (tanpa embed profiles untuk hindari ambiguity)
       let ordersQuery = supabase
         .from('orders')
-        .select(`
+        .select(
+          `
           id,
           created_at,
           order_date,
@@ -55,9 +57,8 @@ export const useSalesReports = ({ startDate, endDate }: UseSalesReportsProps) =>
           customer_id,
           customer_display_name,
           customer_display_phone,
-          pelanggan(nama_pelanggan, telepon),
+          pelanggan(id, nama_pelanggan, telepon, alamat, catatan),
           kasir_id,
-          profiles(first_name, last_name),
           total_amount,
           discount_amount,
           tax_amount,
@@ -69,27 +70,62 @@ export const useSalesReports = ({ startDate, endDate }: UseSalesReportsProps) =>
           payment_method,
           bank_name,
           order_items(product_id, product_name, quantity, unit_price, subtotal_per_item, dimensions, notes_per_item)
-        `, { count: 'exact' })
-        // Removed payment_status filter here to fetch both paid and pending for the table
+        `,
+          { count: 'exact' }
+        )
         .gte('order_date', startDate)
         .lte('order_date', endDate)
         .order('order_date', { ascending: false })
         .order('created_at', { ascending: false });
 
       const { data: salesList, error: fetchError, count } = await ordersQuery;
-
       if (fetchError) throw fetchError;
 
-      const formattedSalesList: SalesItem[] = (salesList || []).map(order => ({
-        ...order,
-        pelanggan: Array.isArray(order.pelanggan) ? order.pelanggan : (order.pelanggan ? [order.pelanggan] : null),
-        profiles: Array.isArray(order.profiles) && order.profiles.length > 0 ? order.profiles[0] : null,
-        order_items: (order.order_items || []) as OrderItemDetail[],
-      }));
+      // === 3) Fetch profiles kasir terpisah (berdasarkan kasir_id)
+      const kasirIds = Array.from(
+        new Set((salesList || []).map(o => o.kasir_id).filter(Boolean))
+      ) as string[];
+
+      let kasirMap = new Map<string, { id?: string; first_name?: string; last_name?: string }>();
+      if (kasirIds.length > 0) {
+        const { data: kasirs, error: kasirErr } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name')
+          .in('id', kasirIds);
+        if (kasirErr) throw kasirErr;
+        (kasirs || []).forEach(k => {
+          kasirMap.set(k.id, { id: k.id, first_name: k.first_name, last_name: k.last_name });
+        });
+      }
+
+      // === 4) Normalisasi struktur agar kompatibel dengan UI lama
+      const formattedSalesList: SalesItem[] = (salesList || []).map(order => {
+        const profileKasir = order.kasir_id ? kasirMap.get(order.kasir_id) || null : null;
+
+        return {
+          ...order,
+          // pelanggan: pastikan array (UI-mu mengharapkan array)
+          pelanggan: Array.isArray(order.pelanggan)
+            ? order.pelanggan
+            : order.pelanggan
+            ? [order.pelanggan]
+            : null,
+          // profiles: isi dengan data kasir hasil fetch terpisah (biar kompatibel)
+          profiles: profileKasir
+            ? {
+                // @ts-ignore (kalau tipe SalesItem.profiles butuh shape tertentu)
+                first_name: profileKasir.first_name || '',
+                last_name: profileKasir.last_name || '',
+              }
+            : null,
+          order_items: (order.order_items || []) as OrderItemDetail[],
+        } as SalesItem;
+      });
+
       setData(formattedSalesList);
       setTotalCount(count || 0);
 
-      // --- Calculate Omset (total of all orders in date range) ---
+      // === 5) Summary: Omset
       const { data: allOrdersForOmset, error: allOrdersForOmsetError } = await supabase
         .from('orders')
         .select('final_amount')
@@ -98,7 +134,7 @@ export const useSalesReports = ({ startDate, endDate }: UseSalesReportsProps) =>
       if (allOrdersForOmsetError) throw allOrdersForOmsetError;
       const currentOmset = (allOrdersForOmset || []).reduce((sum, item) => sum + item.final_amount, 0);
 
-      // --- Calculate Laba (only from paid orders in date range) ---
+      // === 6) Summary: Laba (hanya dari paid dalam rentang tanggal)
       let totalLaba = 0;
       const { data: allOrderItemsForProfit, error: profitItemsError } = await supabase
         .from('order_items')
@@ -108,31 +144,29 @@ export const useSalesReports = ({ startDate, endDate }: UseSalesReportsProps) =>
         .lte('order.order_date', endDate);
       if (profitItemsError) throw profitItemsError;
 
-      for (const item of (allOrderItemsForProfit || [])) {
+      for (const item of allOrderItemsForProfit || []) {
         const hargaPokok = productPricesMap.get(item.product_id) || 0;
         const profitPerItem = (item.unit_price - hargaPokok) * item.quantity;
         totalLaba += profitPerItem;
       }
 
-      // --- Calculate Piutang (total outstanding from pending orders within the date range) ---
+      // === 7) Summary: Piutang (pending dalam rentang tanggal)
       const { data: pendingOrders, error: pendingError } = await supabase
         .from('orders')
         .select('final_amount')
         .eq('payment_status', 'pending')
-        .gte('order_date', startDate) // Apply date filter for piutang
-        .lte('order_date', endDate); // Apply date filter for piutang
-
+        .gte('order_date', startDate)
+        .lte('order_date', endDate);
       if (pendingError) throw pendingError;
       const totalPiutang = (pendingOrders || []).reduce((sum, order) => sum + order.final_amount, 0);
 
-      // --- Calculate Transactions Today (only paid orders today) ---
+      // === 8) Summary: Transaksi hari ini (paid)
       const today = new Date().toISOString().split('T')[0];
       const { count: transactionsTodayCount, error: countError } = await supabase
         .from('orders')
         .select('id', { count: 'exact', head: true })
         .eq('order_date', today)
         .eq('payment_status', 'paid');
-
       if (countError) throw countError;
 
       setSummary({
@@ -141,7 +175,6 @@ export const useSalesReports = ({ startDate, endDate }: UseSalesReportsProps) =>
         piutang: totalPiutang,
         transactionsToday: transactionsTodayCount || 0,
       });
-
     } catch (err: any) {
       console.error('Error fetching sales data or summary:', err);
       showError('Gagal memuat data laporan penjualan: ' + err.message);

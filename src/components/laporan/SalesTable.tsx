@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Printer, ArrowUp, ArrowDown } from 'lucide-react';
+import { Search, Printer, ArrowUp, ArrowDown, Loader2 } from 'lucide-react';
 import { SalesItem, PendingOrderItem } from '../../types/orderTypes';
 import { formatCurrency } from '../../utils/formatters';
 
@@ -54,6 +54,7 @@ interface SalesTableProps {
   finishingOptions: OptionItem[];
   selectedFinishingId: string;
   onFinishingChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  isRefreshing?: boolean;
 }
 
 const SalesTable: React.FC<SalesTableProps> = ({
@@ -90,6 +91,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
   finishingOptions,
   selectedFinishingId,
   onFinishingChange,
+  isRefreshing = false,
 }) => {
   const renderSortIcon = (column: string) => {
     if (sortColumn === column) {
@@ -258,7 +260,18 @@ const SalesTable: React.FC<SalesTableProps> = ({
             Cetak
           </button>
         </div>
+
+        {/* ⬇️ Indikator loading ditempatkan di baris baru, tengah, tepat di bawah tombol */}
+        {isRefreshing && (
+          <div className="col-span-1 md:col-span-5 flex justify-center pt-1">
+            <span className="inline-flex items-center text-xs text-gray-500" aria-live="polite" aria-busy="true">
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Memperbarui data…
+            </span>
+          </div>
+        )}
       </div>
+
 
       {/* TOTAL */}
       <div className="bg-white rounded-lg shadow-sm p-6 text-right">

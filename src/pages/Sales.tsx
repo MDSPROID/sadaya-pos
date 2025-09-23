@@ -4,7 +4,7 @@ import { useSalesOrder } from '../hooks/useSalesOrder';
 import { showError } from '../utils/toast';
 import { useLocation,useNavigate } from 'react-router-dom';
 import { useHistoryPendingSalesData } from '../hooks/useHistoryPendingSalesData'; // Import useHistoryPendingSalesData
-import { isPrinterAvailable } from '../utils/printAgent';
+// import { isPrinterAvailable } from '../utils/printAgent';
 import PrinterStatusBadge from '../components/sales/PrinterStatusBadge';
 import { supabase } from '../integrations/supabase/client';
 
@@ -70,6 +70,22 @@ const Sales: React.FC = () => {
   const [showSaveCustomerConfirm, setShowSaveCustomerConfirm] = useState(false);
   const [postConfirmAction, setPostConfirmAction] = useState<'pending' | 'payment' | null>(null);
   const [savingCustomer, setSavingCustomer] = useState(false);
+
+  // === NEW: ambil user login dari Supabase untuk auto-select designer ===
+  const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (!mounted) return;
+      if (error) {
+        console.warn('getUser error:', error);
+        return;
+      }
+      setCurrentUserId(data?.user?.id);
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   const normalizePhone = (raw?: string) => {
     if (!raw) return '';
@@ -417,6 +433,7 @@ const Sales: React.FC = () => {
             designerOptions={designerOptions}
             onRemoveItem={handleRemoveItem}
             onUpdateItemDesigner={handleUpdateItemDesigner}
+            currentUserId={currentUserId}
           />
           <OrderSummary
             totalAmount={orderFormData.total_amount}

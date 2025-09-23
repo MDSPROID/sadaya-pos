@@ -10,6 +10,14 @@ interface PendingOrderItem {
   customer_display_phone: string | null;
   pelanggan: Array<{ nama_pelanggan: string; telepon: string | null }> | null;
   kasir_id: string | null;
+  operator_id?: string | null;
+  designer_id?: string | null;
+  finishing_id?: string | null;
+  kasir_name?: string | null;
+  operator_name?: string | null;
+  designer_name?: string | null;
+  designer_names?: string[] | null;
+  finishing_name?: string | null;
   profiles: { first_name: string | null; last_name: string | null } | null;
   total_amount: number;
   notes: string | null;
@@ -33,6 +41,102 @@ interface HistoryPendingSalesTableProps {
   onContinue: (orderId: string) => void;
   onDelete: (orderId: string) => void;
   onRekap: () => void;
+  error?: string | null;
+}
+
+/* ====== Helpers untuk memformat notes Payment Details ====== */
+const formatRupiah = (n: any) => {
+  const num = Number(n) || 0;
+  return `Rp ${num.toLocaleString('id-ID')}`;
+};
+
+const formatDateID = (iso?: string | null) => {
+  if (!iso) return '-';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+const ucfirst = (s: string | null | undefined) => (s && s.length) ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '';
+
+function renderNotes(raw: string | null) {
+  if (!raw) return <span>-</span>;
+
+  // Cari pola "Payment Details: { ...json... }"
+  const match = /Payment Details:\s*({[\s\S]*})/i.exec(raw);
+  let before = raw.trim();
+  let details: any | null = null;
+
+  if (match && match[1]) {
+    try {
+      details = JSON.parse(match[1]);
+      // buang bagian "Payment Details: {...}" dari catatan asli agar tidak dobel
+      before = before.replace(match[0], '').trim();
+    } catch {
+      // gagal parse: fallback tampilkan apa adanya
+    }
+  } else {
+    // Kadang user mungkin menyimpan murni JSON tanpa prefix
+    try {
+      const maybe = JSON.parse(raw);
+      if (maybe && typeof maybe === 'object') {
+        details = maybe;
+        before = ''; // kalau memang isinya pure JSON, kosongkan teks awal
+      }
+    } catch {
+      // bukan JSON; tampilkan apa adanya
+    }
+  }
+
+  if (!details) {
+    // Tidak ada JSON yang valid → tampilkan catatan asli
+    return <span className="whitespace-pre-line break-words">{before || '-'}</span>;
+  }
+
+  const {
+    dp_amount = 0,
+    paid_amount = 0,
+    total_paid = 0,
+    final_amount = 0,
+    payment_status,
+    payment_method,
+    tempo_active,
+    tempo_date,
+  } = details;
+
+  // Susun baris-baris yang rapi
+  const lines: Array<[string, string]> = [];
+
+  if (before) lines.push(['Catatan', before]);
+  if (dp_amount) lines.push(['DP', formatRupiah(dp_amount)]);
+  if (paid_amount) lines.push(['Dibayar', formatRupiah(paid_amount)]);
+  if (total_paid) lines.push(['Total Dibayar', formatRupiah(total_paid)]);
+  if (final_amount) lines.push(['Total Tagihan', formatRupiah(final_amount)]);
+  if (payment_status) lines.push(['Status', ucfirst(String(payment_status))]);
+  if (payment_method) {
+    const metode = payment_method === 'cash' ? 'Tunai' : payment_method === 'bank_transfer' ? 'Transfer Bank' : String(payment_method);
+    lines.push(['Metode', metode]);
+  }
+
+  if (tempo_active === true) {
+    lines.push(['Tempo', `Aktif (${formatDateID(tempo_date)})`]);
+  } else if (tempo_active === false) {
+    lines.push(['Tempo', 'Non-aktif']);
+  }
+
+  if (lines.length === 0) return <span>-</span>;
+
+  // Tampilkan multi-line, rapih untuk cell tabel
+  return (
+    <div className="whitespace-pre-line break-words">
+      {lines.map(([k, v]) => (
+        <div key={k}>
+          <span className="text-gray-500">{k}: </span>
+          <span className="text-gray-900">{v}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
@@ -46,9 +150,41 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
   onContinue,
   onDelete,
   onRekap,
+  error,
 }) => {
+
+  const renderPetugas = (item: PendingOrderItem) => {
+     const designerDisplay =
+      (item.designer_names && item.designer_names.length > 0)
+        ? item.designer_names.join(', ')
+        : (item.designer_name && item.designer_name.trim() ? item.designer_name : '-');
+
+    const row = [
+      ['Kasir', item.kasir_name],
+      ['Operator', item.operator_name],
+      ['Designer', designerDisplay],
+      ['Finishing', item.finishing_name],
+    ] as Array<[string, string | null | undefined]>;
+
+    return (
+      <div className="whitespace-pre-line break-words">
+        {row.map(([label, val]) => (
+          <div key={label}>
+            <span className="text-gray-500">{label}: </span>
+            <span className="text-gray-900">{val && val.trim() ? val : '-'}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="p-3 rounded-md bg-red-50 text-red-700 border border-red-200 text-sm">
+          {error}
+        </div>
+      )}
       {/* Filter Section */}
       <div className="bg-white rounded-lg shadow-sm p-6 flex flex-col md:flex-row gap-4 items-center">
         <div className="flex items-center gap-2 w-full md:w-auto">
@@ -145,12 +281,13 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
                       {index + 1}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {(item.invoice_number || item.id)?.toString().substring(0, 10)}…
+                      {/* {(item.invoice_number || item.id)?.toString().substring(0, 10)}… */}
+                      {item.invoice_number}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
-                        {item.customer_display_name ||
-                          item.pelanggan?.[0]?.nama_pelanggan ||
+                        {ucfirst(item.customer_display_name) ||
+                          ucfirst(item.pelanggan?.[0]?.nama_pelanggan) ||
                           'N/A'}
                       </div>
                     </td>
@@ -162,14 +299,12 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       Rp {item.total_amount.toLocaleString('id-ID')}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
-                      {item.notes || '-'}
+                    <td className="px-6 py-4 text-sm text-gray-900 max-w-xs">
+                      {renderNotes(item.notes)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {item.profiles?.first_name ||
-                        item.profiles?.last_name ||
-                        'N/A'}
-                    </td>
+                      {renderPetugas(item)}
+                    </td> 
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       Server
                     </td>

@@ -1,76 +1,35 @@
 import { supabase } from '../integrations/supabase/client';
 import { sendPrintRequest } from './printAgent';
-// import { NotaSettings } from '../hooks/useNotaSettings'; // Removed unused import
 
-interface OrderItemToSave {
-  product_id: string;
-  product_name: string; // Ensure product_name is available here
-  quantity: number;
-  unit_price: number;
-  discount_per_item: number;
-  subtotal_per_item: number;
-  dimensions: { panjang?: number; lebar?: number; satuan?: string; tebal_bahan_id?: string; tebal_bahan_nama?: string; additional_options?: any[] } | null;
-  notes_per_item: string;
-  designer_id: string | null;
-}
-
-interface OrderDataToSave {
-  order_date: string;
-  pickup_date: string | null;
-  customer_id: string | null;
-  customer_display_name: string;
-  customer_display_phone: string;
-  kasir_id: string;
-  total_amount: number;
-  discount_amount: number;
-  tax_amount: number;
-  final_amount: number;
-  payment_status: string;
-  order_status: string;
-  notes: string;
-  priority: string;
-  invoice_number: string;
-}
-
-interface PaymentDetails {
-  dp_amount: number;
-  paid_amount: number;
-  payment_method: 'cash' | 'bank_transfer';
-  bank_id?: string;
-  bank_name?: string;
-  tempo_active: boolean;
-  tempo_date?: string;
-}
+// Gunakan type dari sumber tunggal agar konsisten dengan useSalesOrder.ts
+import {
+  OrderDataToSave,
+  ItemToInsert as OrderItemToSave,
+  PaymentDetails,
+} from '../types/salesOrderTypes';
 
 /**
- * Saves a sales order and its items to the database, updates product stock,
- * logs activity, and optionally sends a print request.
- * @param orderData The main order data.
- * @param itemsToInsert An array of order items to insert.
- * @param currentUserId The ID of the current user (kasir).
- * @param status The payment status ('pending' or 'paid').
- * @param paymentDetails Optional payment details if status is 'paid'.
- * @returns A promise that resolves when the operation is complete.
+ * Menyimpan order + item, adjust stok (hanya saat paid), log, dan opsi print.
  */
 export const saveSalesOrder = async (
   orderData: OrderDataToSave,
   itemsToInsert: OrderItemToSave[],
   currentUserId: string,
   status: 'pending' | 'paid',
-  paymentDetails: PaymentDetails | undefined,
-  options?: { skipPrint?: boolean },
+  paymentDetails?: PaymentDetails,
+  options?: { skipPrint?: boolean }
 ) => {
-  // Insert the main order
+  // Insert main order (pakai spread agar kolom flat & termasuk ready_status)
   const { data: newOrder, error: orderError } = await supabase
     .from('orders')
-    .insert([orderData])
+    .insert([{ ...orderData }])
     .select()
     .single();
 
   if (orderError) throw orderError;
 
-  // Insert order items
-  const itemsWithOrderId = itemsToInsert.map(item => ({
+  // Insert items
+  const itemsWithOrderId = itemsToInsert.map((item) => ({
     product_id: item.product_id,
     product_name: item.product_name,
     quantity: item.quantity,
@@ -83,32 +42,14 @@ export const saveSalesOrder = async (
     order_id: newOrder.id,
   }));
 
-  const { error: itemsError } = await supabase
-    .from('order_items')
-    .insert(itemsWithOrderId);
+  if (itemsWithOrderId.length > 0) {
+    const { error: itemsError } = await supabase
+      .from('order_items')
+      .insert(itemsWithOrderId);
+    if (itemsError) throw itemsError;
+  }
 
-  if (itemsError) throw itemsError;
-
-  // Update product stock pending or paid
-  // for (const item of itemsToInsert) {
-  //   const { data: productData, error: productFetchError } = await supabase
-  //     .from('produk')
-  //     .select('stok')
-  //     .eq('id', item.product_id)
-  //     .single();
-
-  //   if (productFetchError) throw productFetchError;
-
-  //   const newStock = (productData?.stok || 0) - item.quantity;
-  //   const { error: stockUpdateError } = await supabase
-  //     .from('produk')
-  //     .update({ stok: newStock })
-  //     .eq('id', item.product_id);
-
-  //   if (stockUpdateError) throw stockUpdateError;
-  // }
-
-  // Update product stock only when paid
+  // Adjust stok hanya saat paid
   if (status === 'paid') {
     for (const item of itemsToInsert) {
       const { data: productData, error: productFetchError } = await supabase
@@ -116,7 +57,6 @@ export const saveSalesOrder = async (
         .select('stok')
         .eq('id', item.product_id)
         .single();
-
       if (productFetchError) throw productFetchError;
 
       const newStock = (productData?.stok || 0) - item.quantity;
@@ -124,26 +64,31 @@ export const saveSalesOrder = async (
         .from('produk')
         .update({ stok: newStock })
         .eq('id', item.product_id);
-
       if (stockUpdateError) throw stockUpdateError;
     }
   }
 
   // Log activity
-  await supabase.from('activity_logs').insert([{
-    user_id: currentUserId,
-    action: `Membuat pesanan baru (${newOrder.id})`,
-    details: { order_id: newOrder.id, customer_name: orderData.customer_display_name, final_amount: orderData.final_amount, status: status },
-  }]);
+  await supabase.from('activity_logs').insert([
+    {
+      user_id: currentUserId,
+      action: `Membuat pesanan baru (${newOrder.id})`,
+      details: {
+        order_id: newOrder.id,
+        customer_name: orderData.customer_display_name,
+        final_amount: orderData.final_amount,
+        status,
+      },
+    },
+  ]);
 
-  // Send print request if status is 'paid'
-  // if (status === 'paid' && paymentDetails) {
+  // Print nota (jika paid & tidak skip)
   if (status === 'paid' && paymentDetails && !options?.skipPrint) {
     const notaPrintData = {
-      tanggal: newOrder.created_at, // Pass the raw timestamp
+      tanggal: newOrder.created_at,
       pelanggan: orderData.customer_display_name || 'Umum',
-      items: itemsToInsert.map(item => ({
-        nama: item.product_name, // Menggunakan nama produk
+      items: itemsToInsert.map((item) => ({
+        nama: item.product_name,
         qty: item.quantity,
         unit_price: item.unit_price,
         subtotal: item.subtotal_per_item,
@@ -154,21 +99,25 @@ export const saveSalesOrder = async (
       invoice_number: orderData.invoice_number,
       kasir_id: currentUserId,
       payment_status: status,
-      paid_amount: paymentDetails.paid_amount,
-      dp_amount: paymentDetails.dp_amount,
-      change_amount: (paymentDetails.paid_amount + paymentDetails.dp_amount) - orderData.final_amount,
+      paid_amount: paymentDetails.paid_amount ?? 0,
+      dp_amount: paymentDetails.dp_amount ?? 0,
+      change_amount:
+        (paymentDetails.paid_amount ?? 0) +
+        (paymentDetails.dp_amount ?? 0) -
+        orderData.final_amount,
       payment_method: paymentDetails.payment_method,
       bank_name: paymentDetails.bank_name || null,
-      customer_phone: orderData.customer_display_phone || '0', // Pass customer phone
-      customer_name: orderData.customer_display_name || 'UMUM', // Pass customer name
+      customer_phone: orderData.customer_display_phone || '0',
+      customer_name: orderData.customer_display_name || 'UMUM',
     };
     await sendPrintRequest(notaPrintData);
   }
+
+  return newOrder; // opsional, kalau mau dipakai caller
 };
 
 /**
- * Updates an existing sales order and its items. Replaces all items with the provided list.
- * Keeps the existing invoice number. Adjusts stock only when status is 'paid'.
+ * Update order + replace items. Adjust stok hanya saat paid.
  */
 export const updateSalesOrder = async (
   orderId: string,
@@ -176,33 +125,29 @@ export const updateSalesOrder = async (
   itemsToUpsert: OrderItemToSave[],
   currentUserId: string,
   status: 'pending' | 'paid',
-  paymentDetails: PaymentDetails | undefined,
-  options?: { skipPrint?: boolean },
+  paymentDetails?: PaymentDetails,
+  options?: { skipPrint?: boolean }
 ) => {
-  // Update the main order (exclude invoice_number to preserve it)
-  const {
-    invoice_number: _ignoreInvoice,
-    ...updatePayload
-  } = orderData as any;
+  // Jaga invoice_number tetap (kalau memang kebijakanmu begitu)
+  const { invoice_number: _ignoreInvoice, ...updatePayload } = orderData as any;
 
   const { data: updatedOrder, error: orderUpdateError } = await supabase
     .from('orders')
-    .update(updatePayload)
+    .update({ ...updatePayload })
     .eq('id', orderId)
     .select()
     .single();
 
   if (orderUpdateError) throw orderUpdateError;
 
-  // Replace items: delete existing then insert new
+  // Replace items
   const { error: deleteItemsError } = await supabase
     .from('order_items')
     .delete()
     .eq('order_id', orderId);
-
   if (deleteItemsError) throw deleteItemsError;
 
-  const itemsWithOrderId = itemsToUpsert.map(item => ({
+  const itemsWithOrderId = itemsToUpsert.map((item) => ({
     product_id: item.product_id,
     product_name: item.product_name,
     quantity: item.quantity,
@@ -222,7 +167,7 @@ export const updateSalesOrder = async (
     if (itemsError) throw itemsError;
   }
 
-  // Adjust stock only when paid
+  // Adjust stok hanya saat paid
   if (status === 'paid') {
     for (const item of itemsToUpsert) {
       const { data: productData, error: productFetchError } = await supabase
@@ -230,7 +175,6 @@ export const updateSalesOrder = async (
         .select('stok')
         .eq('id', item.product_id)
         .single();
-
       if (productFetchError) throw productFetchError;
 
       const newStock = (productData?.stok || 0) - item.quantity;
@@ -238,25 +182,30 @@ export const updateSalesOrder = async (
         .from('produk')
         .update({ stok: newStock })
         .eq('id', item.product_id);
-
       if (stockUpdateError) throw stockUpdateError;
     }
   }
 
   // Log activity
-  await supabase.from('activity_logs').insert([{
-    user_id: currentUserId,
-    action: `Melanjutkan pesanan (${orderId})`,
-    details: { order_id: orderId, customer_name: orderData.customer_display_name, final_amount: orderData.final_amount, status: status },
-  }]);
+  await supabase.from('activity_logs').insert([
+    {
+      user_id: currentUserId,
+      action: `Melanjutkan pesanan (${orderId})`,
+      details: {
+        order_id: orderId,
+        customer_name: orderData.customer_display_name,
+        final_amount: orderData.final_amount,
+        status,
+      },
+    },
+  ]);
 
-  // Send print request if status is 'paid'
-  // if (status === 'paid' && paymentDetails) {
+  // Print nota (jika paid & tidak skip)
   if (status === 'paid' && paymentDetails && !options?.skipPrint) {
     const notaPrintData = {
       tanggal: updatedOrder.created_at,
       pelanggan: orderData.customer_display_name || 'Umum',
-      items: itemsToUpsert.map(item => ({
+      items: itemsToUpsert.map((item) => ({
         nama: item.product_name,
         qty: item.quantity,
         unit_price: item.unit_price,
@@ -268,9 +217,12 @@ export const updateSalesOrder = async (
       invoice_number: updatedOrder.invoice_number,
       kasir_id: currentUserId,
       payment_status: status,
-      paid_amount: paymentDetails.paid_amount,
-      dp_amount: paymentDetails.dp_amount,
-      change_amount: (paymentDetails.paid_amount + paymentDetails.dp_amount) - orderData.final_amount,
+      paid_amount: paymentDetails.paid_amount ?? 0,
+      dp_amount: paymentDetails.dp_amount ?? 0,
+      change_amount:
+        (paymentDetails.paid_amount ?? 0) +
+        (paymentDetails.dp_amount ?? 0) -
+        orderData.final_amount,
       payment_method: paymentDetails.payment_method,
       bank_name: paymentDetails.bank_name || null,
       customer_phone: orderData.customer_display_phone || '0',
@@ -278,5 +230,6 @@ export const updateSalesOrder = async (
     };
     await sendPrintRequest(notaPrintData);
   }
-};
 
+  return updatedOrder; // opsional
+};

@@ -112,6 +112,7 @@ export interface OrderDataToSave {
   final_amount: number;
   payment_status: 'pending' | 'paid';
   order_status: string;
+  ready_status: 'ready' | 'not_ready';
   notes: string;
   priority: string;
   invoice_number: string;

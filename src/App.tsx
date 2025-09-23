@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useSession } from './components/SessionContextProvider';
 import Login from './components/Login';
@@ -6,7 +6,7 @@ import Dashboard from './components/Dashboard';
 import { supabase } from './integrations/supabase/client';
 import NotFound from './pages/NotFound';
 import NoAccess from './pages/NoAccess';
-// import Sales from './pages/Sales'; // Sales component will be imported in Dashboard.tsx
+const StatusOrder = React.lazy(() => import('./pages/StatusOrder'));
 
 const App: React.FC = () => {
   const { session, profile, loading } = useSession(); // Get loading state
@@ -15,7 +15,13 @@ const App: React.FC = () => {
     await supabase.auth.signOut();
   };
 
-  const allowedDashboardRoles = ['Super Admin', 'Admin', 'Kasir', 'Operator'];
+  const allowedDashboardRoles = ['Super Admin', 'Admin', 'Kasir', 'Operator', 'Designer', 'Finishing'];
+
+  const hasStatusOrderAccess = () => {
+    if (!profile) return false;
+    if (profile.role === 'Super Admin') return true;
+    return profile?.permissions?.['Status Order']?.['status_order'] === true;
+  };
 
   if (loading) {
     return (

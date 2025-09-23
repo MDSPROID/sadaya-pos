@@ -57,6 +57,11 @@ const prepareOrderDataForSave = async (
     invoice_number: invoiceNumber,
     payment_method: paymentDetails?.payment_method,
     bank_name: paymentDetails?.bank_name || null,
+    // RULE READY:
+    // - Jika status 'paid' => ready
+    // - Jika ada pembayaran parsial (DP / paid_amount > 0) => ready
+    // - Jika pending tanpa pembayaran => not_ready
+    ready_status: status === 'paid' || ((paymentDetails?.paid_amount ?? 0) + (paymentDetails?.dp_amount ?? 0) > 0) ? 'ready' : 'not_ready',
   };
 
   const itemsToInsert: ItemToInsert[] = formData.items.map(item => ({

@@ -47,6 +47,39 @@ const HistoryPendingSales: React.FC = () => {
     if (!confirm('Yakin ingin menghapus transaksi tertunda ini?')) {
       return;
     }
+    const toastId = showLoading('Menghapus order...');
+    try {
+      // Supabase: agar DELETE mengembalikan row, chain .select('id')
+      const { data: deletedRows, error: delErr } = await supabase
+        .from('orders')
+        .delete()
+        .eq('id', orderId)
+        .select('id'); // <= penting
+
+      if (delErr) throw delErr;
+
+      const affected = Array.isArray(deletedRows) ? deletedRows.length : 0;
+
+      if (affected === 0) {
+        // RLS menolak / tidak ada data yang cocok
+        showError('Tidak bisa menghapus order. Anda mungkin tidak punya izin atau order tidak ditemukan.');
+        return;
+      }
+
+      setData(prev => prev.filter(item => item.id !== orderId));
+      showSuccess('Order berhasil dihapus.');
+    } catch (err: any) {
+      console.error(err);
+      showError(err?.message || 'Gagal menghapus order.');
+    } finally {
+      dismissToast(toastId);
+    }
+  };
+
+  const handleDelete2 = async (orderId: string) => {
+    if (!confirm('Yakin ingin menghapus transaksi tertunda ini?')) {
+      return;
+    }
     const toastId = showLoading('Menghapus transaksi tertunda...');
     const { error: delErr } = await supabase.from('orders').delete().eq('id', orderId);
 

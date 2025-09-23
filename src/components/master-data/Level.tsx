@@ -14,6 +14,9 @@ const allPermissionsStructure = {
   "Main": {
     "dashboard": "Dashboard"
   },
+  "Status Order": {
+    "status-order": "Status Order"
+  },
   "Master": {
     "produk": "Produk",
     "bahan": "Bahan",

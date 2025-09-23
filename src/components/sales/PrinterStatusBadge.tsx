@@ -46,7 +46,6 @@ const PrinterStatusBadge: React.FC = () => {
         onClick={refresh}
         className="ml-3 text-xs underline text-blue-600 hover:text-blue-800"
       >
-        cek lagi
       </button>
     </div>
   );

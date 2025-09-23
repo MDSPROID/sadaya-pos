@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ChevronDown, ChevronUp, LogOut, X } from 'lucide-react';
 import sidebarConfig, { SidebarMenuItem } from '../config/sidebar';
 import { useSession } from './SessionContextProvider';
@@ -14,11 +14,20 @@ const HeaderNav: React.FC<HeaderNavProps> = ({ isMobileNavOpen, setIsMobileNavOp
   const { profile } = useSession();
   const navigate = useNavigate();
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
-  const [activeMenu, setActiveMenu] = useState(window.location.pathname);
+  // const [activeMenu, setActiveMenu] = useState(window.location.pathname);
 
+  // useEffect(() => {
+  //   setActiveMenu(window.location.pathname);
+  // }, [window.location.pathname]);
+
+  const location = useLocation();
+  const [activeMenu, setActiveMenu] = useState(location.pathname);
   useEffect(() => {
-    setActiveMenu(window.location.pathname);
-  }, [window.location.pathname]);
+    setActiveMenu(location.pathname);
+  }, [location.pathname]);
+
+  // helper: anggap "true-ish" untuk nilai boolean/angka/string
+  const isTrueish = (val: any) => val === true || val === 1 || val === '1' || val === 'true';
 
   const hasPermission = (item: SidebarMenuItem): boolean => {
     if (profile?.role === 'Super Admin') return true;
@@ -30,9 +39,16 @@ const HeaderNav: React.FC<HeaderNavProps> = ({ isMobileNavOpen, setIsMobileNavOp
     }
 
     if (item.path) {
+      // SPECIAL CASE: /dashboard/status-order (nested)
+      if (item.path === '/dashboard/status-order') {
+        const permVal = profile?.permissions?.['Status Order']?.['status-order'];
+        return isTrueish(permVal);
+      }
+
       const pathParts = item.path.split('/');
       const categoryMap: Record<string, string> = {
         'sales': 'Transaksi',
+        'status-order': 'Status Order',
         'master-data': 'Master',
         'back-office': 'Back Office',
         'laporan': 'Laporan',
@@ -43,10 +59,17 @@ const HeaderNav: React.FC<HeaderNavProps> = ({ isMobileNavOpen, setIsMobileNavOp
       };
       const categoryKey = pathParts[2] || pathParts[1];
       const category = categoryMap[categoryKey] || '';
-      const key = pathParts[3] || pathParts[1];
+      // const key = pathParts[3] || pathParts[1];
+      const rawKey = pathParts[3] || pathParts[2] || pathParts[1];
+      const key = (rawKey || '').replace(/-/g, '_');
+
+      // if (category && key) {
+      //   return profile?.permissions?.[category]?.[key] === true;
+      // }
 
       if (category && key) {
-        return profile?.permissions?.[category]?.[key] === true;
+        const permVal = profile?.permissions?.[category]?.[key];
+        return isTrueish(permVal);
       }
     }
     

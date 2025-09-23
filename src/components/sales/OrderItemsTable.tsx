@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Trash2 } from 'lucide-react';
 
 interface AdditionalOption {
@@ -43,9 +43,24 @@ interface OrderItemsTableProps {
   designerOptions: DesignerOption[];
   onRemoveItem: (tempId: string) => void;
   onUpdateItemDesigner: (tempId: string, designerId: string, designerName: string) => void;
+  currentUserId?: string;
 }
 
-const OrderItemsTable: React.FC<OrderItemsTableProps> = ({ items, designerOptions, onRemoveItem, onUpdateItemDesigner }) => {
+const OrderItemsTable: React.FC<OrderItemsTableProps> = ({ items, designerOptions, onRemoveItem, onUpdateItemDesigner, currentUserId, }) => {
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    const meAsDesigner = designerOptions.find(d => d.id === currentUserId);
+    if (!meAsDesigner) return;
+
+    // set untuk setiap item yang belum punya designer
+    items.forEach((item) => {
+      if (!item.designer_id || item.designer_id === '') {
+        onUpdateItemDesigner(item.tempId, meAsDesigner.id, meAsDesigner.name);
+      }
+    });
+  }, [currentUserId, designerOptions, items, onUpdateItemDesigner]);
+  
   return (
     <div className="bg-white rounded-lg shadow-sm p-6 flex-shrink-0">
       <h2 className="text-xl font-semibold text-gray-900 mb-4">Daftar Item Pesanan</h2>
@@ -88,7 +103,13 @@ const OrderItemsTable: React.FC<OrderItemsTableProps> = ({ items, designerOption
                   <td className="px-4 py-2 text-sm text-gray-900">
                     <select
                       value={item.designer_id || ''}
-                      onChange={(e) => onUpdateItemDesigner(item.tempId, e.target.value, e.target.options[e.target.selectedIndex].text)}
+                      onChange={(e) =>
+                        onUpdateItemDesigner(
+                          item.tempId,
+                          e.target.value,
+                          e.target.options[e.target.selectedIndex].text
+                        )
+                      }
                       className="w-full px-2 py-1 border border-gray-300 rounded-md text-xs"
                     >
                       <option value="">Pilih Desainer</option>

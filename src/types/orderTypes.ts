@@ -15,8 +15,9 @@ export interface BaseOrder {
   priority: string;
   payment_status: string;
   order_status: string;
-  payment_method?: string | null; // Added
-  bank_name?: string | null; // Added
+  ready_status: 'ready' | 'not_ready';
+  payment_method?: string | null;
+  bank_name?: string | null;
 }
 
 export interface OrderItemDetail {

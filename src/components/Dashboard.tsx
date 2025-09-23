@@ -23,6 +23,7 @@ import Poin from '../pages/Poin';
 import PengaturanAplikasi from '../pages/PengaturanAplikasi';
 import History from '../pages/History';
 import Sales from '../pages/Sales';
+import StatusOrder from '../pages/StatusOrder';
 import HistoryPendingSales from '../pages/HistoryPendingSales';
 import Pembelian from '../pages/Pembelian';
 
@@ -66,7 +67,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           <Route index element={<DashboardHome user={user} />} />
 
           {/* Rute untuk status order*/}
-          {/* <Route path="status-order" element={<StatusOrder />} /> */}
+          <Route path="status-order" element={<StatusOrder />} />
 
           {/* Rute untuk Penjualan */}
           <Route path="sales" element={<Sales />} />

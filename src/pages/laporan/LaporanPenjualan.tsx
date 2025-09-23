@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useSalesReports } from '../../hooks/useSalesReports';
 import SalesDetailPanel from '../../components/laporan/SalesDetailPanel';
 import { formatCurrency } from '../../utils/formatters';
-import { CalendarDays, DollarSign, Users, Trash2 } from 'lucide-react';
+import { CalendarDays, DollarSign, Users, Trash2, Loader2 } from 'lucide-react';
 import { supabase } from '../../integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '../../utils/toast';
 import Pagination from '../../components/Pagination';
@@ -40,24 +40,43 @@ const LaporanPenjualan: React.FC = () => {
     fetchSalesData,
   } = useSalesReports({ startDate, endDate });
 
-  // === Handlers tanggal: reset page + clear selection ===
+  // === Loader awareness: bedakan initial vs refetch ===
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [snapshotData, setSnapshotData] = useState<CombinedSalesItem[]>([] as any);
+
+  useEffect(() => {
+    if (!loadingSales) {
+      setHasLoadedOnce(true);
+      setSnapshotData(allSalesData);
+    }
+  }, [loadingSales, allSalesData]);
+
+  const showInitialLoader = !hasLoadedOnce && loadingSales;
+  const isRefreshing = hasLoadedOnce && loadingSales;
+
+  // === Tanggal change: reset page + clear selection; refetch via effect ===
   const handleStartDateChange = (date: string) => {
     setStartDate(date);
     setCurrentPage(1);
     setSelectedSalesItem(null);
   };
-
   const handleEndDateChange = (date: string) => {
     setEndDate(date);
     setCurrentPage(1);
     setSelectedSalesItem(null);
   };
 
-  // Refetch data periode saat tanggal berubah (SPA, tanpa reload halaman)
+  // Refetch ketika tanggal berubah (SPA)
   useEffect(() => {
     fetchSalesData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startDate, endDate]);
+
+  // Gunakan snapshot saat refetch agar UI tidak kosong
+  const effectiveData: CombinedSalesItem[] = useMemo(() => {
+    if (hasLoadedOnce && loadingSales) return snapshotData;
+    return allSalesData;
+  }, [hasLoadedOnce, loadingSales, snapshotData, allSalesData]);
 
   // --- Helpers: extract IDs dari order/order_items ---
   const extractDesignerIdsFromOrder = (order: any): { id: string; name: string }[] => {
@@ -142,9 +161,9 @@ const LaporanPenjualan: React.FC = () => {
     return Array.from(out, ([id, name]) => ({ id, name }));
   };
 
-  // --- Pipeline filter + sort (client-side, tanpa reload halaman) ---
+  // --- Pipeline filter + sort (client-side) ---
   const filteredAndSortedData = useMemo(() => {
-    const filteredByPaymentStatus = allSalesData.filter(item => {
+    const filteredByPaymentStatus = effectiveData.filter(item => {
       if (paymentStatusFilter === 'all') return true;
       return item.payment_status === paymentStatusFilter;
     });
@@ -234,7 +253,7 @@ const LaporanPenjualan: React.FC = () => {
 
     return sortedData;
   }, [
-    allSalesData,
+    effectiveData,
     searchTerm,
     paymentStatusFilter,
     selectedPaymentMethod,
@@ -247,7 +266,7 @@ const LaporanPenjualan: React.FC = () => {
     sortDirection,
   ]);
 
-  // --- Options dari data terfilter (biar tidak reload halaman) ---
+  // --- Options dari data terfilter ---
   const kasirOptions = useMemo(() => {
     const uniqueKasirs = new Map<string, string>();
     filteredAndSortedData.forEach(order => {
@@ -313,7 +332,7 @@ const LaporanPenjualan: React.FC = () => {
     return filteredAndSortedData.reduce((sum, item) => sum + item.final_amount, 0);
   }, [filteredAndSortedData]);
 
-  // --- RINGKASAN TERFILTER: omset, piutang, transaksi hari ini (tanpa reload halaman) ---
+  // --- Ringkasan (terfilter, client-side) ---
   const dateOnly = (d: string | Date) => {
     const dt = new Date(d);
     const y = dt.getFullYear();
@@ -345,7 +364,7 @@ const LaporanPenjualan: React.FC = () => {
     return { omset, piutang, transactionsToday };
   }, [filteredAndSortedData]);
 
-  // --- Keep selected row in sync after filtering ---
+  // --- Sync selected row ---
   useEffect(() => {
     if (selectedSalesItem) {
       const updatedItem = filteredAndSortedData.find(item => item.id === selectedSalesItem.id);
@@ -356,7 +375,7 @@ const LaporanPenjualan: React.FC = () => {
   const handlePrint = () => window.print();
   const handleRowClick = (item: CombinedSalesItem) => setSelectedSalesItem(item);
 
-  // Delete ops: fetch ulang data server (tanpa reload halaman)
+  // Delete ops
   const handleDeleteSelected = async () => {
     if (!selectedSalesItem) {
       showError('Pilih transaksi yang ingin dihapus terlebih dahulu.');
@@ -431,7 +450,8 @@ const LaporanPenjualan: React.FC = () => {
     }
   };
 
-  if (loadingSales) {
+  // Loader full page hanya saat load awal
+  if (showInitialLoader) {
     return (
       <div className="flex justify-center items-center h-64">
         <p className="text-gray-600">Memuat laporan penjualan...</p>
@@ -462,9 +482,17 @@ const LaporanPenjualan: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Laporan Penjualan</h1>
           <p className="text-gray-600">Lihat dan cetak laporan penjualan yang berhasil.</p>
         </div>
+
+        {/* Mini loader saat refetch */}
+        {isRefreshing && (
+          <div className="flex items-center text-sm text-gray-500">
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            Memperbarui data…
+          </div>
+        )}
       </div>
 
-      {/* KARTU RINGKASAN — BERDASARKAN FILTER (tanpa reload halaman) */}
+      {/* KARTU RINGKASAN — berdasarkan filter (tanpa block halaman) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-lg shadow-sm p-6 flex items-center">
           <div className="bg-blue-100 p-3 rounded-lg">
@@ -502,9 +530,9 @@ const LaporanPenjualan: React.FC = () => {
             searchTerm={searchTerm}
             onSearchChange={(e) => setSearchTerm(e.target.value)}
             startDate={startDate}
-            setStartDate={handleStartDateChange}  // ✅ gunakan handler
+            setStartDate={handleStartDateChange}
             endDate={endDate}
-            setEndDate={handleEndDateChange}      // ✅ gunakan handler
+            setEndDate={handleEndDateChange}
             totalSalesAmount={totalSalesAmountForFilteredData}
             onPrint={handlePrint}
             onRowClick={handleRowClick}
@@ -531,6 +559,7 @@ const LaporanPenjualan: React.FC = () => {
             finishingOptions={finishingOptions}
             selectedFinishingId={selectedFinishingId}
             onFinishingChange={(e) => setSelectedFinishingId(e.target.value)}
+            isRefreshing={isRefreshing} // ⬅️ mini loader di dalam tabel
           />
           <Pagination
             currentPage={currentPage}
