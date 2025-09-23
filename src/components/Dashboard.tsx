@@ -65,6 +65,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           {/* Rute untuk halaman utama Dashboard */}
           <Route index element={<DashboardHome user={user} />} />
 
+          {/* Rute untuk status order*/}
+          {/* <Route path="status-order" element={<StatusOrder />} /> */}
+
           {/* Rute untuk Penjualan */}
           <Route path="sales" element={<Sales />} />
           

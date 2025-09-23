@@ -155,7 +155,7 @@ const PinjamanKaryawanFormModal: React.FC<PinjamanKaryawanFormModalProps> = ({
             </div>
 
             {/* New: Bank Selection if payment_method is bank_transfer */}
-            {formData.payment_method === 'bank_transfer' && (
+            {/* {formData.payment_method === 'bank_transfer' && (
               <div>
                 <label htmlFor="bank_id" className="block text-sm font-medium text-gray-700 mb-1">
                   Pilih Bank
@@ -177,7 +177,7 @@ const PinjamanKaryawanFormModal: React.FC<PinjamanKaryawanFormModalProps> = ({
                   ))}
                 </select>
               </div>
-            )}
+            )} */}
 
             <div>
               <label htmlFor="keterangan" className="block text-sm font-medium text-gray-700 mb-1">

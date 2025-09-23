@@ -324,10 +324,6 @@ const LaporanNeraca: React.FC = () => {
         </button>
         <button className="w-full flex items-center px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors justify-center">
           <Printer className="h-5 w-5 mr-2" />
-          Laporan Penjualan Per Pelanggan
-        </button>
-        <button className="w-full flex items-center px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors justify-center">
-          <Printer className="h-5 w-5 mr-2" />
           Laporan Pengeluaran
         </button>
         <button className="w-full flex items-center px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors justify-center">
