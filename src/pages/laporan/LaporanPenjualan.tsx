@@ -303,7 +303,7 @@ const LaporanPenjualan: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-lg shadow-sm p-6 flex items-center">
           <div className="bg-blue-100 p-3 rounded-lg">
             <DollarSign className="h-6 w-6 text-blue-600" />
@@ -311,15 +311,6 @@ const LaporanPenjualan: React.FC = () => {
           <div className="ml-4">
             <p className="text-sm font-medium text-gray-600">Omset (Periode Ini)</p>
             <p className="text-2xl font-bold text-gray-900">{formatCurrency(summary.omset)}</p>
-          </div>
-        </div>
-        <div className="bg-green-100 rounded-lg shadow-sm p-6 flex items-center">
-          <div className="bg-green-100 p-3 rounded-lg">
-            <ReceiptText className="h-6 w-6 text-green-600" />
-          </div>
-          <div className="ml-4">
-            <p className="text-sm font-medium text-gray-600">Laba (Periode Ini)</p>
-            <p className="text-2xl font-bold text-gray-900">{formatCurrency(summary.laba)}</p>
           </div>
         </div>
         <div className="bg-yellow-100 rounded-lg shadow-sm p-6 flex items-center">

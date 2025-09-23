@@ -272,42 +272,92 @@ const Sales: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadOrderId, orderFormData.customer_id]);
 
-  const handleProcessPayment = async (paymentDetails: {
+  type PaymentDetailsFromModal = {
     dp_amount: number;
     paid_amount: number;
+    total_paid: number;
+    final_amount: number;
+    payment_status: 'paid' | 'pending';
     payment_method: 'cash' | 'bank_transfer';
     bank_id?: string;
     bank_name?: string;
     tempo_active: boolean;
     tempo_date?: string;
-  }) => {
+  };
 
-    // Cek ketersediaan printer. Jika tidak tersedia, tawarkan opsi lanjut tanpa cetak atau batal.
-    const available = await isPrinterAvailable();
-    if (!available) {
-      // Simpan transaksi dengan skipPrint, lalu arahkan sesuai alur
-      await handleSaveOrder('paid', paymentDetails, { skipPrint: true });
+  const handleProcessPayment = async (
+    detail: PaymentDetailsFromModal,
+    options?: { skipPrint?: boolean }
+  ) => {
+    try {
+      // Simpan catatan pelanggan kalau ada
+      if (orderFormData.customer_id) {
+        await persistCustomerNotes();
+      }
+
+      // Pakai status dari modal. (Fallback hitung ulang kalau perlu)
+      const status: 'paid' | 'pending' =
+        detail?.payment_status ?? (detail.total_paid >= detail.final_amount ? 'paid' : 'pending');
+
+      // (Opsional) kalau tidak diminta skipPrint, kamu masih boleh cek printer lagi:
+      // if (!options?.skipPrint) {
+      //   const available = await isPrinterAvailable();
+      //   if (!available) options = { ...options, skipPrint: true };
+      // }
+
+      // PENTING: jangan hardcode 'paid' lagi.
+      await handleSaveOrder(status, detail, options);
+
       setShowPaymentModal(false);
+
+      // Navigasi: biarkan sesuai flow-mu saat ini
       if (loadOrderId) {
         navigate('/dashboard/history-pending');
       } else {
         navigate('/dashboard/sales', { replace: true });
       }
-      return;
-    }
-    
-    if (orderFormData.customer_id) {
-      await persistCustomerNotes();
-    }
-    
-    await handleSaveOrder('paid', paymentDetails);
-    setShowPaymentModal(false);
-    if (loadOrderId) {
-      navigate('/dashboard/history-pending');
-    } else {
-      navigate('/dashboard/sales', { replace: true });
+    } catch (err: any) {
+      console.error(err);
+      showError(err?.message || 'Gagal memproses pembayaran.');
     }
   };
+
+  // const handleProcessPayment = async (paymentDetails: {
+  //   dp_amount: number;
+  //   paid_amount: number;
+  //   payment_method: 'cash' | 'bank_transfer';
+  //   bank_id?: string;
+  //   bank_name?: string;
+  //   tempo_active: boolean;
+  //   tempo_date?: string;
+  // }) => {
+
+  //   // Cek ketersediaan printer. Jika tidak tersedia, tawarkan opsi lanjut tanpa cetak atau batal.
+  //   const available = await isPrinterAvailable();
+  //   if (!available) {
+  //     // Simpan transaksi dengan skipPrint, lalu arahkan sesuai alur
+  //     await handleSaveOrder('paid', paymentDetails, { skipPrint: true });
+  //     setShowPaymentModal(false);
+  //     if (loadOrderId) {
+  //       navigate('/dashboard/history-pending');
+  //     } else {
+  //       navigate('/dashboard/sales', { replace: true });
+  //     }
+  //     return;
+  //   }
+    
+  //   if (orderFormData.customer_id) {
+  //     await persistCustomerNotes();
+  //   }
+    
+  //   await handleSaveOrder('paid', paymentDetails);
+  //   setShowPaymentModal(false);
+  //   if (loadOrderId) {
+  //     navigate('/dashboard/history-pending');
+  //   } else {
+  //     navigate('/dashboard/sales', { replace: true });
+  //   }
+  // };
 
   if (loadingData) {
     return (

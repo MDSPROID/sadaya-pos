@@ -46,7 +46,7 @@ export const useHistoryPendingSalesData = ({
           customer_id,
           customer_display_name,
           customer_display_phone,
-          pelanggan(nama_pelanggan, telepon, catatan),
+          pelanggan(id, nama_pelanggan, telepon, alamat, catatan),
           kasir_id,
           profiles(first_name, last_name),
           total_amount,
@@ -115,8 +115,9 @@ export const useHistoryPendingSalesData = ({
           discount_amount: order.discount_amount || 0,
           tax_amount: order.tax_amount || 0,
           final_amount: order.final_amount || order.total_amount,
+          alamat_pelanggan: pelanggan0?.alamat ?? null,
           catatan_pelanggan: pelanggan0?.catatan ?? null,
-          order_items: [], // tidak diambil di sini
+          order_items: [],
         } as PendingOrderItem;
       });
 

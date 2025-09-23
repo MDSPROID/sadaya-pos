@@ -19,14 +19,12 @@ import {
 } from '../types/salesOrderTypes';
 
 /**
- * Helper function to prepare order data and items for saving to the database.
- * This separates the data transformation logic from the main save function.
+ * Menyiapkan payload order & items untuk disimpan.
  */
-
 const prepareOrderDataForSave = async (
   formData: OrderFormData,
   userId: string,
-  notaSettings: any, // Consider defining a more specific type for notaSettings if available
+  notaSettings: any,
   status: 'pending' | 'paid',
   paymentDetails?: PaymentDetails
 ) => {
@@ -44,7 +42,7 @@ const prepareOrderDataForSave = async (
   const orderDataToSave: OrderDataToSave = {
     order_date: formData.order_date,
     pickup_date: formData.pickup_date || null,
-    customer_id: formData.customer_id,
+    customer_id: formData.customer_id, // <- pastikan sudah di-resolve sebelum dipanggil
     customer_display_name: formData.customer_name,
     customer_display_phone: formData.customer_phone,
     kasir_id: userId,
@@ -64,159 +62,103 @@ const prepareOrderDataForSave = async (
   const itemsToInsert: ItemToInsert[] = formData.items.map(item => ({
     ...item,
     subtotal_per_item: item.subtotal_per_item,
-    order_id: '', // This will be set by the saveSalesOrder function
+    order_id: '', // akan diisi di saveSalesOrder / updateSalesOrder
   }));
 
   return { orderDataToSave, itemsToInsert };
 };
 
-// >>>>>>>>>>>> IMPROVE DATA CUSTOMER 
-
-// Normalisasi nomor telepon: buang non-digit, ubah awalan 0 -> 62 (opsional, sesuaikan kebutuhan)
+/** Normalisasi nomor telepon: buang non-digit, ganti awalan 0 => 62 */
 const normalizePhone = (raw?: string) => {
-  if (!raw) return "";
-  const digits = raw.replace(/\D+/g, "");
-  if (digits.startsWith("0")) return "62" + digits.slice(1);
+  if (!raw) return '';
+  const digits = raw.replace(/\D+/g, '');
+  if (digits.startsWith('0')) return '62' + digits.slice(1);
   return digits;
 };
 
-// Pastikan customer ada & up-to-date. Kembalikan ID customer yang “benar” untuk dipakai order.
-const ensureCustomerByPhoneOrId = async (
-  formData: OrderFormData
-): Promise<{ customerId: string | null; displayName: string; displayPhone: string; displayAddress: string; }> => {
-  const name = formData.customer_name?.trim() || "";
-  const phoneRaw = formData.customer_phone?.trim() || "";
-  const address = formData.customer_address?.trim() || "";
-  const notes = formData.customer_notes?.trim() || "";
-  const normalized = normalizePhone(phoneRaw);
+/**
+ * Resolve customer untuk order:
+ * - Jika ada customer_id => ambil ulang dari tabel `pelanggan`
+ * - Jika tidak ada tetapi ada phone => cari by telepon_normalized ATAU telepon
+ * - Jika tidak ketemu => biarkan null (tidak membuat record baru di sini)
+ */
+const resolveCustomerForOrder = async (formData: OrderFormData) => {
+  const name = (formData.customer_name || '').trim();
+  const phoneRaw = (formData.customer_phone || '').trim();
+  const address = (formData.customer_address || '').trim();
+  const notes = (formData.customer_notes || '').trim();
 
-  // Helper untuk update sebagian field (hanya yang ada nilainya)
-  const buildUpdate = () => {
-    const upd: Record<string, any> = {};
-    if (name) upd.nama_pelanggan = name;
-    if (phoneRaw) {
-      upd.telepon = phoneRaw;
-      upd.telepon_normalized = normalized; // pastikan kolom ini ada; lihat catatan di bawah
-    }
-    if (address) upd.alamat = address;
-    if (notes) upd.catatan = notes;
-    return upd;
-  };
-
-  // 1) Jika phone ada → coba cari berdasarkan phone_normalized
-  if (normalized) {
-    const { data: existingByPhone, error: findByPhoneErr } = await supabase
-      .from("customers")
-      .select("*")
-      .eq("telepon_normalized", normalized)
-      .maybeSingle(); // akan return null jika tidak ada
-
-    if (findByPhoneErr && findByPhoneErr.code !== "PGRST116") {
-      // PGRST116 = no rows
-      throw findByPhoneErr;
-    }
-
-    if (existingByPhone) {
-      // Update data customer yang ditemukan dari phone (merge data terbaru dari form)
-      const updatePayload = buildUpdate();
-      if (Object.keys(updatePayload).length > 0) {
-        const { error: updErr } = await supabase
-          .from("customers")
-          .update(updatePayload)
-          .eq("id", existingByPhone.id);
-        if (updErr) throw updErr;
-      }
-
-      return {
-        customerId: existingByPhone.id,
-        displayName: existingByPhone.nama_pelanggan ?? name,
-        displayPhone: existingByPhone.telepon ?? phoneRaw,
-        displayAddress: existingByPhone.alamat ?? address,
-      };
-    }
-
-    // Tidak ketemu by phone
-    if (formData.customer_id) {
-      // Jika sudah ada id → update customer tersebut dengan phone baru + field lain
-      const updatePayload = buildUpdate();
-      if (Object.keys(updatePayload).length > 0) {
-        const { error: updErr } = await supabase
-          .from("customers")
-          .update(updatePayload)
-          .eq("id", formData.customer_id);
-        if (updErr) throw updErr;
-      }
-      return {
-        customerId: formData.customer_id,
-        displayName: name,
-        displayPhone: phoneRaw,
-        displayAddress: address,
-      };
-    }
-
-    // Tidak ada id dan tidak ada yang match phone → buat baru
-    const insertPayload = {
-      nama_pelanggan: name || "(Tanpa Nama)",
-      telepon: phoneRaw,
-      telepon_normalized: normalized,
-      alamat: address || null,
-      catatan: notes || null,
-    };
-    const { data: inserted, error: insErr } = await supabase
-      .from("customers")
-      .insert(insertPayload)
-      .select("id, nama_pelanggan, telepon, alamat")
-      .single();
-    if (insErr) throw insErr;
-
-    return {
-      customerId: inserted.id,
-      displayName: inserted.nama_pelanggan ?? name,
-      displayPhone: inserted.telepon ?? phoneRaw,
-      displayAddress: inserted.alamat ?? address,
-    };
-  }
-
-  // 2) Phone kosong → kalau ada id, tetap update field lain (nama/alamat/notes)
+  // 1) Sudah ada ID => ambil ulang dari master pelanggan
   if (formData.customer_id) {
-    const updatePayload = buildUpdate();
-    // Hapus field phone dari update jika kosong
-    if (!phoneRaw) {
-      delete updatePayload.telepon;
-      delete updatePayload.telepon_normalized;
+    const { data, error } = await supabase
+      .from('pelanggan')
+      .select('id, nama_pelanggan, telepon, alamat, catatan')
+      .eq('id', formData.customer_id)
+      .maybeSingle();
+
+    if (data && !error) {
+      return {
+        customer_id: data.id as string,
+        name: (data.nama_pelanggan as string) ?? name,
+        phone: (data.telepon as string) ?? phoneRaw,
+        address: (data.alamat as string) ?? address,
+        notes: (data.catatan as string) ?? notes,
+      };
     }
-    if (Object.keys(updatePayload).length > 0) {
-      const { error: updErr } = await supabase
-        .from("customers")
-        .update(updatePayload)
-        .eq("id", formData.customer_id);
-      if (updErr) throw updErr;
-    }
+    // fallback pakai nilai form
     return {
-      customerId: formData.customer_id,
-      displayName: name,
-      displayPhone: phoneRaw,
-      displayAddress: address,
+      customer_id: formData.customer_id,
+      name, phone: phoneRaw, address, notes,
     };
   }
 
-  // 3) Tidak ada phone & id → biarkan null (akan tersimpan sebagai display_* saja pada order)
+  // 2) Tidak ada ID, coba cari by telepon
+  if (phoneRaw) {
+    const normalized = normalizePhone(phoneRaw);
+
+    // Coba OR telepon_normalized/telepon
+    let row: any = null;
+    try {
+      const { data } = await supabase
+        .from('pelanggan')
+        .select('id, nama_pelanggan, telepon, alamat, catatan')
+        .or(`telepon_normalized.eq.${normalized},telepon.eq.${phoneRaw}`)
+        .limit(1);
+      row = Array.isArray(data) ? data[0] : null;
+    } catch (e) {
+      // Jika kolom telepon_normalized tidak ada, fallback cari by telepon saja
+      const { data } = await supabase
+        .from('pelanggan')
+        .select('id, nama_pelanggan, telepon, alamat, catatan')
+        .eq('telepon', phoneRaw)
+        .limit(1);
+      row = Array.isArray(data) ? data[0] : null;
+    }
+
+    if (row) {
+      return {
+        customer_id: row.id as string,
+        name: (row.nama_pelanggan as string) ?? name,
+        phone: (row.telepon as string) ?? phoneRaw,
+        address: (row.alamat as string) ?? address,
+        notes: (row.catatan as string) ?? notes,
+      };
+    }
+  }
+
+  // 3) Tidak ada id & tidak ketemu by phone
   return {
-    customerId: null,
-    displayName: name,
-    displayPhone: phoneRaw,
-    displayAddress: address,
+    customer_id: null,
+    name, phone: phoneRaw, address, notes,
   };
 };
-
-// >>>>>>>>>>>> END IMPROVE DATA CUSTOMER 
 
 export const useSalesOrder = (
   loadOrderId?: string,
   productOptions: Product[] = [],
   designerOptions: DesignerOption[] = [],
   customerOptions: Customer[] = [],
-  fetchPendingSales?: () => Promise<void> // New parameter for refreshing pending sales
+  fetchPendingSales?: () => Promise<void>
 ) => {
   const { session } = useSession();
   const currentUserId = session?.user?.id;
@@ -241,29 +183,30 @@ export const useSalesOrder = (
     notes: '',
   };
 
-  // Use form persistence conditionally based on loadOrderId
-  const [orderFormData, setOrderFormData, clearOrderFormData, isDraftLoaded] = useFormPersistence<OrderFormData>({
-    key: 'salesOrderDraft',
-    initialValue: initialOrderFormData,
-    enabled: !loadOrderId, // Only persist when NOT loading a specific order
-  });
+  // Persist form saat membuat transaksi baru (bukan saat melanjutkan pending)
+  const [orderFormData, setOrderFormData, clearOrderFormData, isDraftLoaded] =
+    useFormPersistence<OrderFormData>({
+      key: 'salesOrderDraft',
+      initialValue: initialOrderFormData,
+      enabled: !loadOrderId,
+    });
 
-  // Ref to track if a specific order has already been loaded
   const loadedOrderIdRef = useRef<string | undefined>(undefined);
-  const [isLoadingOrder, setIsLoadingOrder] = useState(false); // New state to prevent multiple fetches
+  const [isLoadingOrder, setIsLoadingOrder] = useState(false);
 
-  // State for current item input
+  // State untuk input item saat ini
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [itemQuantity, setItemQuantity] = useState<number>(1);
   const [itemNotes, setItemNotes] = useState<string>('');
-  const [itemDimensions, setItemDimensions] = useState<{ panjang?: number; lebar?: number; satuan?: string; tebal_bahan_id?: string; tebal_bahan_nama?: string }>({});
+  const [itemDimensions, setItemDimensions] = useState<{
+    panjang?: number; lebar?: number; satuan?: string;
+    tebal_bahan_id?: string; tebal_bahan_nama?: string;
+  }>({});
   const [itemDiscount, setItemDiscount] = useState<number>(0);
   const [itemAdditionalOptions, setItemAdditionalOptions] = useState<AdditionalOption[]>([]);
 
   const currentItemSubtotal = (() => {
-    if (!selectedProduct || itemQuantity <= 0) {
-      return 0;
-    }
+    if (!selectedProduct || itemQuantity <= 0) return 0;
 
     const unitPrice = selectedProduct.harga_jual_umum;
     let calculatedPanjang = itemDimensions.panjang || 0;
@@ -280,7 +223,6 @@ export const useSalesOrder = (
       subtotal = unitPrice * area * itemQuantity;
     }
 
-    // const additionalCost = itemAdditionalOptions.reduce((total, option) => {
     const additionalCost = itemAdditionalOptions.reduce((total: number, option: AdditionalOption) => {
       return total + (option.selected && option.quantity > 0 ? option.cost * option.quantity : 0);
     }, 0);
@@ -305,15 +247,13 @@ export const useSalesOrder = (
     clearOrderFormData();
   }, [initialOrderFormData, resetCurrentItemForm, clearOrderFormData, setOrderFormData]);
 
+  // Hitung ulang total/discount/tax/final saat items berubah
   useEffect(() => {
-    // const newTotalAmount = orderFormData.items.reduce((sum, item) => sum + item.subtotal_per_item, 0);
-    // const newDiscountAmount = orderFormData.items.reduce((sum, item) => sum + item.discount_per_item, 0);
     const newTotalAmount = orderFormData.items.reduce((sum: number, item: OrderItem) => sum + item.subtotal_per_item, 0);
     const newDiscountAmount = orderFormData.items.reduce((sum: number, item: OrderItem) => sum + item.discount_per_item, 0);
     const newTaxAmount = 0;
     const newCartFinalAmount = newTotalAmount - newDiscountAmount + newTaxAmount;
 
-    // setOrderFormData(prev => ({
     setOrderFormData((prev: OrderFormData) => ({
       ...prev,
       total_amount: newTotalAmount,
@@ -323,26 +263,16 @@ export const useSalesOrder = (
     }));
   }, [orderFormData.items, setOrderFormData]);
 
-  // Effect to load pending order
+  // Load order pending (continue)
   useEffect(() => {
     const fetchAndLoadOrder = async () => {
-      // If no orderId to load, or if this orderId has already been processed by this effect instance,
-      // or if a load is already in progress, return.
-      if (!loadOrderId || loadedOrderIdRef.current === loadOrderId || isLoadingOrder) {
-        return;
-      }
+      if (!loadOrderId || loadedOrderIdRef.current === loadOrderId || isLoadingOrder) return;
+      if (productOptions.length === 0 || designerOptions.length === 0 || customerOptions.length === 0) return;
 
-      // Ensure productOptions, designerOptions, and customerOptions are loaded before proceeding
-      // If not loaded, return and wait for the next render cycle (when dependencies changes).
-      // Do NOT set loadedOrderIdRef here, as we might return early.
-      if (productOptions.length === 0 || designerOptions.length === 0 || customerOptions.length === 0) {
-        return;
-      }
+      setIsLoadingOrder(true);
+      loadedOrderIdRef.current = loadOrderId;
 
-      setIsLoadingOrder(true); // Set loading state to true
-      loadedOrderIdRef.current = loadOrderId; // Mark this order as being processed
-
-      clearOrderFormData(); // Clear any existing draft when loading a specific order
+      clearOrderFormData();
 
       const toastId = showLoading('Memuat transaksi tertunda...');
       try {
@@ -351,23 +281,20 @@ export const useSalesOrder = (
           .select('*')
           .eq('id', loadOrderId)
           .single();
-
         if (orderError) throw orderError;
 
         const { data: orderItemsData, error: itemsError } = await supabase
           .from('order_items')
           .select('*')
           .eq('order_id', loadOrderId);
-
         if (itemsError) throw itemsError;
 
-        // const loadedItems: OrderItem[] = (orderItemsData || []).map(item => {
         const loadedItems: OrderItem[] = (orderItemsData || []).map((item: any) => {
           const productDetail = productOptions.find(p => p.id === item.product_id);
           const designerDetail = designerOptions.find(d => d.id === item.designer_id);
 
           return {
-            tempId: item.id, // Use item.id as tempId for loaded items
+            tempId: item.id,
             product_id: item.product_id,
             product_name: productDetail?.nama_produk || item.product_name || 'N/A',
             unit_price: item.unit_price,
@@ -410,11 +337,10 @@ export const useSalesOrder = (
       } catch (err: any) {
         showError('Gagal memuat transaksi tertunda: ' + err.message);
         console.error('Error loading pending order:', err);
-        // Reset loadedOrderIdRef if there was an error, so it can be retried
         loadedOrderIdRef.current = undefined;
       } finally {
         dismissToast(toastId);
-        setIsLoadingOrder(false); // Reset loading state to false
+        setIsLoadingOrder(false);
       }
     };
 
@@ -430,15 +356,12 @@ export const useSalesOrder = (
     customerOptions,
   ]);
 
-  // const handleFormChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
   const handleFormChange = useCallback((e: any) => {
     const { name, value } = e.target;
-    // setOrderFormData(prev => ({ ...prev, [name]: value }));
     setOrderFormData((prev: OrderFormData) => ({ ...prev, [name]: value }));
   }, [setOrderFormData]);
 
   const handleSelectCustomer = useCallback((customer: { id: string; nama_pelanggan: string; telepon: string | null; alamat: string | null; }) => {
-    // setOrderFormData(prev => ({
     setOrderFormData((prev: OrderFormData) => ({
       ...prev,
       customer_id: customer.id,
@@ -455,7 +378,7 @@ export const useSalesOrder = (
     setItemDimensions({
       panjang: product.bahan?.ukuran_panjang || undefined,
       lebar: product.bahan?.ukuran_lebar || undefined,
-      satuan: 'M', // Always set to 'M' as default
+      satuan: 'M',
       tebal_bahan_id: product.bahan?.id || undefined,
       tebal_bahan_nama: product.bahan?.nama || undefined,
     });
@@ -494,7 +417,6 @@ export const useSalesOrder = (
       subtotal = unitPrice * area * itemQuantity;
     }
 
-    // const additionalCost = itemAdditionalOptions.reduce((total, option) => {
     const additionalCost = itemAdditionalOptions.reduce((total: number, option: AdditionalOption) => {
       return total + (option.selected && option.quantity > 0 ? option.cost * option.quantity : 0);
     }, 0);
@@ -511,7 +433,6 @@ export const useSalesOrder = (
       subtotal_per_item: subtotal,
       dimensions: {
         ...itemDimensions,
-        // additional_options: itemAdditionalOptions.filter(opt => opt.selected && opt.quantity > 0),
         additional_options: itemAdditionalOptions.filter((opt: AdditionalOption) => opt.selected && opt.quantity > 0),
       },
       notes_per_item: itemNotes,
@@ -522,7 +443,6 @@ export const useSalesOrder = (
       mesin_nama: selectedProduct.mesin?.nama || null,
     };
 
-    // setOrderFormData(prev => ({
     setOrderFormData((prev: OrderFormData) => ({
       ...prev,
       items: [...prev.items, newItem],
@@ -532,7 +452,6 @@ export const useSalesOrder = (
   }, [selectedProduct, itemQuantity, itemNotes, itemDimensions, itemDiscount, itemAdditionalOptions, resetCurrentItemForm, setOrderFormData]);
 
   const handleRemoveItem = useCallback((tempId: string) => {
-    // setOrderFormData(prev => ({
     setOrderFormData((prev: OrderFormData) => ({
       ...prev,
       items: prev.items.filter(item => item.tempId !== tempId),
@@ -540,17 +459,14 @@ export const useSalesOrder = (
   }, [setOrderFormData]);
 
   const handleUpdateItemDesigner = useCallback((tempId: string, designerId: string, designerName: string) => {
-    // setOrderFormData(prev => ({
     setOrderFormData((prev: OrderFormData) => ({
       ...prev,
-      // items: prev.items.map(item =>
       items: prev.items.map((item: OrderItem) =>
         item.tempId === tempId ? { ...item, designer_id: designerId, designer_name: designerName } : item
       ),
     }));
   }, [setOrderFormData]);
 
-  // const handleSaveOrder = useCallback(async (status: 'pending' | 'paid', paymentDetails?: PaymentDetails) => {
   const handleSaveOrder = useCallback(async (
     status: 'pending' | 'paid',
     paymentDetails?: PaymentDetails,
@@ -560,11 +476,6 @@ export const useSalesOrder = (
       showError('Keranjang belanja kosong.');
       return;
     }
-
-    // if (!orderFormData.customer_id && !orderFormData.customer_phone && !orderFormData.customer_name) {
-    //   showError('Isi minimal nama atau telepon pelanggan.');
-    //   return;
-    // }
 
     if (!orderFormData.customer_id && !orderFormData.customer_name) {
       showError('Pilih pelanggan atau masukkan nama pelanggan.');
@@ -582,10 +493,21 @@ export const useSalesOrder = (
     const toastId = showLoading('Menyimpan pesanan...');
 
     try {
+      // === KUNCI PERBAIKAN: pastikan customer_id terisi dari DB sebelum save
+      const resolved = await resolveCustomerForOrder(orderFormData);
 
-      // Use the helper function to prepare data
+      // Merge local form khusus untuk proses save (tidak perlu set state dulu)
+      const formForSave: OrderFormData = {
+        ...orderFormData,
+        customer_id: resolved.customer_id,
+        customer_name: resolved.name || orderFormData.customer_name,
+        customer_phone: resolved.phone || orderFormData.customer_phone,
+        customer_address: resolved.address || orderFormData.customer_address,
+        customer_notes: resolved.notes || orderFormData.customer_notes,
+      };
+
       const { orderDataToSave, itemsToInsert } = await prepareOrderDataForSave(
-        orderFormData,
+        formForSave,
         currentUserId,
         notaSettings,
         status,
@@ -593,7 +515,6 @@ export const useSalesOrder = (
       );
 
       if (loadOrderId) {
-        // Update existing pending order instead of delete/insert
         await updateSalesOrder(
           loadOrderId,
           orderDataToSave,
@@ -614,29 +535,37 @@ export const useSalesOrder = (
         );
       }
 
-      // showSuccess(`Pesanan berhasil disimpan sebagai ${status === 'pending' ? 'Pending' : 'Lunas'}!`);
       if (loadOrderId) {
         showSuccess(`Transaksi diperbarui sebagai ${status === 'pending' ? 'Pending' : 'Lunas'}.`);
       } else {
         showSuccess(`Transaksi baru ${status === 'pending' ? 'disimpan sebagai Pending' : 'Lunas'}.`);
       }
-      
+
       setOrderFormData(initialOrderFormData);
       resetCurrentItemForm();
       clearOrderFormData();
 
-      // Refresh pending sales data if the order was paid
       if (status === 'paid' && fetchPendingSales) {
         await fetchPendingSales();
       }
-
     } catch (error: any) {
       showError('Gagal menyimpan pesanan: ' + error.message);
       console.error('Error saving order:', error);
     } finally {
       dismissToast(toastId);
     }
-  }, [orderFormData, currentUserId, loadingNotaSettings, notaSettings, initialOrderFormData, resetCurrentItemForm, setOrderFormData, clearOrderFormData, loadOrderId, fetchPendingSales]);
+  }, [
+    orderFormData,
+    currentUserId,
+    loadingNotaSettings,
+    notaSettings,
+    initialOrderFormData,
+    resetCurrentItemForm,
+    setOrderFormData,
+    clearOrderFormData,
+    loadOrderId,
+    fetchPendingSales
+  ]);
 
   return {
     orderFormData,
