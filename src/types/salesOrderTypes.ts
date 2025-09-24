@@ -69,6 +69,7 @@ export interface OrderFormData {
   payment_status: string;
   order_status: string;
   notes: string;
+  designer_id?: string | null;
 }
 
 export interface Customer {
@@ -105,6 +106,7 @@ export interface OrderDataToSave {
   customer_id: string | null;
   customer_display_name: string;
   customer_display_phone: string;
+  designer_id?: string | null;
   kasir_id: string;
   total_amount: number;
   discount_amount: number;

@@ -18,6 +18,29 @@ import {
   ItemToInsert
 } from '../types/salesOrderTypes';
 
+
+/** Replace semua "Payment Details: {...}" lama di notes dengan satu entri baru */
+const upsertPaymentDetailsInNotes = (
+  prevNotes: string | null | undefined,
+  paymentDetails?: PaymentDetails
+) => {
+  let notes = (prevNotes || '').toString();
+
+  if (!paymentDetails) return notes;
+
+  // Tambahkan timestamp supaya histori punya penanda waktu
+  const detailsToLog = { ...paymentDetails, created_at: new Date().toISOString() };
+  const json = JSON.stringify(detailsToLog);
+
+  // 1) Hapus SEMUA entri Payment Details lama
+  const removeRe = /(?:^|\n)Payment Details:\s*{[\s\S]*?}(?=\n|$)/g;
+  notes = notes.replace(removeRe, '').trim();
+
+  // 2) Sisipkan SATU entri baru di akhir
+  const line = `Payment Details: ${json}`;
+  return (notes ? notes + '\n' : '') + line;
+};
+
 /**
  * Menyiapkan payload order & items untuk disimpan.
  */
@@ -28,10 +51,7 @@ const prepareOrderDataForSave = async (
   status: 'pending' | 'paid',
   paymentDetails?: PaymentDetails
 ) => {
-  let orderNotes = formData.notes;
-  if (paymentDetails) {
-    orderNotes += `\nPayment Details: ${JSON.stringify(paymentDetails)}`;
-  }
+  let orderNotes = upsertPaymentDetailsInNotes(formData.notes, paymentDetails);
 
   const invoiceNumber = await generateInvoiceNumber(
     notaSettings.kode_referensi_penjualan || 'INV',
@@ -46,6 +66,7 @@ const prepareOrderDataForSave = async (
     customer_display_name: formData.customer_name,
     customer_display_phone: formData.customer_phone,
     kasir_id: userId,
+    designer_id: formData.designer_id ?? null,
     total_amount: formData.total_amount,
     discount_amount: formData.discount_amount,
     tax_amount: formData.tax_amount,
@@ -57,11 +78,16 @@ const prepareOrderDataForSave = async (
     invoice_number: invoiceNumber,
     payment_method: paymentDetails?.payment_method,
     bank_name: paymentDetails?.bank_name || null,
+
     // RULE READY:
     // - Jika status 'paid' => ready
     // - Jika ada pembayaran parsial (DP / paid_amount > 0) => ready
     // - Jika pending tanpa pembayaran => not_ready
-    ready_status: status === 'paid' || ((paymentDetails?.paid_amount ?? 0) + (paymentDetails?.dp_amount ?? 0) > 0) ? 'ready' : 'not_ready',
+    ready_status:
+      status === 'paid' ||
+      ((paymentDetails?.paid_amount ?? 0) + (paymentDetails?.dp_amount ?? 0) > 0)
+        ? 'ready'
+        : 'not_ready',
   };
 
   const itemsToInsert: ItemToInsert[] = formData.items.map(item => ({
@@ -186,6 +212,8 @@ export const useSalesOrder = (
     payment_status: 'pending',
     order_status: 'new',
     notes: '',
+    // >>> penting: ikutkan di form state
+    designer_id: null,
   };
 
   // Persist form saat membuat transaksi baru (bukan saat melanjutkan pending)
@@ -335,6 +363,8 @@ export const useSalesOrder = (
           payment_status: orderData.payment_status,
           order_status: orderData.order_status,
           notes: orderData.notes || '',
+          // >>> penting: load dari DB untuk lanjut pending
+          designer_id: orderData.designer_id || null,
         });
 
         resetCurrentItemForm();
@@ -498,10 +528,10 @@ export const useSalesOrder = (
     const toastId = showLoading('Menyimpan pesanan...');
 
     try {
-      // === KUNCI PERBAIKAN: pastikan customer_id terisi dari DB sebelum save
+      // Pastikan customer_id valid
       const resolved = await resolveCustomerForOrder(orderFormData);
 
-      // Merge local form khusus untuk proses save (tidak perlu set state dulu)
+      // Merge lokal untuk proses save
       const formForSave: OrderFormData = {
         ...orderFormData,
         customer_id: resolved.customer_id,
@@ -510,6 +540,11 @@ export const useSalesOrder = (
         customer_address: resolved.address || orderFormData.customer_address,
         customer_notes: resolved.notes || orderFormData.customer_notes,
       };
+
+      // >>> KUNCI: jika ini transaksi baru & belum ada designer_id, catat sebagai user yang input pertama
+      if (!loadOrderId && !formForSave.designer_id && currentUserId) {
+        formForSave.designer_id = currentUserId;
+      }
 
       const { orderDataToSave, itemsToInsert } = await prepareOrderDataForSave(
         formForSave,

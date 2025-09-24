@@ -2,13 +2,15 @@ import React, { useState } from 'react';
 import { useSalesData } from '../hooks/useSalesData';
 import { useSalesOrder } from '../hooks/useSalesOrder';
 import { showError } from '../utils/toast';
-import { useLocation,useNavigate } from 'react-router-dom';
-import { useHistoryPendingSalesData } from '../hooks/useHistoryPendingSalesData'; // Import useHistoryPendingSalesData
-// import { isPrinterAvailable } from '../utils/printAgent';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useHistoryPendingSalesData } from '../hooks/useHistoryPendingSalesData';
 import PrinterStatusBadge from '../components/sales/PrinterStatusBadge';
 import { supabase } from '../integrations/supabase/client';
 
-// Import modular components
+import { isKasirOrSuperAdmin } from '../utils/roles';
+import { useSession } from '../components/SessionContextProvider';
+
+// Modular components
 import CustomerForm from '../components/sales/CustomerForm';
 import ProductInputForm from '../components/sales/ProductInputForm';
 import OrderItemsTable from '../components/sales/OrderItemsTable';
@@ -18,10 +20,51 @@ import SelectProductModal from '../components/sales/SelectProductModal';
 import ProductDetailModal from '../components/sales/ProductDetailModal';
 import PaymentModal from '../components/sales/PaymentModal';
 
+type ExistingPayment = {
+  id: string;
+  created_at?: string | null;
+  dp_amount?: number | null;
+  paid_amount?: number | null;
+  tempo_active?: boolean | null;
+  tempo_date?: string | null;
+  payment_method?: 'cash' | 'bank_transfer' | string | null;
+  bank_name?: string | null;
+};
+
+// Ekstrak semua "Payment Details: {...}" di orders.notes → array ExistingPayment
+const extractPaymentsFromNotes = (notes?: string): ExistingPayment[] => {
+  if (!notes) return [];
+  const results: ExistingPayment[] = [];
+  // Ambil setiap blok JSON setelah "Payment Details:"
+  const regex = /Payment Details:\s*({[\s\S]*?})/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(notes)) !== null) {
+    try {
+      const obj = JSON.parse(match[1]);
+      results.push({
+        id: `notes-${results.length + 1}`,
+        created_at: null,                                     // notes tidak simpan timestamp; opsional
+        dp_amount: Number(obj?.dp_amount ?? 0),
+        paid_amount: Number(obj?.paid_amount ?? 0),
+        tempo_active: Boolean(obj?.tempo_active),
+        tempo_date: obj?.tempo_date || null,
+        payment_method: (obj?.payment_method as any) || null,
+        bank_name: obj?.bank_name || null,
+      });
+    } catch {
+      // abaikan parse error agar tidak memblokir
+    }
+  }
+  return results;
+};
+
 const Sales: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const loadOrderId = (location.state as { loadOrderId?: string })?.loadOrderId;
+
+  const { profile } = useSession();
+  const canPay = isKasirOrSuperAdmin(profile?.role);
 
   const {
     customerOptions,
@@ -35,7 +78,7 @@ const Sales: React.FC = () => {
     fetchAllSalesData,
   } = useSalesData();
 
-  // Get fetchPendingSales from useHistoryPendingSalesData
+  // Pending list fetcher
   const { fetchPendingSales } = useHistoryPendingSalesData({ durationFilter: 'all', searchTerm: '' });
 
   const {
@@ -71,7 +114,7 @@ const Sales: React.FC = () => {
   const [postConfirmAction, setPostConfirmAction] = useState<'pending' | 'payment' | null>(null);
   const [savingCustomer, setSavingCustomer] = useState(false);
 
-  // === NEW: ambil user login dari Supabase untuk auto-select designer ===
+  // === Ambil user login untuk isi designer_id pada insert pertama ===
   const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
   React.useEffect(() => {
     let mounted = true;
@@ -87,33 +130,33 @@ const Sales: React.FC = () => {
     return () => { mounted = false; };
   }, []);
 
+  const [existingPayments, setExistingPayments] = useState<ExistingPayment[]>([]);
+
+  // Helper: pastikan designer_id terisi user yang input pertama
+  const ensureDesignerId = async () => {
+    if (!orderFormData?.designer_id && currentUserId) {
+      setOrderFormData((prev: any) => ({ ...prev, designer_id: currentUserId }));
+      // tunggu 1 tick agar state ter-flush sebelum handleSaveOrder membaca state
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  };
+
   const normalizePhone = (raw?: string) => {
     if (!raw) return '';
     let digits = raw.replace(/\D+/g, '');
-  
-    // Hilangkan leading 0 ketika akan diprefix 62
     if (digits.startsWith('0')) digits = digits.slice(1);
-  
-    // Hilangkan leading 62 ganda (kalau user input sudah 62... lalu kamu tambah 62 lagi)
     if (digits.startsWith('62')) digits = digits.slice(2);
-  
-    return '62' + digits; // hasil akhir selalu '62' + nomor
+    return '62' + digits;
   };
 
   const checkCustomerExistsByPhone = async (phoneRaw: string) => {
     const normalized = normalizePhone(phoneRaw);
-  
-    // Aman untuk OR multi-kolom + limit
     const { data, error } = await supabase
       .from('pelanggan')
       .select('id')
-      .or(
-        `telepon_normalized.eq.${normalized},telepon.eq.${phoneRaw}`
-      )
+      .or(`telepon_normalized.eq.${normalized},telepon.eq.${phoneRaw}`)
       .limit(1);
-  
     if (error) {
-      // Log saja, jangan blokir alur: anggap tidak ada supaya tetap munculkan konfirmasi
       console.warn('checkCustomerExistsByPhone error', error);
       return false;
     }
@@ -121,29 +164,26 @@ const Sales: React.FC = () => {
   };
 
   const maybeAskToSaveCustomer = async (nextAction: 'pending' | 'payment'): Promise<boolean> => {
-    if (loadOrderId) return true; // Skip when continuing pending
-    if (orderFormData.customer_id) return true; // Already chosen existing customer
+    if (loadOrderId) return true; // continue pending: skip
+    if (orderFormData.customer_id) return true;
     const phoneRaw = (orderFormData.customer_phone || '').trim();
-    // const phoneRaw = (orderFormData.customer_phone || orderFormData.customer_display_phone || '').trim();
-    if (!phoneRaw) return true; // No phone provided, nothing to check
+    if (!phoneRaw) return true;
 
     const exists = await checkCustomerExistsByPhone(phoneRaw);
     if (exists) return true;
 
     setPostConfirmAction(nextAction);
     setShowSaveCustomerConfirm(true);
-    return false; // wait for confirmation
+    return false;
   };
 
   const persistCustomerNotes = async (): Promise<boolean> => {
     const notes = (orderFormData.customer_notes || '').trim();
-    if (!orderFormData.customer_id) return true; // tidak ada customer -> tidak usah update
-    // Kalau mau tetap update walau kosong, kirim null
+    if (!orderFormData.customer_id) return true;
     const { error } = await supabase
       .from('pelanggan')
       .update({ catatan: notes || null })
       .eq('id', orderFormData.customer_id);
-
     if (error) {
       console.warn('persistCustomerNotes error', error);
       return false;
@@ -158,17 +198,16 @@ const Sales: React.FC = () => {
         (orderFormData.customer_name ||
           (orderFormData as any).customer_display_name ||
           '').trim() || '(Tanpa Nama)';
-  
+
       const phoneRaw =
         (orderFormData.customer_phone ||
           (orderFormData as any).customer_display_phone ||
           '').trim();
-  
+
       const address = (orderFormData.customer_address || '').trim();
       const notes = (orderFormData.customer_notes || '').trim();
       const normalized = phoneRaw ? normalizePhone(phoneRaw) : null;
-  
-      // 1) Upsert TANPA .single() → biar dapat array
+
       const upsertRes = await supabase
         .from('pelanggan')
         .upsert(
@@ -177,47 +216,46 @@ const Sales: React.FC = () => {
             telepon: normalized || null,
             alamat: address || null,
             catatan: notes || null,
-          },
-          // { onConflict: 'telepon_normalized' }
-        )
-        .select('id'); // <= array
-  
-        if (upsertRes.error) {
-          console.error('upsert pelanggan error:', upsertRes.error);
-          showError(upsertRes.error.message || 'Gagal menyimpan data pelanggan.');
-          return false;
-        }
-  
-        let newId = upsertRes.data?.[0]?.id;
-  
-        if (!newId) {
-          const findRes = await supabase
-            .from('pelanggan')
-            .select('id')
-            .or(
-              normalized && phoneRaw
-                ? `telepon_normalized.eq.${normalized},telepon.eq.${phoneRaw}`
-                : phoneRaw
-                ? `telepon.eq.${phoneRaw}`
-                : 'id.gt.0'
-            )
-            .limit(1);
-  
-          if (findRes.error) {
-            console.warn('find-after-upsert error:', findRes.error);
-          } else {
-            newId = findRes.data?.[0]?.id;
           }
+        )
+        .select('id');
+
+      if (upsertRes.error) {
+        console.error('upsert pelanggan error:', upsertRes.error);
+        showError(upsertRes.error.message || 'Gagal menyimpan data pelanggan.');
+        return false;
+      }
+
+      let newId = upsertRes.data?.[0]?.id;
+
+      if (!newId) {
+        const findRes = await supabase
+          .from('pelanggan')
+          .select('id')
+          .or(
+            normalized && phoneRaw
+              ? `telepon_normalized.eq.${normalized},telepon.eq.${phoneRaw}`
+              : phoneRaw
+              ? `telepon.eq.${phoneRaw}`
+              : 'id.gt.0'
+          )
+          .limit(1);
+
+        if (findRes.error) {
+          console.warn('find-after-upsert error:', findRes.error);
+        } else {
+          newId = findRes.data?.[0]?.id;
         }
-  
-        if (!newId) {
-          showError('Pelanggan tidak ditemukan setelah disimpan. Cek RLS/Policy dan unique index.');
-          return false;
-        }
-  
-        setOrderFormData((prev: any) => ({ ...prev, customer_id: newId }));
-        await persistCustomerNotes();
-        return true;
+      }
+
+      if (!newId) {
+        showError('Pelanggan tidak ditemukan setelah disimpan. Cek RLS/Policy dan unique index.');
+        return false;
+      }
+
+      setOrderFormData((prev: any) => ({ ...prev, customer_id: newId }));
+      await persistCustomerNotes();
+      return true;
     } catch (e: any) {
       console.error('saveCustomerNow exception', e);
       showError(e?.message || 'Terjadi kesalahan saat menyimpan pelanggan.');
@@ -236,6 +274,8 @@ const Sales: React.FC = () => {
     setShowProductDetailModal(true);
   };
 
+  // Ambil histori pembayaran saat membuka modal (jika continue pending)
+  // NOTE: Kalau PaymentModal kamu mendukung prop existingPayments, kamu bisa pass di bawah.
   const handleOpenPaymentModal = async () => {
     if (orderFormData.items.length === 0) {
       showError('Keranjang belanja kosong. Tambahkan item terlebih dahulu.');
@@ -243,18 +283,51 @@ const Sales: React.FC = () => {
     }
     const canProceed = await maybeAskToSaveCustomer('payment');
     if (!canProceed) return;
+  
+    // pastikan designer_id terisi sebelum proses pembayaran
+    await ensureDesignerId();
+  
+    // 1) Tarik histori dari orders.notes (sudah ada di state orderFormData)
+    let list: ExistingPayment[] = extractPaymentsFromNotes(orderFormData.notes);
+  
+    // 2) (Opsional) gabungkan dengan catatan di tabel order_payments jika kamu pakai tabel itu
+    if (loadOrderId) {
+      const { data: pays, error } = await supabase
+        .from('order_payments')
+        .select('id, created_at, dp_amount, paid_amount, tempo_active, tempo_date, payment_method, bank_name')
+        .eq('order_id', loadOrderId)
+        .order('created_at', { ascending: false });
+  
+      if (!error && Array.isArray(pays) && pays.length) {
+        const mapped: ExistingPayment[] = pays.map((p: any) => ({
+          id: p.id,
+          created_at: p.created_at,
+          dp_amount: Number(p.dp_amount ?? 0),
+          paid_amount: Number(p.paid_amount ?? 0),
+          tempo_active: Boolean(p.tempo_active),
+          tempo_date: p.tempo_date,
+          payment_method: p.payment_method,
+          bank_name: p.bank_name,
+        }));
+        // Utamakan yang dari DB, lalu yang dari notes
+        list = [...mapped, ...list];
+      }
+    }
+  
+    setExistingPayments(list);
     setShowPaymentModal(true);
   };
 
-   // --- EFFECT 1: reset form saat bukan melanjutkan pending
-   React.useEffect(() => {
+  // Reset form saat bukan melanjutkan pending
+  React.useEffect(() => {
     if (!loadOrderId) {
       resetOrderForm();
+      setExistingPayments([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadOrderId]);
 
-  // --- EFFECT 2: ambil catatan pelanggan dari master setiap kali customer_id berubah (khusus saat lanjut pending)
+  // Sinkron catatan pelanggan dari master ketika lanjut pending
   React.useEffect(() => {
     if (!loadOrderId) return;
     const cid = orderFormData.customer_id;
@@ -275,7 +348,6 @@ const Sales: React.FC = () => {
         return;
       }
 
-      // Timpa textarea Catatan agar selalu mengikuti master pelanggan saat lanjut pending
       setOrderFormData((prev: any) => ({
         ...prev,
         customer_notes: data?.catatan || '',
@@ -306,27 +378,20 @@ const Sales: React.FC = () => {
     options?: { skipPrint?: boolean }
   ) => {
     try {
-      // Simpan catatan pelanggan kalau ada
       if (orderFormData.customer_id) {
         await persistCustomerNotes();
       }
 
-      // Pakai status dari modal. (Fallback hitung ulang kalau perlu)
+      // pastikan designer_id terisi saat save (insert pertama)
+      await ensureDesignerId();
+
       const status: 'paid' | 'pending' =
         detail?.payment_status ?? (detail.total_paid >= detail.final_amount ? 'paid' : 'pending');
 
-      // (Opsional) kalau tidak diminta skipPrint, kamu masih boleh cek printer lagi:
-      // if (!options?.skipPrint) {
-      //   const available = await isPrinterAvailable();
-      //   if (!available) options = { ...options, skipPrint: true };
-      // }
-
-      // PENTING: jangan hardcode 'paid' lagi.
       await handleSaveOrder(status, detail, options);
 
       setShowPaymentModal(false);
 
-      // Navigasi: biarkan sesuai flow-mu saat ini
       if (loadOrderId) {
         navigate('/dashboard/history-pending');
       } else {
@@ -337,43 +402,6 @@ const Sales: React.FC = () => {
       showError(err?.message || 'Gagal memproses pembayaran.');
     }
   };
-
-  // const handleProcessPayment = async (paymentDetails: {
-  //   dp_amount: number;
-  //   paid_amount: number;
-  //   payment_method: 'cash' | 'bank_transfer';
-  //   bank_id?: string;
-  //   bank_name?: string;
-  //   tempo_active: boolean;
-  //   tempo_date?: string;
-  // }) => {
-
-  //   // Cek ketersediaan printer. Jika tidak tersedia, tawarkan opsi lanjut tanpa cetak atau batal.
-  //   const available = await isPrinterAvailable();
-  //   if (!available) {
-  //     // Simpan transaksi dengan skipPrint, lalu arahkan sesuai alur
-  //     await handleSaveOrder('paid', paymentDetails, { skipPrint: true });
-  //     setShowPaymentModal(false);
-  //     if (loadOrderId) {
-  //       navigate('/dashboard/history-pending');
-  //     } else {
-  //       navigate('/dashboard/sales', { replace: true });
-  //     }
-  //     return;
-  //   }
-    
-  //   if (orderFormData.customer_id) {
-  //     await persistCustomerNotes();
-  //   }
-    
-  //   await handleSaveOrder('paid', paymentDetails);
-  //   setShowPaymentModal(false);
-  //   if (loadOrderId) {
-  //     navigate('/dashboard/history-pending');
-  //   } else {
-  //     navigate('/dashboard/sales', { replace: true });
-  //   }
-  // };
 
   if (loadingData) {
     return (
@@ -396,14 +424,13 @@ const Sales: React.FC = () => {
 
   return (
     <div className="h-full w-full space-y-6 p-6 bg-gray-100 flex flex-col">
-      {/* <h1 className="text-3xl font-bold text-gray-900 mb-6 flex-shrink-0">Transaksi Penjualan</h1> */}
       <div className="flex items-center justify-between mb-6 flex-shrink-0">
         <h1 className="text-3xl font-bold text-gray-900">Transaksi Penjualan</h1>
         <PrinterStatusBadge />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden">
-        {/* Left Column: Customer Info & Product Input */}
+        {/* Left Column */}
         <div className="lg:col-span-1 flex flex-col space-y-6 overflow-y-auto">
           <CustomerForm
             formData={orderFormData}
@@ -426,7 +453,7 @@ const Sales: React.FC = () => {
           />
         </div>
 
-        {/* Right Column: Order Items & Summary */}
+        {/* Right Column */}
         <div className="lg:col-span-2 flex flex-col space-y-6 overflow-y-auto">
           <OrderItemsTable
             items={orderFormData.items}
@@ -441,8 +468,9 @@ const Sales: React.FC = () => {
             taxAmount={orderFormData.tax_amount}
             cartFinalAmount={orderFormData.final_amount}
             currentItemSubtotal={currentItemSubtotal}
+            // Hanya Kasir/Super Admin yang boleh "Pembayaran"
+            canPay={canPay}
             onSavePending={async () => {
-              // For new insert, check customer existence first
               if (!loadOrderId) {
                 const canProceed = await maybeAskToSaveCustomer('pending');
                 if (!canProceed) return;
@@ -450,6 +478,9 @@ const Sales: React.FC = () => {
               if (orderFormData.customer_id) {
                 await persistCustomerNotes();
               }
+              // pastikan designer_id terisi pada insert pertama
+              await ensureDesignerId();
+
               await handleSaveOrder('pending');
               if (loadOrderId) {
                 navigate('/dashboard/history-pending');
@@ -467,12 +498,9 @@ const Sales: React.FC = () => {
         <SelectCustomerModal
           onClose={() => setShowSelectCustomerModal(false)}
           onSelect={(c) => {
-            // (opsional) tetap panggil handler dari hook kalau ada side-effect lain
             if (handleSelectCustomer) {
               handleSelectCustomer(c as any);
             }
-      
-            // Pastikan form Data Pembeli terisi
             setOrderFormData((prev: any) => ({
               ...prev,
               customer_id: c.id,
@@ -481,12 +509,12 @@ const Sales: React.FC = () => {
               customer_address: c.alamat || '',
               customer_notes: c.catatan || ''
             }));
-      
             setShowSelectCustomerModal(false);
           }}
           customerOptions={customerOptions}
         />
       )}
+
       {showSelectProductModal && (
         <SelectProductModal
           onClose={() => setShowSelectProductModal(false)}
@@ -494,6 +522,7 @@ const Sales: React.FC = () => {
           productOptions={productOptions}
         />
       )}
+
       {showProductDetailModal && selectedProduct && (
         <ProductDetailModal
           isOpen={showProductDetailModal}
@@ -507,6 +536,7 @@ const Sales: React.FC = () => {
           onSave={handleUpdateProductDetailsFromModal}
         />
       )}
+
       {showPaymentModal && (
         <PaymentModal
           isOpen={showPaymentModal}
@@ -514,10 +544,11 @@ const Sales: React.FC = () => {
           finalAmount={orderFormData.final_amount}
           bankOptions={bankOptions}
           onProcessPayment={handleProcessPayment}
+          existingPayments={existingPayments}
         />
       )}
 
-{showSaveCustomerConfirm && (
+      {showSaveCustomerConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
             <h3 className="text-xl font-semibold mb-3 text-gray-900">Konfirmasi</h3>
@@ -529,6 +560,7 @@ const Sales: React.FC = () => {
                   const ok = await saveCustomerNow();
                   if (!ok) return;
                   if (postConfirmAction === 'pending') {
+                    await ensureDesignerId();
                     await handleSaveOrder('pending');
                     if (loadOrderId) {
                       navigate('/dashboard/history-pending');
@@ -536,6 +568,7 @@ const Sales: React.FC = () => {
                       navigate('/dashboard/sales', { replace: true });
                     }
                   } else if (postConfirmAction === 'payment') {
+                    await ensureDesignerId();
                     setShowPaymentModal(true);
                   }
                 }}
@@ -546,18 +579,18 @@ const Sales: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   setShowSaveCustomerConfirm(false);
                   if (postConfirmAction === 'pending') {
-                    (async () => {
-                      await handleSaveOrder('pending');
-                      if (loadOrderId) {
-                        navigate('/dashboard/history-pending');
-                      } else {
-                        navigate('/dashboard/sales', { replace: true });
-                      }
-                    })();
+                    await ensureDesignerId();
+                    await handleSaveOrder('pending');
+                    if (loadOrderId) {
+                      navigate('/dashboard/history-pending');
+                    } else {
+                      navigate('/dashboard/sales', { replace: true });
+                    }
                   } else if (postConfirmAction === 'payment') {
+                    await ensureDesignerId();
                     setShowPaymentModal(true);
                   }
                 }}

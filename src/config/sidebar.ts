@@ -22,7 +22,7 @@ const sidebarConfig: SidebarMenuItem[] = [
   },
   {
     name: 'Status Order',
-    path: '/dashboard/status-order', 
+    path: '/dashboard/status_order', 
     icon: Clock,
     allowedRoles: ['Super Admin', 'Admin', 'Kasir', 'Operator', 'Designer', 'Finishing'], 
   },

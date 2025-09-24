@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
+import ProtectedRoute from '../components/ProtectedRoute';
+
 // Import halaman Master Data
 import Pelanggan from './master-data/Pelanggan';
 import Level from './master-data/Level';
@@ -67,52 +69,52 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           <Route index element={<DashboardHome user={user} />} />
 
           {/* Rute untuk status order*/}
-          <Route path="status-order" element={<StatusOrder />} />
+          <Route path="status_order" element={<ProtectedRoute require="Status Order.status_order"><StatusOrder /></ProtectedRoute>} />
 
           {/* Rute untuk Penjualan */}
-          <Route path="sales" element={<Sales />} />
+          <Route path="sales" element={<ProtectedRoute require="Main.sales"><Sales /></ProtectedRoute>} />
           
           {/* Rute untuk Pembelian */}
-          <Route path="purchases" element={<Pembelian />} />
+          <Route path="purchases" element={<ProtectedRoute require="Main.purchases"><Pembelian /></ProtectedRoute>} />
 
           {/* Rute untuk Back Office */}
-          <Route path="back-office/kas_masuk" element={<KasMasuk />} />
-          <Route path="back-office/kas_keluar" element={<KasKeluar />} />
-          <Route path="back-office/bahan_keluar" element={<BahanKeluar />} />
-          <Route path="back-office/pinjaman_karyawan" element={<PinjamanKaryawan />} />
-          <Route path="back-office/nota" element={<Nota />} />
-          <Route path="back-office/poin" element={<Poin />} />
-          <Route path="back-office/pengaturan_aplikasi" element={<PengaturanAplikasi />} />
-          <Route path="back-office/history" element={<History />} />
+          <Route path="back-office/kas_masuk" element={<ProtectedRoute require="Back Office.kas_masuk"><KasMasuk /></ProtectedRoute>} />
+          <Route path="back-office/kas_keluar" element={<ProtectedRoute require="Back Office.kas_keluar"><KasKeluar /></ProtectedRoute>} />
+          <Route path="back-office/bahan_keluar" element={<ProtectedRoute require="Back Office.bahan_keluar"><BahanKeluar /></ProtectedRoute>} />
+          <Route path="back-office/pinjaman_karyawan" element={<ProtectedRoute require="Back Office.pinjaman_karyawan"><PinjamanKaryawan /></ProtectedRoute>} />
+          <Route path="back-office/nota" element={<ProtectedRoute require="Back Office.nota"><Nota /></ProtectedRoute>} />
+          <Route path="back-office/poin" element={<ProtectedRoute require="Back Office.poin"><Poin /></ProtectedRoute>} />
+          <Route path="back-office/pengaturan_aplikasi" element={<ProtectedRoute require="Back Office.pengaturan_aplikasi"><PengaturanAplikasi /></ProtectedRoute>} />
+          <Route path="back-office/history" element={<ProtectedRoute require="Back Office.history"><History /></ProtectedRoute>} />
           
           {/* Rute untuk History Pending (sekarang top-level) */}
-          <Route path="history-pending" element={<HistoryPendingSales />} />
+          <Route path="history-pending" element={<ProtectedRoute require="Main.history-pending"><HistoryPendingSales /></ProtectedRoute>} />
 
           {/* Rute untuk Master Data */}
-          <Route path="master-data/pelanggan" element={<Pelanggan />} />
-          <Route path="master-data/level" element={<Level />} />
-          <Route path="master-data/produk" element={<Produk />} />
-          <Route path="master-data/bahan" element={<Bahan />} />
-          <Route path="master-data/finishing" element={<Finishing />} />
-          <Route path="master-data/kategori" element={<Kategori />} />
-          <Route path="master-data/satuan" element={<Satuan />} />
-          <Route path="master-data/karyawan" element={<Karyawan />} />
-          <Route path="master-data/supplier" element={<Supplier />} />
-          <Route path="master-data/pola" element={<Pola />} />
-          <Route path="master-data/bank" element={<Bank />} />
+          <Route path="master-data/pelanggan" element={<ProtectedRoute require="Master.pelanggan"><Pelanggan /></ProtectedRoute>} />
+          <Route path="master-data/level" element={<ProtectedRoute require="Master.level"><Level /></ProtectedRoute>} />
+          <Route path="master-data/produk" element={<ProtectedRoute require="Master.produk"><Produk /></ProtectedRoute>} />
+          <Route path="master-data/bahan" element={<ProtectedRoute require="Master.bahan"><Bahan /></ProtectedRoute>} />
+          <Route path="master-data/finishing" element={<ProtectedRoute require="Master.finishing"><Finishing /></ProtectedRoute>} />
+          <Route path="master-data/kategori" element={<ProtectedRoute require="Master.kategori"><Kategori /></ProtectedRoute>} />
+          <Route path="master-data/satuan" element={<ProtectedRoute require="Master.satuan"><Satuan /></ProtectedRoute>} />
+          <Route path="master-data/karyawan" element={<ProtectedRoute require="Master.karyawan"><Karyawan /></ProtectedRoute>} />
+          <Route path="master-data/supplier" element={<ProtectedRoute require="Master.supplier"><Supplier /></ProtectedRoute>} />
+          <Route path="master-data/pola" element={<ProtectedRoute require="Master.pola"><Pola /></ProtectedRoute>} />
+          <Route path="master-data/bank" element={<ProtectedRoute require="Master.bank"><Bank /></ProtectedRoute>} />
 
           {/* Rute untuk Laporan */}
-          <Route path="laporan/penjualan" element={<LaporanPenjualan />} />
-          <Route path="laporan/pembelian" element={<LaporanPembelian />} />
-          <Route path="laporan/stok" element={<LaporanStok />} />
-          <Route path="laporan/produk-rusak" element={<LaporanProdukRusak />} />
-          <Route path="laporan/pemasukan" element={<LaporanPemasukan />} />
-          <Route path="laporan/pengeluaran" element={<LaporanPengeluaran />} />
-          <Route path="laporan/pinjaman" element={<LaporanPinjaman />} />
-          <Route path="laporan/neraca" element={<LaporanNeraca />} />
+          <Route path="laporan/penjualan" element={<ProtectedRoute require="Laporan.penjualan"><LaporanPenjualan /></ProtectedRoute>} />
+          <Route path="laporan/pembelian" element={<ProtectedRoute require="Laporan.pembelian"><LaporanPembelian /></ProtectedRoute>} />
+          <Route path="laporan/stok" element={<ProtectedRoute require="Laporan.stok"><LaporanStok /></ProtectedRoute>} />
+          <Route path="laporan/produk-rusak" element={<ProtectedRoute require="Laporan.produk_rusak"><LaporanProdukRusak /></ProtectedRoute>} />
+          <Route path="laporan/pemasukan" element={<ProtectedRoute require="Laporan.pemasukan"><LaporanPemasukan /></ProtectedRoute>} />
+          <Route path="laporan/pengeluaran" element={<ProtectedRoute require="Laporan.pengeluaran"><LaporanPengeluaran /></ProtectedRoute>} />
+          <Route path="laporan/pinjaman" element={<ProtectedRoute require="Laporan.pinjamana"><LaporanPinjaman /></ProtectedRoute>} />
+          <Route path="laporan/neraca" element={<ProtectedRoute require="Laporan.neraca"><LaporanNeraca /></ProtectedRoute>} />
 
           {/* Rute untuk Pengaturan */}
-          <Route path="pengaturan/profile_page" element={<ProfilePage />} />
+          <Route path="pengaturan/profile_page" element={<ProtectedRoute require="Pengaturan.profile_page"><ProfilePage /></ProtectedRoute>} />
         </Routes>
       </main>
     </div>

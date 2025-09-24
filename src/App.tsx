@@ -7,6 +7,7 @@ import { supabase } from './integrations/supabase/client';
 import NotFound from './pages/NotFound';
 import NoAccess from './pages/NoAccess';
 const StatusOrder = React.lazy(() => import('./pages/StatusOrder'));
+import ProtectedRoute from "./components/ProtectedRoute";
 
 const App: React.FC = () => {
   const { session, profile, loading } = useSession(); // Get loading state
@@ -38,22 +39,24 @@ const App: React.FC = () => {
         element={!session ? <Login /> : <Navigate to="/dashboard" replace />}
       />
       <Route
-        path="/dashboard/*"
-        element={
-          session ? (
-            profile && allowedDashboardRoles.includes(profile.role || '') ? (
-              <Dashboard user={profile} onLogout={handleLogout} />
-            ) : (
-              <Navigate to="/no-access" replace />
-            )
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      >
-        {/* Nested routes for Dashboard are now handled directly within Dashboard.tsx */}
-        {/* <Route path="sales" element={<Sales />} /> */}
-      </Route>
+          path="/dashboard/*"
+          element={
+            <ProtectedRoute
+              allowedRoles={allowedDashboardRoles} // opsional, kalau mau tetap filter role kasar
+              require="Main.dashboard"             // cek JSON: { "Main": { "dashboard": true } }
+            >
+              {session ? (
+                profile ? (
+                  <Dashboard user={profile} onLogout={handleLogout} />
+                ) : (
+                  <Navigate to="/no-access" replace />
+                )
+              ) : (
+                <Navigate to="/login" replace />
+              )}
+            </ProtectedRoute>
+          }
+        />
       <Route path="/no-access" element={<NoAccess />} />
       <Route
         path="/"

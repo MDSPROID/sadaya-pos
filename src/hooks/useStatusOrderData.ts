@@ -3,7 +3,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../integrations/supabase/client';
 import { showError } from '../utils/toast';
 import { PendingOrderItem } from '../types/orderTypes';
-import { calcDurasiTunggu } from '../hooks/durasiTunggu';
 
 interface UseStatusOrderDataProps {
   durationFilter: string;
@@ -12,8 +11,18 @@ interface UseStatusOrderDataProps {
 type FetchOverride = { searchTerm?: string; durationFilter?: string };
 
 const joinName = (first?: string | null, last?: string | null) => {
-  const parts = [first, last].filter(Boolean);
-  return parts.length ? parts.join(' ') : null;
+  const a = (first || '').trim();
+  const b = (last || '').trim();
+  const s = `${a} ${b}`.trim();
+  return s || null;
+};
+
+// Samakan rumus durasi dengan History Pending
+const calculateDuration = (orderDate: string): number => {
+  const today = new Date();
+  const order = new Date(orderDate);
+  const diffTime = Math.abs(today.getTime() - order.getTime());
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 };
 
 export const useStatusOrderData = ({ durationFilter, searchTerm }: UseStatusOrderDataProps) => {
@@ -29,11 +38,10 @@ export const useStatusOrderData = ({ durationFilter, searchTerm }: UseStatusOrde
       const dFilter = override?.durationFilter ?? durationFilter;
 
       let fromDays = 0, toDays = 99999;
-      if (dFilter === '1-7') { fromDays = 1; toDays = 7; }
-      else if (dFilter === '8-14') { fromDays = 8; toDays = 14; }
+      if (dFilter === '1-7')      { fromDays = 1;  toDays = 7; }
+      else if (dFilter === '8-14'){ fromDays = 8;  toDays = 14; }
       else if (dFilter === '>14') { fromDays = 15; toDays = 99999; }
 
-      // Ambil orders READY + id petugas
       let query = supabase
         .from('orders')
         .select(`
@@ -62,7 +70,7 @@ export const useStatusOrderData = ({ durationFilter, searchTerm }: UseStatusOrde
       const { data: rows, error: qErr } = await query;
       if (qErr) throw qErr;
 
-      // Kumpulkan semua user_id unik dari 4 kolom petugas + designer dari items
+      // Kumpulkan user id unik
       const idSet = new Set<string>();
       (rows ?? []).forEach((r: any) => {
         [r.kasir_id, r.operator_id, r.designer_id, r.finishing_id]
@@ -76,7 +84,7 @@ export const useStatusOrderData = ({ durationFilter, searchTerm }: UseStatusOrde
       });
       const idList = Array.from(idSet);
 
-      // Ambil nama user dari profiles (kalau RLS block, aman: fallback '-')
+      // Map id -> nama
       let nameById: Record<string, string> = {};
       if (idList.length > 0) {
         const { data: profs, error: profErr } = await supabase
@@ -92,14 +100,11 @@ export const useStatusOrderData = ({ durationFilter, searchTerm }: UseStatusOrde
         }
       }
 
-      const now = Date.now();
       const mapped = (rows ?? [])
-        .filter((row: any) => {
-          const d = calcDurasiTunggu(row, now);
-          return d >= fromDays && d <= toDays;
-        })
         .map((row: any) => {
-          // 1) Kumpulkan semua designer dari order_items
+          // Gunakan rumus durasi yang sama dengan History Pending
+          const durasi = calculateDuration(row.order_date);
+
           const itemDesignerIds: string[] = Array.from(
             new Set(
               (row.order_items ?? [])
@@ -108,9 +113,6 @@ export const useStatusOrderData = ({ durationFilter, searchTerm }: UseStatusOrde
             )
           );
 
-          // 2) Tentukan daftar nama:
-          //    - jika ada di items, pakai semua nama item
-          //    - else fallback ke orders.designer_id
           let designer_names: string[] = [];
           if (itemDesignerIds.length > 0) {
             designer_names = itemDesignerIds
@@ -127,9 +129,10 @@ export const useStatusOrderData = ({ durationFilter, searchTerm }: UseStatusOrde
             operator_name: nameById[row.operator_id || ''] || null,
             finishing_name: nameById[row.finishing_id || ''] || null,
             designer_names: designer_names.length ? designer_names : null,
-            durasi_tunggu: calcDurasiTunggu(row, now),
+            durasi_tunggu: durasi,
           };
-        }) as any[];
+        })
+        .filter((row: any) => row.durasi_tunggu >= fromDays && row.durasi_tunggu <= toDays);
 
       setData(mapped as any);
     } catch (e: any) {

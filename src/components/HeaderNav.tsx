@@ -5,6 +5,9 @@ import sidebarConfig, { SidebarMenuItem } from '../config/sidebar';
 import { useSession } from './SessionContextProvider';
 import { supabase } from '../integrations/supabase/client'; // For logout in mobile menu
 
+const toDisplayPath = (p?: string) => (p ?? '').replace(/\/status_order\b/g, '/status-order');
+const toInternalPath = (p?: string) => (p ?? '').replace(/\/status-order\b/g, '/status_order');
+
 interface HeaderNavProps {
   isMobileNavOpen: boolean;
   setIsMobileNavOpen: (isOpen: boolean) => void;
@@ -39,16 +42,12 @@ const HeaderNav: React.FC<HeaderNavProps> = ({ isMobileNavOpen, setIsMobileNavOp
     }
 
     if (item.path) {
-      // SPECIAL CASE: /dashboard/status-order (nested)
-      if (item.path === '/dashboard/status-order') {
-        const permVal = profile?.permissions?.['Status Order']?.['status-order'];
-        return isTrueish(permVal);
-      }
+      const normalizedPath = toInternalPath(item.path);
+      const pathParts = normalizedPath.split('/');
 
-      const pathParts = item.path.split('/');
       const categoryMap: Record<string, string> = {
         'sales': 'Transaksi',
-        'status-order': 'Status Order',
+        'status_order': 'Status Order',
         'master-data': 'Master',
         'back-office': 'Back Office',
         'laporan': 'Laporan',
@@ -100,7 +99,8 @@ const HeaderNav: React.FC<HeaderNavProps> = ({ isMobileNavOpen, setIsMobileNavOp
   const renderMenuItem = (item: SidebarMenuItem, isMobile: boolean = false) => {
     const Icon = item.icon;
     const ValidIcon = Icon as React.ElementType;
-    const isActive = activeMenu === item.path;
+    const displayPath = toDisplayPath(item.path); 
+    const isActive = activeMenu === displayPath;
 
     if (!hasPermission(item)) {
       return null;
@@ -111,7 +111,11 @@ const HeaderNav: React.FC<HeaderNavProps> = ({ isMobileNavOpen, setIsMobileNavOp
       if (accessibleChildren.length === 0) return null;
 
       const isOpen = openSubmenus[item.name];
-      const isParentActiveByChild = accessibleChildren.some(child => activeMenu.startsWith(child.path || ''));
+      // const isParentActiveByChild = accessibleChildren.some(child => activeMenu.startsWith(child.path || ''));
+      const isParentActiveByChild = accessibleChildren.some(child => {
+        const childDisplay = toDisplayPath(child.path);
+        return activeMenu.startsWith(childDisplay || '');
+      });
 
       return (
         <div key={item.name} className={isMobile ? 'w-full' : 'relative group'}>
@@ -136,11 +140,13 @@ const HeaderNav: React.FC<HeaderNavProps> = ({ isMobileNavOpen, setIsMobileNavOp
             {accessibleChildren.map(child => {
               const ChildIcon = child.icon;
               const ValidChildIcon = ChildIcon as React.ElementType;
-              const isChildActive = activeMenu === child.path;
+              const childDisplay = toDisplayPath(child.path);  
+              const isChildActive = activeMenu === childDisplay;
+
               return (
                 <Link
                   key={child.path}
-                  to={child.path || '#'}
+                  to={childDisplay || '#'} 
                   onClick={() => handleNavigation(child.path || '#')}
                   className={`
                     flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors
@@ -156,10 +162,12 @@ const HeaderNav: React.FC<HeaderNavProps> = ({ isMobileNavOpen, setIsMobileNavOp
         </div>
       );
     } else {
+      
       return (
         <Link
           key={item.path}
-          to={item.path || '#'}
+          to={displayPath || '#'}
+          // onClick={() => handleNavigation(childDisplay || '#')}
           onClick={() => handleNavigation(item.path || '#')}
           className={`
             flex items-center px-3 py-2 rounded-lg transition-colors

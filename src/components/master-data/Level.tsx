@@ -12,10 +12,13 @@ interface RoleItem {
 // Define the full structure of all possible permissions
 const allPermissionsStructure = {
   "Main": {
-    "dashboard": "Dashboard"
+    "dashboard": "Dashboard",
+    "sales": "Penjualan",
+    "purchases": "Pembelian",
+    "history-pending": "History Pending",
   },
   "Status Order": {
-    "status-order": "Status Order"
+    "status_order": "Status Order"
   },
   "Master": {
     "produk": "Produk",

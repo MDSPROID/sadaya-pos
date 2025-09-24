@@ -1,165 +1,171 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../integrations/supabase/client';
 import { showError } from '../utils/toast';
-import { PendingOrderItem } from '../types/orderTypes'; // pastikan tipe ini sesuai strukturnya
+import { PendingOrderItem } from '../types/orderTypes';
 
 interface UseHistoryPendingSalesDataProps {
   durationFilter: string;
-  searchTerm: string; // tidak akan dipakai sebagai trigger fetch di sini
+  searchTerm: string;
 }
-
 type FetchOverride = { searchTerm?: string; durationFilter?: string };
 
 const joinName = (first?: string | null, last?: string | null) => {
-  const parts = [first, last].filter(Boolean);
-  return parts.length ? parts.join(' ') : null;
+  const a = (first || '').trim();
+  const b = (last || '').trim();
+  const s = `${a} ${b}`.trim();
+  return s || null;
 };
 
-export const useHistoryPendingSalesData = ({
-  durationFilter,
-  searchTerm,
-}: UseHistoryPendingSalesDataProps) => {
+// NOTE: Biarkan rumus ini seperti History Pending sebelumnya (sesuai permintaanmu)
+const calculateDuration = (orderDate: string): number => {
+  const today = new Date();
+  const order = new Date(orderDate);
+  const diffTime = Math.abs(today.getTime() - order.getTime());
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+};
+
+export const useHistoryPendingSalesData = ({ durationFilter, searchTerm }: UseHistoryPendingSalesDataProps) => {
   const [data, setData] = useState<PendingOrderItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const calculateDuration = (orderDate: string): number => {
-    const today = new Date();
-    const order = new Date(orderDate);
-    const diffTime = Math.abs(today.getTime() - order.getTime());
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  };
+  const fetchPendingSales = useCallback(async (override?: FetchOverride) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const sTerm = override?.searchTerm ?? searchTerm ?? '';
+      const dFilter = override?.durationFilter ?? durationFilter ?? 'all';
 
-  const fetchPendingSales = useCallback(
-    async (override?: FetchOverride) => {
-      setLoading(true);
-      setError(null);
+      let fromDays = 0, toDays = 99999;
+      if (dFilter === '1-7')      { fromDays = 1;  toDays = 7; }
+      else if (dFilter === '8-14'){ fromDays = 8;  toDays = 14; }
+      else if (dFilter === '>14') { fromDays = 15; toDays = 99999; }
 
-      const activeSearch = override?.searchTerm ?? searchTerm ?? '';
-      const activeDuration = override?.durationFilter ?? durationFilter ?? 'all';
-
-      let query = supabase
+      // 1) Ambil orders pending
+      let q = supabase
         .from('orders')
         .select(`
           id, created_at, order_date, pickup_date, invoice_number,
           customer_id, customer_display_name, customer_display_phone,
           kasir_id, operator_id, designer_id, finishing_id,
           total_amount, notes, priority, payment_status, order_status,
-          discount_amount, tax_amount, final_amount, payment_method, bank_name,
-          ready_status,
-          order_items:order_items(
-            id, product_id, product_name, quantity, unit_price,
-            discount_per_item, subtotal_per_item, designer_id
-          )
+          discount_amount, tax_amount, final_amount, payment_method, bank_name
         `)
         .eq('payment_status', 'pending')
-        .order('order_date', { ascending: false })
         .order('created_at', { ascending: false });
 
-      const { data: ordersList, error } = await query;
+      if (sTerm.trim()) {
+        q = q.or([
+          `customer_display_name.ilike.%${sTerm}%`,
+          `invoice_number.ilike.%${sTerm}%`,
+          `customer_display_phone.ilike.%${sTerm}%`
+        ].join(','));
+      }
 
-      if (error) {
-        console.error('Error fetching pending orders:', error);
-        showError('Gagal memuat data penjualan tertunda.');
-        setError(error.message);
-        setLoading(false);
+      const { data: rows, error: orderErr } = await q;
+      if (orderErr) throw orderErr;
+
+      if (!rows || rows.length === 0) {
+        setData([]);
         return;
       }
 
-      const processedData: PendingOrderItem[] = (ordersList || []).map((order: any) => {
-        const rawProfiles: any = order.profiles;
-        let profileData: { first_name: string | null; last_name: string | null } | null = null;
+      // 2) Ambil order_items untuk kumpulkan designer per order
+      const orderIds = rows.map(r => r.id);
+      const { data: itemsRaw, error: itemsErr } = await supabase
+        .from('order_items')
+        .select('order_id, designer_id')
+        .in('order_id', orderIds);
 
-        if (rawProfiles) {
-          if (Array.isArray(rawProfiles) && rawProfiles.length > 0) {
-            profileData = {
-              first_name: rawProfiles[0].first_name ?? null,
-              last_name: rawProfiles[0].last_name ?? null,
-            };
-          } else if (typeof rawProfiles === 'object') {
-            profileData = {
-              first_name: rawProfiles.first_name ?? null,
-              last_name: rawProfiles.last_name ?? null,
-            };
-          }
+      if (itemsErr) {
+        console.warn('order_items fetch error:', itemsErr);
+      }
+
+      // 3) Kumpulkan semua user id unik
+      const idSet = new Set<string>();
+      rows.forEach((r: any) => {
+        [r.kasir_id, r.operator_id, r.designer_id, r.finishing_id]
+          .filter(Boolean).forEach((id: string) => idSet.add(id));
+      });
+      (itemsRaw || []).forEach((it: any) => { if (it?.designer_id) idSet.add(it.designer_id); });
+      const idList = Array.from(idSet);
+
+      // 4) Map id -> nama (profiles)
+      let nameById: Record<string, string> = {};
+      if (idList.length) {
+        const { data: profs, error: profErr } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name')
+          .in('id', idList);
+
+        if (!profErr && Array.isArray(profs)) {
+          nameById = profs.reduce((acc: Record<string,string>, p: any) => {
+            acc[p.id] = joinName(p.first_name, p.last_name) || '';
+            return acc;
+          }, {});
         }
+      }
 
-        const pelangganArr = Array.isArray(order.pelanggan)
-          ? order.pelanggan
-          : order.pelanggan
-          ? [order.pelanggan]
-          : [];
+      // 5) Map order_id -> daftar nama designer unik dari items
+      const designersPerOrder = new Map<string, string[]>();
+      (itemsRaw || []).forEach((it: any) => {
+        const nm = nameById[it?.designer_id || ''] || '';
+        if (!nm.trim()) return;
+        const arr = designersPerOrder.get(it.order_id) || [];
+        if (!arr.includes(nm)) arr.push(nm);
+        designersPerOrder.set(it.order_id, arr);
+      });
 
-        const pelanggan0 = pelangganArr[0] || null;
+      // 6) Bentuk payload + hitung durasi + filter durasi
+      const mapped = (rows as any[]).map((row) => {
+        const durasi = calculateDuration(row.order_date);
+        const itemDesignerNames = designersPerOrder.get(row.id) || [];
+        const singleDesigner = row.designer_id ? (nameById[row.designer_id] || null) : null;
 
         return {
-          ...order,
-          pelanggan: Array.isArray(order.pelanggan)
-            ? order.pelanggan
-            : order.pelanggan
-            ? [order.pelanggan]
-            : null,
-          profiles: profileData,
-          durasi_tunggu: calculateDuration(order.order_date),
-          discount_amount: order.discount_amount || 0,
-          tax_amount: order.tax_amount || 0,
-          final_amount: order.final_amount || order.total_amount,
-          alamat_pelanggan: pelanggan0?.alamat ?? null,
-          catatan_pelanggan: pelanggan0?.catatan ?? null,
-          order_items: [],
+          ...row,
+          kasir_name:     nameById[row.kasir_id || ''] || null,
+          operator_name:  nameById[row.operator_id || ''] || null,
+          finishing_name: nameById[row.finishing_id || ''] || null,
+          designer_name:  singleDesigner,
+          designer_names: itemDesignerNames.length ? itemDesignerNames : null,
+          durasi_tunggu:  durasi,
         } as PendingOrderItem;
-      });
+      }).filter((row: any) => row.durasi_tunggu >= fromDays && row.durasi_tunggu <= toDays);
 
-      // Filter berdasarkan durasi
-      const filteredByDuration = processedData.filter((item) => {
-        if (activeDuration === 'all') return true;
-        const d = item.durasi_tunggu;
-        if (activeDuration === '1-7') return d >= 1 && d <= 7;
-        if (activeDuration === '8-14') return d >= 8 && d <= 14;
-        if (activeDuration === '>14') return d > 14;
-        return true;
-      });
-
-      // Filter teks (client-side)
-      const term = activeSearch.toLowerCase();
+      // 7) Filter teks client-side (tambahkan nama petugas juga)
+      const term = sTerm.toLowerCase();
       const finalFilteredData = term
-        ? filteredByDuration.filter((item) => {
-            const customerName =
-              (item.customer_display_name ||
-                item.pelanggan?.[0]?.nama_pelanggan ||
-                '')?.toLowerCase();
-            const customerPhone =
-              (item.customer_display_phone ||
-                item.pelanggan?.[0]?.telepon ||
-                '')?.toLowerCase();
-            const kasirName = item.profiles?.first_name?.toLowerCase() || '';
+        ? mapped.filter((item: any) => {
+            const customerName = (item.customer_display_name || '').toLowerCase();
+            const customerPhone = (item.customer_display_phone || '').toLowerCase();
+            const dn = (Array.isArray(item.designer_names) ? item.designer_names.join(' ') : '').toLowerCase();
             return (
-              item.id.toLowerCase().includes(term) ||
               (item.invoice_number || '').toLowerCase().includes(term) ||
+              item.id.toLowerCase().includes(term) ||
               customerName.includes(term) ||
               customerPhone.includes(term) ||
               (item.notes || '').toLowerCase().includes(term) ||
-              kasirName.includes(term)
+              (item.kasir_name || '').toLowerCase().includes(term) ||
+              (item.operator_name || '').toLowerCase().includes(term) ||
+              (item.finishing_name || '').toLowerCase().includes(term) ||
+              dn.includes(term)
             );
           })
-        : filteredByDuration;
+        : mapped;
 
-      setData(finalFilteredData);
+      setData(finalFilteredData as any);
+    } catch (e: any) {
+      console.error(e);
+      setError(e?.message || 'Gagal memuat data pending.');
+      showError(e?.message || 'Gagal memuat data pending.');
+      setData([]);
+    } finally {
       setLoading(false);
-    },
-    [durationFilter, searchTerm]
-  );
+    }
+  }, [durationFilter, searchTerm]);
 
-  // Initial load sekali saat mount
-  useEffect(() => {
-    fetchPendingSales();
-  }, [fetchPendingSales]);
+  useEffect(() => { fetchPendingSales(); }, [fetchPendingSales]);
 
-  return {
-    data,
-    loading,
-    error,
-    fetchPendingSales,
-    setData,
-  };
+  return { data, loading, error, fetchPendingSales, setData };
 };

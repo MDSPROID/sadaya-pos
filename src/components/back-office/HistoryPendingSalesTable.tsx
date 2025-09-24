@@ -73,15 +73,15 @@ function renderNotes(raw: string | null) {
       // buang bagian "Payment Details: {...}" dari catatan asli agar tidak dobel
       before = before.replace(match[0], '').trim();
     } catch {
-      // gagal parse: fallback tampilkan apa adanya
+      // gagal parse → tampilkan apa adanya
     }
   } else {
-    // Kadang user mungkin menyimpan murni JSON tanpa prefix
+    // fallback: kalau catatan murni JSON
     try {
       const maybe = JSON.parse(raw);
       if (maybe && typeof maybe === 'object') {
         details = maybe;
-        before = ''; // kalau memang isinya pure JSON, kosongkan teks awal
+        before = '';
       }
     } catch {
       // bukan JSON; tampilkan apa adanya
@@ -89,14 +89,13 @@ function renderNotes(raw: string | null) {
   }
 
   if (!details) {
-    // Tidak ada JSON yang valid → tampilkan catatan asli
     return <span className="whitespace-pre-line break-words">{before || '-'}</span>;
   }
 
   const {
     dp_amount = 0,
     paid_amount = 0,
-    total_paid = 0,
+    // total_paid = 0,     // ⟵ tidak dipakai lagi untuk tampilan
     final_amount = 0,
     payment_status,
     payment_method,
@@ -104,17 +103,31 @@ function renderNotes(raw: string | null) {
     tempo_date,
   } = details;
 
-  // Susun baris-baris yang rapi
+  const dpNum = Number(dp_amount || 0);
+  const paidNum = Number(paid_amount || 0);
+  const finalNum = Number(final_amount || 0);
+
+  // Kekurangan = Total Tagihan - DP (sesuai permintaan)
+  const kekurangan = Math.max(finalNum - dpNum, 0);
+
+  // Susun baris-baris rapi
   const lines: Array<[string, string]> = [];
 
   if (before) lines.push(['Catatan', before]);
-  if (dp_amount) lines.push(['DP', formatRupiah(dp_amount)]);
-  if (paid_amount) lines.push(['Dibayar', formatRupiah(paid_amount)]);
-  if (total_paid) lines.push(['Total Dibayar', formatRupiah(total_paid)]);
-  if (final_amount) lines.push(['Total Tagihan', formatRupiah(final_amount)]);
+  if (dpNum) lines.push(['DP', formatRupiah(dpNum)]);
+  if (paidNum) lines.push(['Dibayar', formatRupiah(paidNum)]);
+  if (finalNum) {
+    lines.push(['Total Tagihan', formatRupiah(finalNum)]);
+    lines.push(['Kekurangan', formatRupiah(kekurangan)]); // ⟵ setelah Total Tagihan
+  }
   if (payment_status) lines.push(['Status', ucfirst(String(payment_status))]);
   if (payment_method) {
-    const metode = payment_method === 'cash' ? 'Tunai' : payment_method === 'bank_transfer' ? 'Transfer Bank' : String(payment_method);
+    const metode =
+      payment_method === 'cash'
+        ? 'Tunai'
+        : payment_method === 'bank_transfer'
+        ? 'Transfer Bank'
+        : String(payment_method);
     lines.push(['Metode', metode]);
   }
 
@@ -126,7 +139,6 @@ function renderNotes(raw: string | null) {
 
   if (lines.length === 0) return <span>-</span>;
 
-  // Tampilkan multi-line, rapih untuk cell tabel
   return (
     <div className="whitespace-pre-line break-words">
       {lines.map(([k, v]) => (
