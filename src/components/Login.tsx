@@ -17,23 +17,41 @@ const Login: React.FC = () => {
             <p className="text-gray-600">Masuk ke sistem</p>
           </div>
 
+          {/* CSS tambahan untuk menyembunyikan footer/link yang tersisa */}
+          <style>{`
+            /* Versi class lama/library lama */
+            .sbui-auth .sbui-form__footer { display: none !important; }
+            .sbui-auth a { display: none !important; }
+
+            /* Versi class baru/library baru */
+            .supabase-auth-ui_ui-auth div[class*="footer"] { display: none !important; }
+            .supabase-auth-ui_ui-anchor { display: none !important; }
+            /* Opsional: hilangkan pembatas "or continue with" bila ada */
+            .supabase-auth-ui_ui-divider { display: none !important; }
+          `}</style>
+
           <div className="mt-8">
             <Auth
               supabaseClient={supabase}
-              providers={[]} // No third-party providers unless specified
+              providers={[]} // tidak ada provider sosial
               appearance={{
                 theme: ThemeSupa,
+                className: {
+                  anchor: 'hidden',   // sembunyikan semua <a> bawaan (Forgot/Sign up)
+                  divider: 'hidden',  // hilangkan "or continue with" jika muncul
+                },
                 variables: {
                   default: {
                     colors: {
-                      brand: 'hsl(210 96% 40%)', // blue-600
-                      brandAccent: 'hsl(210 96% 30%)', // blue-700
+                      brand: 'hsl(210 96% 40%)',
+                      brandAccent: 'hsl(210 96% 30%)',
                     },
                   },
                 },
               }}
               theme="light"
-              // redirectTo={window.location.origin + '/dashboard'} // Hapus properti ini
+              view="sign_in"     // pastikan default view = sign_in
+              // magicLink={false} // opsional
             />
           </div>
         </div>

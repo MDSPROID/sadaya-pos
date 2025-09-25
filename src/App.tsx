@@ -6,7 +6,6 @@ import Dashboard from './components/Dashboard';
 import { supabase } from './integrations/supabase/client';
 import NotFound from './pages/NotFound';
 import NoAccess from './pages/NoAccess';
-const StatusOrder = React.lazy(() => import('./pages/StatusOrder'));
 import ProtectedRoute from "./components/ProtectedRoute";
 
 const App: React.FC = () => {
@@ -17,12 +16,6 @@ const App: React.FC = () => {
   };
 
   const allowedDashboardRoles = ['Super Admin', 'Admin', 'Kasir', 'Operator', 'Designer', 'Finishing'];
-
-  const hasStatusOrderAccess = () => {
-    if (!profile) return false;
-    if (profile.role === 'Super Admin') return true;
-    return profile?.permissions?.['Status Order']?.['status_order'] === true;
-  };
 
   if (loading) {
     return (
@@ -39,29 +32,29 @@ const App: React.FC = () => {
         element={!session ? <Login /> : <Navigate to="/dashboard" replace />}
       />
       <Route
-          path="/dashboard/*"
-          element={
-            <ProtectedRoute
-              allowedRoles={allowedDashboardRoles} // opsional, kalau mau tetap filter role kasar
-              require="Main.dashboard"             // cek JSON: { "Main": { "dashboard": true } }
-            >
-              {session ? (
-                profile ? (
-                  <Dashboard user={profile} onLogout={handleLogout} />
-                ) : (
-                  <Navigate to="/no-access" replace />
-                )
-              ) : (
-                <Navigate to="/login" replace />
-              )}
-            </ProtectedRoute>
-          }
-        />
+        path="/dashboard/*"
+        element={
+          session ? (
+            profile && allowedDashboardRoles.includes(profile.role || '') ? (
+              <Dashboard user={profile} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/no-access" replace />
+            )
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      {/* Redirect URL lama/typo ke slug resmi */}
+      <Route path="/status_order" element={<Navigate to="/dashboard/status-order" replace />} />
+      <Route path="/status-order" element={<Navigate to="/dashboard/status-order" replace />} />
+      <Route path="/dashboard/status_order" element={<Navigate to="/dashboard/status-order" replace />} />
       <Route path="/no-access" element={<NoAccess />} />
       <Route
         path="/"
         element={session ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />}
       />
+      <Route path="/not-found" element={<NotFound />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

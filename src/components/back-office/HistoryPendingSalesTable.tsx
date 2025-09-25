@@ -95,9 +95,9 @@ function renderNotes(raw: string | null) {
   const {
     dp_amount = 0,
     paid_amount = 0,
-    // total_paid = 0,     // ⟵ tidak dipakai lagi untuk tampilan
     final_amount = 0,
     payment_status,
+    order_status,
     payment_method,
     tempo_active,
     tempo_date,
@@ -113,14 +113,17 @@ function renderNotes(raw: string | null) {
   // Susun baris-baris rapi
   const lines: Array<[string, string]> = [];
 
-  if (before) lines.push(['Catatan', before]);
-  if (dpNum) lines.push(['DP', formatRupiah(dpNum)]);
-  if (paidNum) lines.push(['Dibayar', formatRupiah(paidNum)]);
+  if (before) lines.push(['Catatan ', before]);
+  if (paidNum) lines.push(['Dibayar ', formatRupiah(paidNum)]);
   if (finalNum) {
-    lines.push(['Total Tagihan', formatRupiah(finalNum)]);
-    lines.push(['Kekurangan', formatRupiah(kekurangan)]); // ⟵ setelah Total Tagihan
+    lines.push(['Total Tagihan ', formatRupiah(finalNum)]);
+    if (dpNum) lines.push(['DP ', formatRupiah(dpNum)]);
+    lines.push(['Kekurangan ', formatRupiah(kekurangan)]);
   }
-  if (payment_status) lines.push(['Status', ucfirst(String(payment_status))]);
+  if (payment_status) lines.push(['Status Bayar ', ucfirst(String(payment_status))]);
+  // if (order_status) {
+  //   const o_status = order_status === "new" 
+  // }
   if (payment_method) {
     const metode =
       payment_method === 'cash'
@@ -128,13 +131,13 @@ function renderNotes(raw: string | null) {
         : payment_method === 'bank_transfer'
         ? 'Transfer Bank'
         : String(payment_method);
-    lines.push(['Metode', metode]);
+    lines.push(['Metode ', metode]);
   }
 
   if (tempo_active === true) {
-    lines.push(['Tempo', `Aktif (${formatDateID(tempo_date)})`]);
+    lines.push(['Tempo ', `Aktif (${formatDateID(tempo_date)})`]);
   } else if (tempo_active === false) {
-    lines.push(['Tempo', 'Non-aktif']);
+    lines.push(['Tempo ', 'Non-aktif']);
   }
 
   if (lines.length === 0) return <span>-</span>;
@@ -165,18 +168,23 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
   error,
 }) => {
 
-  const renderPetugas = (item: PendingOrderItem) => {
-     const designerDisplay =
-      (item.designer_names && item.designer_names.length > 0)
-        ? item.designer_names.join(', ')
-        : (item.designer_name && item.designer_name.trim() ? item.designer_name : '-');
+  const ucfirst = (s?: string | null): string => {
+    const str = (s ?? '').toString().trim();
+    return str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : '';
+  };
 
-    const row = [
-      ['Kasir', item.kasir_name],
-      ['Operator', item.operator_name],
-      ['Designer', designerDisplay],
-      ['Finishing', item.finishing_name],
-    ] as Array<[string, string | null | undefined]>;
+  const renderPetugas = (item: PendingOrderItem) => {
+    const designerDisplay =
+      item.designer_names && item.designer_names.length > 0
+        ? item.designer_names.map(ucfirst).join(', ')
+        : (ucfirst(item.designer_name) || '-');
+
+    const row: Array<[string, string]> = [
+      ['Designer', designerDisplay || '-'],
+      ['Kasir', ucfirst(item.kasir_name) || '-'],
+      ['Operator', ucfirst(item.operator_name) || '-'],
+      ['Finishing', ucfirst(item.finishing_name) || '-'],
+    ];
 
     return (
       <div className="whitespace-pre-line break-words">

@@ -525,6 +525,29 @@ export const useSalesOrder = (
       return;
     }
 
+    // === PRE-CHECK: jika melanjutkan transaksi & klik "Pending Trx", cek ready_status sebelumnya
+    let wasReady = false;
+    if (loadOrderId && status === 'pending') {
+      try {
+        const { data: currentRow, error: curErr } = await supabase
+          .from('orders')
+          .select('ready_status')
+          .eq('id', loadOrderId)
+          .single();
+
+        if (!curErr && currentRow?.ready_status === 'ready') {
+          const ok = window.confirm(
+            "Status Order ini sebelumnya telah 'SIAP CETAK'.\nApa Anda ingin membatalkannya?"
+          );
+          if (!ok) return; // batal → jangan lanjut simpan
+          wasReady = true;  // tandai agar nanti dipaksa jadi not_ready
+        }
+      } catch (e) {
+        // kalau gagal cek, biarkan lanjut normal
+        console.warn('Gagal cek ready_status awal:', e);
+      }
+    }
+
     const toastId = showLoading('Menyimpan pesanan...');
 
     try {

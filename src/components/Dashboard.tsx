@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from '../components/ProtectedRoute';
+
+import StatusOrderProcess from '../pages/StatusOrderProcess';
 
 // Import halaman Master Data
 import Pelanggan from './master-data/Pelanggan';
@@ -69,7 +71,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           <Route index element={<DashboardHome user={user} />} />
 
           {/* Rute untuk status order*/}
-          <Route path="status_order" element={<ProtectedRoute require="Status Order.status_order"><StatusOrder /></ProtectedRoute>} />
+          <Route path="status-order" element={<ProtectedRoute require="Status Order.status_order"><StatusOrder /></ProtectedRoute>} />
+
+          {/* Proses Cetak (lanjutkan transaksi dari Status Order) */}
+          <Route path="status_order/process/:id" element={<ProtectedRoute require="Status Order.status_order"><StatusOrderProcess /></ProtectedRoute>} />
+
+          {/* Opsional: alias dengan hyphen agar /dashboard/status-order tetap berfungsi */}
+          <Route path="status-order" element={<ProtectedRoute require="Status Order.status_order"><StatusOrder /></ProtectedRoute>} />
+          <Route path="status-order/process/:id" element={<ProtectedRoute require="Status Order.status_order"><StatusOrderProcess /></ProtectedRoute>} />
 
           {/* Rute untuk Penjualan */}
           <Route path="sales" element={<ProtectedRoute require="Main.sales"><Sales /></ProtectedRoute>} />
@@ -115,6 +124,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
           {/* Rute untuk Pengaturan */}
           <Route path="pengaturan/profile_page" element={<ProtectedRoute require="Pengaturan.profile_page"><ProfilePage /></ProtectedRoute>} />
+
+          {/* CATCH-ALL untuk semua /dashboard/... yang tidak valid */}
+          <Route path="*" element={<Navigate to="/not-found" replace />} />
         </Routes>
       </main>
     </div>
