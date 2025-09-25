@@ -5,7 +5,7 @@ import { supabase } from '../integrations/supabase/client';
 import { Printer } from 'lucide-react';
 
 const Login: React.FC = () => {
-  const [companyName, setCompanyName] = useState<string>('Sadaya Printing'); // fallback
+  const [companyName, setCompanyName] = useState<string>('Digital Printing'); // fallback
 
   useEffect(() => {
     let mounted = true;
