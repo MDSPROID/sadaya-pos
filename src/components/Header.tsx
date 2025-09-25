@@ -29,7 +29,7 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout, onMenuToggle, isMobileN
           <Printer className="h-6 w-6 text-white" />
         </div>
         <div>
-          <h1 className="text-lg font-bold text-gray-900">Sadaya Printing</h1>
+          <h1 className="text-lg font-bold text-gray-900">Digital Printing</h1>
           <p className="text-sm text-gray-500">POS System</p>
         </div>
       </div>
