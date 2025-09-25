@@ -29,6 +29,7 @@ interface PendingOrderItem {
   discount_amount?: number;
   tax_amount?: number;
   final_amount?: number;
+  order_status?: 'new' | 'proses_cetak' | 'siap_ambil' | string | null;
 }
 
 /* ===== Helpers ===== */
@@ -118,6 +119,26 @@ function renderNotes(raw: string | null) {
     </div>
   );
 }
+
+const renderOrderStatus = (status?: string | null) => {
+  let label = '-';
+  let cls = 'bg-gray-100 text-gray-700';
+  switch (status) {
+    case 'new':
+      label = 'Siap Cetak';
+      cls = 'bg-yellow-100 text-yellow-800';
+      break;
+    case 'proses_cetak':
+      label = 'Proses Cetak';
+      cls = 'bg-blue-100 text-blue-800';
+      break;
+    case 'siap_ambil':
+      label = 'Siap Ambil';
+      cls = 'bg-green-100 text-green-800';
+      break;
+  }
+  return <span className={`px-2 py-0.5 rounded text-xs font-medium ${cls}`}>{label}</span>;
+};
 
 /** === Sama seperti HistoryPendingSalesTable === */
 const renderPetugas = (item: PendingOrderItem) => {
@@ -258,7 +279,7 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
             type="button"
             onClick={onBulkProcess}
             disabled={!anyChecked}
-            className="flex items-center px-3 py-2 rounded-md bg-green-600 text-white disabled:opacity-60"
+            className="flex items-center px-3 py-2 rounded-md bg-blue-600 text-white disabled:opacity-60"
             title="Set ke PROSES CETAK"
           >
             <CheckCircle2 className="h-5 w-5 mr-2" /> PROSES CETAK
@@ -304,6 +325,7 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
                   'PC',
                   'Tanggal',
                   'Durasi Tunggu',
+                  'Order Status',
                   'Aksi',
                 ].map((h) => (
                   <th
@@ -372,6 +394,9 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
                         {new Date(item.order_date).toLocaleDateString('id-ID')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {renderOrderStatus(item.order_status)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {item.durasi_tunggu} Hari
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -408,7 +433,7 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
         <button
           type="button"
           onClick={onRekap}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="hidden px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           Rekap
         </button>
@@ -418,9 +443,9 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
             type="button"
             onClick={onBulkProcess}
             disabled={!anyChecked}
-            className="flex items-center px-3 py-2 rounded-md bg-green-600 text-white disabled:opacity-60"
+            className="flex items-center px-3 py-2 rounded-md bg-blue-600 text-white disabled:opacity-60"
           >
-            <CheckCircle2 className="h-5 w-5 mr-2" /> PROSES CETAK
+            <CheckCircle2 className="h-5 w-5 mr-2" /> Proses Cetak
           </button>
           <button
             type="button"
@@ -428,7 +453,7 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
             disabled={!anyChecked}
             className="flex items-center px-3 py-2 rounded-md bg-red-600 text-white disabled:opacity-60"
           >
-            <XCircle className="h-5 w-5 mr-2" /> BATALKAN PROSES CETAK
+            <XCircle className="h-5 w-5 mr-2" /> Batalkan Proses Cetak
           </button>
         </div>
       </div>

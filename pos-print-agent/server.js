@@ -120,7 +120,7 @@ const printReceipt = async (notaData, callback) => {
         if (typeof printer.hw === 'function') printer.hw('init');
         printer.align('CT').feed(0);
         printer.size(2, 2).style('B');
-        printer.text(appSettings?.nama_perusahaan || 'SADAYA DIGITAL PRINTING');
+        printer.text(appSettings?.nama_perusahaan || 'DIGITAL PRINTING');
         printer.style('NORMAL').size(1, 1);
         printer.text(appSettings?.alamat || 'Jl. Kutisari No 24 Surabaya');
         printer.text(`Telp: ${appSettings?.telepon || '+62 821-3132-2286'}`);
@@ -176,7 +176,7 @@ const printReceipt = async (notaData, callback) => {
           notaSettings.footer_penjualan.split('\n').forEach(line => printer.text(line));
         } else {
           printer.text('Terima Kasih!');
-          printer.text('DIGITAL PRINTING & ADVERTISING');
+          printer.text(appSettings?.nama_perusahaan || 'DIGITAL PRINTING');
         }
         printer.text('----------------------------------');
 

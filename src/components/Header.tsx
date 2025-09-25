@@ -1,7 +1,7 @@
-import React from 'react';
-import { LogOut, Menu, Printer } from 'lucide-react'; // Import Printer icon
+import React, { useEffect, useState } from 'react';
+import { LogOut, Menu, Printer } from 'lucide-react';
 import { supabase } from '../integrations/supabase/client';
-import HeaderNav from './HeaderNav'; // Import HeaderNav
+import HeaderNav from './HeaderNav';
 
 interface HeaderProps {
   user: {
@@ -10,12 +10,44 @@ interface HeaderProps {
     role: string | null;
   } | null;
   onLogout: () => void;
-  onMenuToggle: () => void; // Keep this for mobile toggle
-  isMobileNavOpen: boolean; // Add this prop
-  setIsMobileNavOpen: (isOpen: boolean) => void; // Add this prop
+  onMenuToggle: () => void;
+  isMobileNavOpen: boolean;
+  setIsMobileNavOpen: (isOpen: boolean) => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ user, onLogout, onMenuToggle, isMobileNavOpen, setIsMobileNavOpen }) => {
+  const [companyName, setCompanyName] = useState<string>('Sadaya Printing'); // fallback
+
+  useEffect(() => {
+    let mounted = true;
+
+    const fetchCompanyName = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('app_settings')
+          .select('nama_perusahaan')
+          .limit(1)
+          .maybeSingle();
+
+        if (!mounted) return;
+
+        if (error) {
+          // silent fallback
+          console.warn('fetch app_settings error:', error.message);
+          return;
+        }
+        if (data?.nama_perusahaan) {
+          setCompanyName(String(data.nama_perusahaan));
+        }
+      } catch (e: any) {
+        console.warn('fetch app_settings exception:', e?.message);
+      }
+    };
+
+    fetchCompanyName();
+    return () => { mounted = false; };
+  }, []);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     onLogout();
@@ -29,13 +61,13 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout, onMenuToggle, isMobileN
           <Printer className="h-6 w-6 text-white" />
         </div>
         <div>
-          <h1 className="text-lg font-bold text-gray-900">Digital Printing</h1>
+          <h1 className="text-lg font-bold text-gray-900">{companyName}</h1>
           <p className="text-sm text-gray-500">POS System</p>
         </div>
       </div>
 
-      {/* Navigation (HeaderNav handles its own responsiveness) */}
-      <div className="flex-1 justify-center"> {/* Removed hidden lg:flex */}
+      {/* Navigation */}
+      <div className="flex-1 justify-center">
         <HeaderNav isMobileNavOpen={isMobileNavOpen} setIsMobileNavOpen={setIsMobileNavOpen} />
       </div>
 
