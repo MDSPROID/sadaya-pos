@@ -1,7 +1,7 @@
 import React from 'react';
 import { Search, RefreshCcw, Play, Trash2, XCircle, CheckCircle2 } from 'lucide-react';
 
-/* ===== Helpers ===== */
+/* ===== Types ===== */
 interface PendingOrderItem {
   id: string;
   created_at: string;
@@ -31,6 +31,7 @@ interface PendingOrderItem {
   final_amount?: number;
 }
 
+/* ===== Helpers ===== */
 const formatRupiah = (n: any) => {
   const num = Number(n) || 0;
   return `Rp ${num.toLocaleString('id-ID')}`;
@@ -145,15 +146,18 @@ const renderPetugas = (item: PendingOrderItem) => {
   );
 };
 
-/* ===== Props untuk Status Order Table ===== */
+/* ===== Props ===== */
 interface StatusOrderTableProps {
   data: PendingOrderItem[];
   loading?: boolean;
   error?: string | null;
+
   searchTerm: string;
   onSearchChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+
   durationFilter: string;
   onDurationFilterChange: (value: string) => void; // terima string
+
   onRefresh: () => void;
   onContinue: (orderId: string) => void;
   onDelete: (orderId: string) => void;
@@ -164,10 +168,10 @@ interface StatusOrderTableProps {
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: (checked: boolean) => void;
   onBulkProcess: () => void;     // set order_status = 'proses_cetak'
-  onBulkCancel: () => void; 
+  onBulkCancel: () => void;      // set order_status = 'new'
 }
 
-/* ===== Komponen Tabel Status Order ===== */
+/* ===== Komponen ===== */
 const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
   data,
   loading = false,
@@ -186,10 +190,11 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
   onBulkProcess,
   onBulkCancel,
 }) => {
-  return (
-    const allVisibleChecked = data.length > 0 && data.every(d => selectedIds.includes(d.id));
-    const anyChecked = selectedIds.length > 0;
+  // ⛔️ PENTING: variabel harus di luar JSX
+  const allVisibleChecked = data.length > 0 && data.every(d => selectedIds.includes(d.id));
+  const anyChecked = selectedIds.length > 0;
 
+  return (
     <div className="space-y-6">
       {error && (
         <div className="p-3 rounded-md bg-red-50 text-red-700 border border-red-200 text-sm">
@@ -321,77 +326,77 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
                   </td>
                 </tr>
               ) : (
-                data.map((item, index) => (
-                    const checked = selectedIds.includes(item.id);
-                    return (
-                        <tr key={item.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-2">
-                                <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => onToggleSelect(item.id)}
-                                />
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {index + 1}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {item.invoice_number || item.id}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">
-                                {ucfirst(item.customer_display_name) ||
-                                ucfirst(item.pelanggan?.[0]?.nama_pelanggan) ||
-                                'N/A'}
-                            </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {item.customer_display_phone ||
-                                item.pelanggan?.[0]?.telepon ||
-                                '0'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {formatRupiah(item.total_amount)}
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-900 max-w-xs">
-                            {renderNotes(item.notes)}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {renderPetugas(item)}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            Server
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {new Date(item.order_date).toLocaleDateString('id-ID')}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {item.durasi_tunggu} Hari
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <div className="flex space-x-2">
-                                <button
-                                type="button"
-                                onClick={() => onContinue(item.id)}
-                                className="text-green-600 hover:text-green-900"
-                                title="Lanjutkan (Proses Cetak)"
-                                >
-                                <Play className="h-5 w-5" />
-                                </button>
-                                <button
-                                type="button"
-                                onClick={() => onDelete(item.id)}
-                                className="hidden text-red-600 hover:text-red-900"
-                                title="Hapus Transaksi"
-                                >
-                                <Trash2 className="h-5 w-5" />
-                                </button>
-                            </div>
-                            </td>
-                        </tr>
-                    );
-                })    
-            }}
+                data.map((item, index) => {
+                  // ⛔️ kalau butuh deklarasi, gunakan blok { ... return (...) }
+                  const checked = selectedIds.includes(item.id);
+                  return (
+                    <tr key={item.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => onToggleSelect(item.id)}
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {index + 1}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {item.invoice_number || item.id}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">
+                          {ucfirst(item.customer_display_name) ||
+                            ucfirst(item.pelanggan?.[0]?.nama_pelanggan) ||
+                            'N/A'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {item.customer_display_phone ||
+                          item.pelanggan?.[0]?.telepon ||
+                          '0'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatRupiah(item.total_amount)}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900 max-w-xs">
+                        {renderNotes(item.notes)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {renderPetugas(item)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        Server
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(item.order_date).toLocaleDateString('id-ID')}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {item.durasi_tunggu} Hari
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <div className="flex space-x-2">
+                          <button
+                            type="button"
+                            onClick={() => onContinue(item.id)}
+                            className="text-green-600 hover:text-green-900"
+                            title="Lanjutkan (Proses Cetak)"
+                          >
+                            <Play className="h-5 w-5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onDelete(item.id)}
+                            className="hidden text-red-600 hover:text-red-900"
+                            title="Hapus Transaksi"
+                          >
+                            <Trash2 className="h-5 w-5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -407,7 +412,7 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
         >
           Rekap
         </button>
-        
+
         <div className="flex items-center gap-2">
           <button
             type="button"
