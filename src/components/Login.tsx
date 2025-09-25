@@ -13,7 +13,7 @@ const Login: React.FC = () => {
             <div className="mx-auto h-16 w-16 bg-blue-600 rounded-full flex items-center justify-center mb-4">
               <Printer className="h-8 w-8 text-white" />
             </div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Sadaya Printing</h2>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">Digital Printing</h2>
             <p className="text-gray-600">Masuk ke sistem</p>
           </div>
 

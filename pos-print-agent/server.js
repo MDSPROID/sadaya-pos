@@ -176,7 +176,7 @@ const printReceipt = async (notaData, callback) => {
           notaSettings.footer_penjualan.split('\n').forEach(line => printer.text(line));
         } else {
           printer.text('Terima Kasih!');
-          printer.text('SADAYA DIGITAL PRINTING & ADVERTISING');
+          printer.text('DIGITAL PRINTING & ADVERTISING');
         }
         printer.text('----------------------------------');
 
