@@ -154,7 +154,7 @@ const StatusOrder: React.FC = () => {
       el.pause();
       el.currentTime = 0;
       setSoundReady(true);
-      showSuccess('Notifikasi suara diaktifkan.');
+      showSuccess('Tes notifikasi suara berhasil.');
     } catch (e) {
       console.warn('Init sound failed:', e);
       showError('Gagal mengaktifkan suara. Pastikan file audio bisa diakses.');
@@ -431,12 +431,6 @@ const StatusOrder: React.FC = () => {
           <div className="bg-white w-full max-w-xl rounded-xl shadow-lg p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-semibold">Pilih Suara Notifikasi</h3>
-              <button
-                onClick={closePicker}
-                className="px-2 py-1 text-sm rounded-md bg-gray-100 hover:bg-gray-200"
-              >
-                Tutup
-              </button>
             </div>
 
             {/* Daftar opsi */}
@@ -473,7 +467,7 @@ const StatusOrder: React.FC = () => {
             </div>
 
             {/* Tambah suara kustom */}
-            <div className="mt-4 space-y-2">
+            <div className="hidden mt-4 space-y-2">
               <div className="font-medium text-sm">Tambah Suara</div>
               <div className="flex gap-2">
                 <input

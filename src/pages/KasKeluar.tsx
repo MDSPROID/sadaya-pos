@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Search, Eye } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Eye, X } from 'lucide-react';
 import { supabase } from '../integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '../utils/toast';
 import { useSession } from '../components/SessionContextProvider';
@@ -14,6 +14,16 @@ interface BankOption {
   charge: number;
 }
 
+interface JenisOption {
+  id: string;
+  nama_jenis: string;
+}
+
+type KasKeluarItemEx = KasKeluarItem & {
+  jenis_pengeluaran_id?: string | null;
+  jenis_pengeluaran?: { nama_jenis: string } | null;
+};
+
 const KasKeluar: React.FC = () => {
   const { session } = useSession();
   const currentUserId = session?.user?.id;
@@ -23,18 +33,25 @@ const KasKeluar: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [bankOptions, setBankOptions] = useState<BankOption[]>([]); // New state for bank options
+  const [bankOptions, setBankOptions] = useState<BankOption[]>([]);
+  const [jenisOptions, setJenisOptions] = useState<JenisOption[]>([]);
 
-  const initialKasKeluarForm: Partial<KasKeluarItem> = {
+  // === STATE MODAL JENIS BARU ===
+  const [showJenisModal, setShowJenisModal] = useState(false);
+  const [jenisNama, setJenisNama] = useState('');
+  const [savingJenis, setSavingJenis] = useState(false);
+
+  const initialKasKeluarForm: Partial<KasKeluarItemEx> = {
     tanggal: new Date().toISOString().split('T')[0],
     nama_pengeluaran: '',
+    jenis_pengeluaran_id: null,
     jumlah: 0,
     keterangan: '',
-    payment_method: 'cash', // Default payment method
-    bank_id: null, // Default bank ID
+    payment_method: 'cash',
+    bank_id: null,
   };
 
-  const [selectedItem, setSelectedItem, clearSelectedItem] = useFormPersistence<Partial<KasKeluarItem>>({
+  const [selectedItem, setSelectedItem, clearSelectedItem] = useFormPersistence<Partial<KasKeluarItemEx>>({
     key: 'kasKeluarFormDraft',
     initialValue: initialKasKeluarForm,
     enabled: modalMode === 'add',
@@ -62,8 +79,23 @@ const KasKeluar: React.FC = () => {
     }
   };
 
+  const fetchJenisOptions = async () => {
+    const { data: jenisList, error } = await supabase
+      .from('jenis_pengeluaran')
+      .select('id, nama_jenis')
+      .order('nama_jenis', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching jenis options:', error);
+      showError('Gagal memuat jenis pengeluaran.');
+    } else {
+      setJenisOptions(jenisList || []);
+    }
+  };
+
   useEffect(() => {
     fetchBankOptions();
+    fetchJenisOptions();
   }, []);
 
   const filteredData = data.filter(item =>
@@ -75,12 +107,19 @@ const KasKeluar: React.FC = () => {
     item.bank?.nama_bank?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const openModal = (mode: 'add' | 'edit' | 'view', item?: KasKeluarItem) => {
+  const openModal = (mode: 'add' | 'edit' | 'view', item?: KasKeluarItemEx) => {
     setModalMode(mode);
     if (mode === 'add') {
-      setSelectedItem(prev => ({ ...prev, tanggal: new Date().toISOString().split('T')[0] }));
+      setSelectedItem(prev => ({
+        ...prev,
+        tanggal: new Date().toISOString().split('T')[0],
+        jenis_pengeluaran_id: prev?.jenis_pengeluaran_id ?? null,
+      }));
     } else {
-      setSelectedItem(item || {});
+      setSelectedItem({
+        ...item,
+        jenis_pengeluaran_id: (item as any)?.jenis_pengeluaran_id ?? null,
+      });
     }
     setShowModal(true);
   };
@@ -95,25 +134,68 @@ const KasKeluar: React.FC = () => {
     setSelectedItem(prev => ({ ...prev, [name]: value }));
   };
 
+  // === MODAL JENIS BARU ===
+  const openJenisModal = () => {
+    setJenisNama('');
+    setShowJenisModal(true);
+  };
+  const closeJenisModal = () => {
+    if (savingJenis) return;
+    setShowJenisModal(false);
+    setJenisNama('');
+  };
+  const handleSubmitJenis = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const nama = jenisNama.trim();
+    if (!nama) {
+      showError('Nama jenis tidak boleh kosong.');
+      return;
+    }
+    const toastId = showLoading('Menambahkan jenis...');
+    try {
+      setSavingJenis(true);
+      const { data: inserted, error } = await supabase
+        .from('jenis_pengeluaran')
+        .insert([{ nama_jenis: nama }])
+        .select('id, nama_jenis')
+        .single();
+
+      if (error) throw error;
+
+      await fetchJenisOptions();
+      setSelectedItem(prev => ({ ...prev, jenis_pengeluaran_id: inserted.id }));
+      showSuccess('Jenis pengeluaran ditambahkan.');
+      setShowJenisModal(false);
+      setJenisNama('');
+    } catch (err: any) {
+      console.error(err);
+      showError(err?.message || 'Gagal menambah jenis.');
+    } finally {
+      dismissToast(toastId);
+      setSavingJenis(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const toastId = showLoading(modalMode === 'add' ? 'Menambah pengeluaran...' : 'Menyimpan perubahan...');
 
-    const itemToSave = {
+    const itemToSave: any = {
       tanggal: selectedItem.tanggal,
       nama_pengeluaran: selectedItem.nama_pengeluaran,
+      jenis_pengeluaran_id: selectedItem.jenis_pengeluaran_id || null,
       jumlah: parseFloat(selectedItem.jumlah as any),
       keterangan: selectedItem.keterangan,
       petugas_id: currentUserId,
-      payment_method: selectedItem.payment_method || 'cash', // Include payment method
-      bank_id: selectedItem.payment_method === 'bank_transfer' ? selectedItem.bank_id : null, // Include bank ID conditionally
+      payment_method: selectedItem.payment_method || 'cash',
+      bank_id: selectedItem.payment_method === 'bank_transfer' ? selectedItem.bank_id : null,
     };
 
     if (modalMode === 'add') {
       const { data: newKasKeluar, error } = await supabase
         .from('kas_keluar')
         .insert([itemToSave])
-        .select('*, profiles(first_name, last_name), bank(nama_bank)')
+        .select('*, profiles(first_name, last_name), bank(nama_bank), jenis_pengeluaran(nama_jenis)')
         .single();
 
       if (error) {
@@ -127,8 +209,8 @@ const KasKeluar: React.FC = () => {
       const { data: updatedKasKeluar, error } = await supabase
         .from('kas_keluar')
         .update(itemToSave)
-        .eq('id', selectedItem.id)
-        .select('*, profiles(first_name, last_name), bank(nama_bank)')
+        .eq('id', (selectedItem as any).id)
+        .select('*, profiles(first_name, last_name), bank(nama_bank), jenis_pengeluaran(nama_jenis)')
         .single();
 
       if (error) {
@@ -188,7 +270,6 @@ const KasKeluar: React.FC = () => {
     dismissToast(toastId);
   };
 
-  // Helper function to format payment method string
   const formatPaymentMethod = (method: string | null | undefined) => {
     if (!method) return 'N/A';
     return method.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
@@ -337,13 +418,13 @@ const KasKeluar: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex space-x-2">
                         <button
-                          onClick={() => openModal('view', item)}
+                          onClick={() => openModal('view', item as any)}
                           className="text-blue-600 hover:text-blue-900"
                         >
                           <Eye className="h-5 w-5" />
                         </button>
                         <button
-                          onClick={() => openModal('edit', item)}
+                          onClick={() => openModal('edit', item as any)}
                           className="text-indigo-600 hover:text-indigo-900"
                         >
                           <Edit className="h-5 w-5" />
@@ -374,9 +455,9 @@ const KasKeluar: React.FC = () => {
         </button>
       </div>
 
-      {/* Modal */}
+      {/* Modal Form Kas Keluar */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
             <form onSubmit={handleSubmit} className="p-6">
               <h3 className="text-lg font-semibold mb-4">
@@ -417,6 +498,37 @@ const KasKeluar: React.FC = () => {
                   />
                 </div>
 
+                {/* === JENIS PENGELUARAN (dropdown + tombol + hijau) === */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Jenis Pengeluaran
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      name="jenis_pengeluaran_id"
+                      value={(selectedItem?.jenis_pengeluaran_id as string) || ''}
+                      onChange={handleChange}
+                      disabled={modalMode === 'view'}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+                    >
+                      <option value="">— Pilih Jenis —</option>
+                      {jenisOptions.map(j => (
+                        <option key={j.id} value={j.id}>{j.nama_jenis}</option>
+                      ))}
+                    </select>
+                    {modalMode !== 'view' && (
+                      <button
+                        type="button"
+                        onClick={openJenisModal}
+                        className="px-3 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700"
+                        title="Tambah jenis baru"
+                      >
+                        <Plus className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 <div>
                   <label htmlFor="jumlah" className="block text-sm font-medium text-gray-700 mb-1">
                     Jumlah
@@ -448,7 +560,7 @@ const KasKeluar: React.FC = () => {
                   />
                 </div>
 
-                {/* New: Payment Method */}
+                {/* Metode Pembayaran */}
                 <div>
                   <label htmlFor="payment_method" className="block text-sm font-medium text-gray-700 mb-1">
                     Metode Pembayaran
@@ -467,8 +579,8 @@ const KasKeluar: React.FC = () => {
                   </select>
                 </div>
 
-                {/* New: Bank Selection if payment_method is bank_transfer */}
-                {selectedItem.payment_method === 'bank_transfer' && (
+                {/* Bank jika transfer */}
+                {selectedItem?.payment_method === 'bank_transfer' && (
                   <div>
                     <label htmlFor="bank_id" className="block text-sm font-medium text-gray-700 mb-1">
                       Pilih Bank
@@ -499,7 +611,7 @@ const KasKeluar: React.FC = () => {
                     </label>
                     <input
                       type="text"
-                      value={selectedItem.profiles ? `${selectedItem.profiles.first_name} ${selectedItem.profiles.last_name || ''}` : 'N/A'}
+                      value={selectedItem?.profiles ? `${selectedItem.profiles.first_name} ${selectedItem.profiles.last_name || ''}` : 'N/A'}
                       disabled
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg disabled:bg-gray-50"
                     />
@@ -523,6 +635,62 @@ const KasKeluar: React.FC = () => {
                     {modalMode === 'add' ? 'Tambah' : 'Simpan'}
                   </button>
                 )}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* === MODAL INPUT JENIS PENGELUARAN BARU === */}
+      {showJenisModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white rounded-lg w-full max-w-md shadow-lg">
+            <form onSubmit={handleSubmitJenis} className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <h3 className="text-lg font-semibold">Tambah Jenis Pengeluaran</h3>
+                <button
+                  type="button"
+                  onClick={closeJenisModal}
+                  className="p-2 rounded-md hover:bg-gray-100"
+                  aria-label="Tutup"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nama Jenis
+                  </label>
+                  <input
+                    type="text"
+                    value={jenisNama}
+                    onChange={(e) => setJenisNama(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-transparent"
+                    placeholder="Mis. Operasional Toko, Listrik, ATK..."
+                    autoFocus
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={closeJenisModal}
+                  disabled={savingJenis}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingJenis}
+                  className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60"
+                >
+                  {savingJenis ? 'Menyimpan...' : 'Simpan'}
+                </button>
               </div>
             </form>
           </div>
