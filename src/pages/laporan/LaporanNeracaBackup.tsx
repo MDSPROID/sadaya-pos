@@ -18,15 +18,16 @@ const LaporanNeraca: React.FC = () => {
   const [endDate, setEndDate] = useState<string>(today);
 
   const allChartSeriesOptions = [
+    { key: 'Pemasukan', label: 'Pemasukan' },
+    { key: 'Pengeluaran', label: 'Pengeluaran' },
+    { key: 'Saldo Akhir', label: 'Saldo Akhir' },
+    { key: 'Piutang', label: 'Piutang' },
     { key: 'Omset', label: 'Omset' },
-    { key: 'Total Pengeluaran', label: 'Total Pengeluaran' },
-    { key: 'Jumlah Hutang', label: 'Jumlah Hutang' },
-    { key: 'Jumlah Piutang', label: 'Jumlah Piutang' },
+    { key: 'Laba Penjualan', label: 'Laba Penjualan' },
+    { key: 'Pembelian', label: 'Pembelian' },
   ];
-  const [selectedChartSeries, setSelectedChartSeries] = useState<string[]>(
-    allChartSeriesOptions.map(s => s.key)
-  );
-  
+  const [selectedChartSeries, setSelectedChartSeries] = useState<string[]>(allChartSeriesOptions.map(s => s.key)); // Default to all for daily
+
   // Effect to update startDate and endDate based on filterPeriod and selected dates
   useEffect(() => {
     let newStartDate: string;
@@ -74,8 +75,7 @@ const LaporanNeraca: React.FC = () => {
       setSelectedChartSeries(allChartSeriesOptions.map(s => s.key));
     } else {
       // For monthly/yearly, default to 'Pemasukan' or first available series
-      // setSelectedChartSeries(['Pemasukan']);
-      setSelectedChartSeries(['Omset']);
+      setSelectedChartSeries(['Pemasukan']);
     }
   }, [filterPeriod]);
 
@@ -212,13 +212,6 @@ const LaporanNeraca: React.FC = () => {
             <Search className="h-5 w-5 mr-2" />
             Lihat
           </button>
-          <button
-              onClick={handlePrint}
-              className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-            >
-              <Printer className="h-5 w-5 mr-2" />
-              Cetak
-            </button>
         </div>
 
         {/* Summary Section */}
@@ -228,65 +221,6 @@ const LaporanNeraca: React.FC = () => {
             <span className="font-medium text-gray-900">Rp {summary.omset.toLocaleString('id-ID')}</span>
           </div>
           <div className="flex justify-between items-center">
-            <span className="text-gray-700">Realisasi Tunai:</span>
-            <span className="font-medium text-gray-900">Rp {summary.order_paid_cash.toLocaleString('id-ID')}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700">Realisasi Transfer:</span>
-            <span className="font-medium text-gray-900">Rp {summary.order_paid_transfer.toLocaleString('id-ID')}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700">Non Realisasi:</span>
-            <span className="font-medium text-gray-900">Rp {summary.order_not_paid.toLocaleString('id-ID')}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700">Kas Masuk Tunai:</span>
-            <span className="font-medium text-gray-900">Rp {summary.kas_masuk_tunai.toLocaleString('id-ID')}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700">Kas Masuk Transfer:</span>
-            <span className="font-medium text-gray-900">Rp {summary.kas_masuk_transfer.toLocaleString('id-ID')}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700">Kas Keluar Tunai:</span>
-            <span className="font-medium text-gray-900">Rp {summary.kas_keluar_tunai.toLocaleString('id-ID')}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700">Kas Keluar Transfer:</span>
-            <span className="font-medium text-gray-900">Rp {summary.kas_keluar_transfer.toLocaleString('id-ID')}</span>
-          </div>
-
-          <div className="flex justify-between items-center text-base font-semibold">
-            <span className="text-gray-700">Jumlah Saldo Tunai / Cash:</span>
-            <span className="text-gray-900">Rp {summary.jumlah_saldo_tunai.toLocaleString('id-ID')}</span>
-          </div>
-          <div className="flex justify-between items-center text-base">
-            <span className="text-gray-700">Jumlah Saldo Non Tunai:</span>
-            <span className="text-gray-900">Rp {summary.jumlah_saldo_non_tunai.toLocaleString('id-ID')}</span>
-          </div>
-          <div className="flex justify-between items-center text-base font-semibold">
-            <span className="text-gray-700">Total Jumlah Saldo:</span>
-            <span className="text-gray-900 text-green-600">Rp {summary.total_jumlah_saldo.toLocaleString('id-ID')}</span>
-          </div>
-          <div className="flex justify-between items-center text-base font-semibold">
-            <span className="text-gray-700">Total Pengeluaran:</span>
-            <span className="font-medium text-yellow-600">Rp {summary.total_pengeluaran.toLocaleString('id-ID')}</span>
-          </div>
-          <div className="flex justify-between items-center text-base font-semibold">
-            <span className="text-gray-700">Jumlah Hutang:</span>
-            <span className="font-semibold text-yellow-600">Rp {summary.jumlah_hutang.toLocaleString('id-ID')}</span>
-          </div>
-          <div className="flex justify-between items-center text-base font-semibold">
-            <span className="text-gray-700">Jumlah Piutang:</span>
-            <span className="font-semibold text-yellow-600">Rp {summary.jumlah_piutang.toLocaleString('id-ID')}</span>
-          </div>
-          <div className="flex justify-between items-center text-base font-bold">
-            <span className="text-gray-700">Saldo Seharusnya:</span>
-            <span className="font-semibold text-black-600">Rp {summary.saldo_seharusnya.toLocaleString('id-ID')}</span>
-          </div>
-
-
-          {/* <div className="flex justify-between items-center">
             <span className="text-gray-700">Laba Penjualan:</span>
             <span className="font-medium text-gray-900">Rp {summary.laba_penjualan.toLocaleString('id-ID')}</span>
           </div>
@@ -323,6 +257,7 @@ const LaporanNeraca: React.FC = () => {
               <span className="text-gray-900">Jumlah Saldo Akhir:</span>
               <span className="text-blue-600">Rp {summary.jumlah_saldo_akhir.toLocaleString('id-ID')}</span>
             </div>
+            {/* New fields for Saldo Cash and Saldo Bank Transfer */}
             <div className="flex justify-between items-center text-base font-semibold">
               <span className="text-gray-700">Jumlah Saldo Cash:</span>
               <span className="text-gray-900">Rp {summary.jumlah_saldo_cash.toLocaleString('id-ID')}</span>
@@ -331,7 +266,16 @@ const LaporanNeraca: React.FC = () => {
               <span className="text-gray-700">Jumlah Saldo Bank Transfer:</span>
               <span className="text-gray-900">Rp {summary.jumlah_saldo_bank_transfer.toLocaleString('id-ID')}</span>
             </div>
-          </div> */}
+          </div>
+          <div className="flex justify-end mt-6">
+            <button
+              onClick={handlePrint}
+              className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              <Printer className="h-5 w-5 mr-2" />
+              Cetak
+            </button>
+          </div>
         </div>
       </div>
 
@@ -361,7 +305,7 @@ const LaporanNeraca: React.FC = () => {
       </div>
 
       {/* Cetak Laporan Tahunan Section (remains outside the main grid for better layout) */}
-      {/* <div className="bg-white rounded-lg shadow-sm p-6 space-y-4">
+      <div className="bg-white rounded-lg shadow-sm p-6 space-y-4">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Cetak Laporan Tahunan</h3>
         <div>
           <select
@@ -389,7 +333,7 @@ const LaporanNeraca: React.FC = () => {
         <p className="text-sm text-gray-500 mt-4">
           * Laporan tahunan akan diimplementasikan di kemudian hari.
         </p>
-      </div> */}
+      </div>
     </div>
   );
 };

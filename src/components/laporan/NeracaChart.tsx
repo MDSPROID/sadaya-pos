@@ -11,13 +11,10 @@ interface NeracaChartProps {
 }
 
 const seriesConfig = [
-  { key: 'Pemasukan', color: '#22c55e' }, // green-500
-  { key: 'Pengeluaran', color: '#ef4444' }, // red-500
-  { key: 'Saldo Akhir', color: '#3b82f6' }, // blue-500
-  { key: 'Piutang', color: '#f59e0b' }, // amber-500
-  { key: 'Omset', color: '#8884d8' }, // purple-500 (example, adjust as needed)
-  { key: 'Laba Penjualan', color: '#82ca9d' }, // light green (example)
-  { key: 'Pembelian', color: '#ffc658' }, // yellow-500 (example)
+  { key: 'Omset', color: '#8884d8' },              // ungu
+  { key: 'Total Pengeluaran', color: '#ef4444' },  // merah
+  { key: 'Jumlah Hutang', color: '#f59e0b' },      // amber
+  { key: 'Jumlah Piutang', color: '#22c55e' },     // hijau
 ];
 
 const NeracaChart: React.FC<NeracaChartProps> = ({ data, selectedSeriesKeys }) => {
