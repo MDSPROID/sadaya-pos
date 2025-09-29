@@ -145,7 +145,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
       {/* FILTER BAR — ROW 1: Status, Metode, Customer */}
       <div className="bg-white rounded-lg shadow-sm p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="flex items-center gap-2">
-          <label htmlFor="paymentStatusFilter" className="text-sm font-medium text-gray-700">Status:</label>
+          <label htmlFor="paymentStatusFilter" className="text-sm font-medium text-gray-700">Status Pembayaran:</label>
           <select
             id="paymentStatusFilter"
             value={paymentStatusFilter}

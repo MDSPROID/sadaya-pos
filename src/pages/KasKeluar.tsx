@@ -36,7 +36,6 @@ const KasKeluar: React.FC = () => {
   const [bankOptions, setBankOptions] = useState<BankOption[]>([]);
   const [jenisOptions, setJenisOptions] = useState<JenisOption[]>([]);
 
-  // === STATE MODAL JENIS BARU ===
   const [showJenisModal, setShowJenisModal] = useState(false);
   const [jenisNama, setJenisNama] = useState('');
   const [savingJenis, setSavingJenis] = useState(false);
