@@ -29,7 +29,7 @@ interface PendingOrderItem {
   discount_amount?: number;
   tax_amount?: number;
   final_amount?: number;
-  order_status?: 'new' | 'proses_cetak' | 'siap_ambil' | string | null;
+  order_status?: 'new' | 'proses_cetak' | 'siap_ambil' | 'new' | string | null; // ⬅️ include legacy 'new'
 }
 
 /* ===== Helpers ===== */
@@ -121,9 +121,11 @@ function renderNotes(raw: string | null) {
 }
 
 const renderOrderStatus = (status?: string | null) => {
+  // normalisasi: legacy 'new' dianggap 'new'
+  const s = status === 'new' ? 'new' : status;
   let label = '-';
   let cls = 'bg-gray-100 text-gray-700';
-  switch (status) {
+  switch (s) {
     case 'new':
       label = 'Siap Cetak';
       cls = 'bg-yellow-100 text-yellow-800';
@@ -147,7 +149,6 @@ const renderPetugas = (item: PendingOrderItem) => {
       ? item.designer_names.map(ucfirst).join(', ')
       : (ucfirst(item.designer_name) || '-');
 
-  // urutan sama: Designer, Kasir, Operator, Finishing
   const row: Array<[string, string]> = [
     ['Designer', designerDisplay || '-'],
     ['Kasir', ucfirst(item.kasir_name) || '-'],
@@ -177,7 +178,11 @@ interface StatusOrderTableProps {
   onSearchChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 
   durationFilter: string;
-  onDurationFilterChange: (value: string) => void; // terima string
+  onDurationFilterChange: (value: string) => void;
+
+  // ⬇️ NEW: status filter props
+  statusFilter: 'all' | 'new' | 'proses_cetak' | 'siap_ambil';
+  onStatusFilterChange: (value: 'all' | 'new' | 'proses_cetak' | 'siap_ambil') => void;
 
   onRefresh: () => void;
   onContinue: (orderId: string) => void;
@@ -201,6 +206,8 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
   onSearchChange,
   durationFilter,
   onDurationFilterChange,
+  statusFilter,
+  onStatusFilterChange,
   onRefresh,
   onContinue,
   onDelete,
@@ -211,7 +218,6 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
   onBulkProcess,
   onBulkCancel,
 }) => {
-  // ⛔️ PENTING: variabel harus di luar JSX
   const allVisibleChecked = data.length > 0 && data.every(d => selectedIds.includes(d.id));
   const anyChecked = selectedIds.length > 0;
 
@@ -239,6 +245,24 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
             <option value="1-7">1-7 Hari</option>
             <option value="8-14">8-14 Hari</option>
             <option value=">14">&gt;14 Hari</option>
+          </select>
+        </div>
+
+        {/* ⬇️ NEW: Status Order */}
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <label htmlFor="statusFilter" className="text-sm font-medium text-gray-700">
+            Status Order:
+          </label>
+          <select
+            id="statusFilter"
+            value={statusFilter}
+            onChange={(e) => onStatusFilterChange(e.target.value as any)}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="all">Semua Status</option>
+            <option value="new">Siap Cetak</option>
+            <option value="proses_cetak">Proses Cetak</option>
+            <option value="siap_ambil">Siap Ambil</option>
           </select>
         </div>
 
@@ -289,7 +313,7 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
             onClick={onBulkCancel}
             disabled={!anyChecked}
             className="flex items-center px-3 py-2 rounded-md bg-red-600 text-white disabled:opacity-60"
-            title="Batalkan proses cetak (kembali NEW)"
+            title="Batalkan proses cetak (kembali SIAP CETAK)"
           >
             <XCircle className="h-5 w-5 mr-2" /> BATALKAN PROSES CETAK
           </button>
@@ -324,8 +348,8 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
                   'Petugas',
                   'PC',
                   'Tanggal',
-                  'Durasi Tunggu',
                   'Order Status',
+                  'Durasi Tunggu',
                   'Aksi',
                 ].map((h) => (
                   <th
@@ -349,7 +373,6 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
                 </tr>
               ) : (
                 data.map((item, index) => {
-                  // ⛔️ kalau butuh deklarasi, gunakan blok { ... return (...) }
                   const checked = selectedIds.includes(item.id);
                   return (
                     <tr key={item.id} className="hover:bg-gray-50">

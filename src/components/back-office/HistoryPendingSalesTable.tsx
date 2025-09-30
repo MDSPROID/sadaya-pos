@@ -28,6 +28,9 @@ interface PendingOrderItem {
   discount_amount?: number;
   tax_amount?: number;
   final_amount?: number;
+
+  // ⬇️ NEW: dipakai untuk sembunyikan tombol Hapus saat proses_cetak
+  order_status?: 'siap_cetak' | 'proses_cetak' | 'siap_ambil' | 'new' | string | null;
 }
 
 interface HistoryPendingSalesTableProps {
@@ -57,12 +60,12 @@ const formatDateID = (iso?: string | null) => {
   return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-const ucfirst = (s: string | null | undefined) => (s && s.length) ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '';
+const ucfirst = (s: string | null | undefined) =>
+  (s && s.length) ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '';
 
 function renderNotes(raw: string | null) {
   if (!raw) return <span>-</span>;
 
-  // Cari pola "Payment Details: { ...json... }"
   const match = /Payment Details:\s*({[\s\S]*})/i.exec(raw);
   let before = raw.trim();
   let details: any | null = null;
@@ -70,22 +73,16 @@ function renderNotes(raw: string | null) {
   if (match && match[1]) {
     try {
       details = JSON.parse(match[1]);
-      // buang bagian "Payment Details: {...}" dari catatan asli agar tidak dobel
       before = before.replace(match[0], '').trim();
-    } catch {
-      // gagal parse → tampilkan apa adanya
-    }
+    } catch {}
   } else {
-    // fallback: kalau catatan murni JSON
     try {
       const maybe = JSON.parse(raw);
       if (maybe && typeof maybe === 'object') {
         details = maybe;
         before = '';
       }
-    } catch {
-      // bukan JSON; tampilkan apa adanya
-    }
+    } catch {}
   }
 
   if (!details) {
@@ -107,10 +104,8 @@ function renderNotes(raw: string | null) {
   const paidNum = Number(paid_amount || 0);
   const finalNum = Number(final_amount || 0);
 
-  // Kekurangan = Total Tagihan - DP (sesuai permintaan)
   const kekurangan = Math.max(finalNum - dpNum, 0);
 
-  // Susun baris-baris rapi
   const lines: Array<[string, string]> = [];
 
   if (before) lines.push(['Catatan ', before]);
@@ -121,9 +116,6 @@ function renderNotes(raw: string | null) {
     lines.push(['Kekurangan ', formatRupiah(kekurangan)]);
   }
   if (payment_status) lines.push(['Status Bayar ', ucfirst(String(payment_status))]);
-  // if (order_status) {
-  //   const o_status = order_status === "new" 
-  // }
   if (payment_method) {
     const metode =
       payment_method === 'cash'
@@ -168,7 +160,7 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
   error,
 }) => {
 
-  const ucfirst = (s?: string | null): string => {
+  const ucfirstLocal = (s?: string | null): string => {
     const str = (s ?? '').toString().trim();
     return str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : '';
   };
@@ -176,14 +168,14 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
   const renderPetugas = (item: PendingOrderItem) => {
     const designerDisplay =
       item.designer_names && item.designer_names.length > 0
-        ? item.designer_names.map(ucfirst).join(', ')
-        : (ucfirst(item.designer_name) || '-');
+        ? item.designer_names.map(ucfirstLocal).join(', ')
+        : (ucfirstLocal(item.designer_name) || '-');
 
     const row: Array<[string, string]> = [
       ['Designer', designerDisplay || '-'],
-      ['Kasir', ucfirst(item.kasir_name) || '-'],
-      ['Operator', ucfirst(item.operator_name) || '-'],
-      ['Finishing', ucfirst(item.finishing_name) || '-'],
+      ['Kasir', ucfirstLocal(item.kasir_name) || '-'],
+      ['Operator', ucfirstLocal(item.operator_name) || '-'],
+      ['Finishing', ucfirstLocal(item.finishing_name) || '-'],
     ];
 
     return (
@@ -301,13 +293,12 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
                       {index + 1}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {/* {(item.invoice_number || item.id)?.toString().substring(0, 10)}… */}
                       {item.invoice_number}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
-                        {ucfirst(item.customer_display_name) ||
-                          ucfirst(item.pelanggan?.[0]?.nama_pelanggan) ||
+                        {ucfirstLocal(item.customer_display_name) ||
+                          ucfirstLocal(item.pelanggan?.[0]?.nama_pelanggan) ||
                           'N/A'}
                       </div>
                     </td>
@@ -324,7 +315,7 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {renderPetugas(item)}
-                    </td> 
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       Server
                     </td>
@@ -344,14 +335,18 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
                         >
                           <Play className="h-5 w-5" />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => onDelete(item.id)}
-                          className="text-red-600 hover:text-red-900"
-                          title="Hapus Transaksi"
-                        >
-                          <Trash2 className="h-5 w-5" />
-                        </button>
+
+                        {/* ⬇️ NEW: sembunyikan tombol Hapus saat status proses_cetak */}
+                        {item.order_status !== 'new' && (
+                          <button
+                            type="button"
+                            onClick={() => onDelete(item.id)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Hapus Transaksi"
+                          >
+                            <Trash2 className="h-5 w-5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

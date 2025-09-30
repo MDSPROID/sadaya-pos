@@ -5,9 +5,6 @@ import { showSuccess, showError, showLoading, dismissToast } from '../utils/toas
 import { supabase } from '../integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 
-/** =========================
- *  Sound Picker Utilities
- * ========================= */
 type SoundOption = { label: string; url: string; builtin?: boolean };
 
 const DEFAULT_SOUNDS: SoundOption[] = [
@@ -51,27 +48,29 @@ const findLabelForUrl = (options: SoundOption[], url: string | null) => {
   return found?.label || null;
 };
 
-/** =========================
- *  Halaman Status Order
- * ========================= */
 const StatusOrder: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [durationFilter, setDurationFilter] = useState('all');
+
+  // ⬇️ NEW: status filter
+  const [statusFilter, setStatusFilter] = useState<'all' | 'new' | 'proses_cetak' | 'siap_ambil'>('new');
+
   const typingTimer = useRef<number | null>(null);
   const navigate = useNavigate();
 
   const { data, loading, error, fetchStatusOrders, setData } = useStatusOrderData({
     durationFilter,
     searchTerm,
+    statusFilter, // ⬅️ pass ke hook
   });
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // filter ref (dipakai untuk realtime/polling callback)
-  const filtersRef = useRef({ searchTerm: '', durationFilter: 'all' });
+  // simpan filter terkini untuk realtime/polling
+  const filtersRef = useRef({ searchTerm: '', durationFilter: 'all', statusFilter: 'all' as 'all' | 'new' | 'proses_cetak' | 'siap_ambil' });
   useEffect(() => {
-    filtersRef.current = { searchTerm, durationFilter };
-  }, [searchTerm, durationFilter]);
+    filtersRef.current = { searchTerm, durationFilter, statusFilter };
+  }, [searchTerm, durationFilter, statusFilter]);
 
   /* =======================
    *  Pencarian & Filter
@@ -81,20 +80,25 @@ const StatusOrder: React.FC = () => {
     setSearchTerm(value);
     if (typingTimer.current) window.clearTimeout(typingTimer.current);
     typingTimer.current = window.setTimeout(() => {
-      fetchStatusOrders({ searchTerm: value, durationFilter });
+      fetchStatusOrders({ searchTerm: value, durationFilter, statusFilter });
     }, 400);
   };
 
   const handleDurationFilterChange = (value: string) => {
     setDurationFilter(value);
-    fetchStatusOrders({ searchTerm, durationFilter: value });
+    fetchStatusOrders({ searchTerm, durationFilter: value, statusFilter });
+  };
+
+  // ⬇️ NEW: handler status filter
+  const handleStatusFilterChange = (value: 'all' | 'new' | 'proses_cetak' | 'siap_ambil') => {
+    setStatusFilter(value);
+    fetchStatusOrders({ searchTerm, durationFilter, statusFilter: value });
   };
 
   /* =======================
    *  Aksi baris
    * ======================= */
   const handleContinue = (orderId: string) => {
-    // navigate('/dashboard/sales', { state: { loadOrderId: orderId } });
     navigate(`/dashboard/status-order/process/${orderId}`);
   };
 
@@ -107,7 +111,7 @@ const StatusOrder: React.FC = () => {
         .from('orders')
         .delete()
         .eq('id', orderId)
-        .select('id'); // penting untuk tahu baris terhapus (RLS-safe)
+        .select('id');
 
       if (delErr) throw delErr;
 
@@ -133,14 +137,13 @@ const StatusOrder: React.FC = () => {
   };
 
   /* =======================
-   *  AUDIO NOTIF (HTMLAudio)
+   *  AUDIO NOTIF
    * ======================= */
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const [soundReady, setSoundReady] = useState(false);
 
   const getSoundUrl = () => getSavedSoundUrl() || DEFAULT_SOUNDS[0].url;
 
-  // Inisialisasi suara (user gesture)
   const initSound = async () => {
     try {
       const el = audioElRef.current;
@@ -148,7 +151,6 @@ const StatusOrder: React.FC = () => {
 
       el.src = getSoundUrl();
       el.load();
-      // “Prime” agar autoplay allowed
       await el.play();
       await new Promise(r => setTimeout(r, 100));
       el.pause();
@@ -172,7 +174,6 @@ const StatusOrder: React.FC = () => {
     }
   };
 
-  // Ganti URL suara + re-init
   const applySoundUrl = async (url: string | null) => {
     setSavedSoundUrl(url);
     const el = audioElRef.current;
@@ -180,13 +181,11 @@ const StatusOrder: React.FC = () => {
       el.src = getSoundUrl();
       el.load();
     }
-    // kalau sudah pernah di-allow, tidak perlu prime lagi, tapi aman untuk call ini:
-    // setSoundReady(false);
     await initSound();
   };
 
   /* =====================================
-   *  REALTIME + DEDUPE + POLLING FALLBACK
+   *  REALTIME + POLLING
    * ===================================== */
   const notifiedIdsRef = useRef<Set<string>>(new Set());
 
@@ -209,8 +208,8 @@ const StatusOrder: React.FC = () => {
           newRow?.ready_status !== 'ready');
 
       if (becameReady) {
-        const { searchTerm: s, durationFilter: d } = filtersRef.current;
-        await fetchStatusOrders({ searchTerm: s, durationFilter: d });
+        const { searchTerm: s, durationFilter: d, statusFilter: st } = filtersRef.current;
+        await fetchStatusOrders({ searchTerm: s, durationFilter: d, statusFilter: st });
 
         if (!notifiedIdsRef.current.has(id)) {
           notifiedIdsRef.current.add(id);
@@ -224,8 +223,8 @@ const StatusOrder: React.FC = () => {
           if (soundReady) await playNotifySound();
         }
       } else if (leftReady) {
-        const { searchTerm: s, durationFilter: d } = filtersRef.current;
-        await fetchStatusOrders({ searchTerm: s, durationFilter: d });
+        const { searchTerm: s, durationFilter: d, statusFilter: st } = filtersRef.current;
+        await fetchStatusOrders({ searchTerm: s, durationFilter: d, statusFilter: st });
       }
     };
 
@@ -237,8 +236,8 @@ const StatusOrder: React.FC = () => {
       .subscribe();
 
     const pollId = window.setInterval(() => {
-      const { searchTerm: s, durationFilter: d } = filtersRef.current;
-      fetchStatusOrders({ searchTerm: s, durationFilter: d });
+      const { searchTerm: s, durationFilter: d, statusFilter: st } = filtersRef.current;
+      fetchStatusOrders({ searchTerm: s, durationFilter: d, statusFilter: st });
     }, 20000);
 
     return () => {
@@ -248,7 +247,7 @@ const StatusOrder: React.FC = () => {
   }, [fetchStatusOrders, soundReady]);
 
   /* =======================
-   *  SOUND PICKER (Modal)
+   *  SOUND PICKER
    * ======================= */
   const [pickerOpen, setPickerOpen] = useState(false);
   const [options, setOptions] = useState<SoundOption[]>(() => loadSoundOptions());
@@ -257,7 +256,6 @@ const StatusOrder: React.FC = () => {
   const [newUrl, setNewUrl] = useState('');
 
   useEffect(() => {
-    // kalau daftar kosong (mis config), reset default
     if (!options.length) {
       setOptions(DEFAULT_SOUNDS);
       saveSoundOptions(DEFAULT_SOUNDS);
@@ -328,7 +326,7 @@ const StatusOrder: React.FC = () => {
       await el.play();
     } catch (e) {
       console.warn('Preview failed:', e);
-      showError('Gagal memutar preview. Cek file/URL. '+url);
+      showError('Gagal memutar preview. Cek file/URL. ' + url);
     }
   };
 
@@ -340,47 +338,47 @@ const StatusOrder: React.FC = () => {
   };
 
   // ======= Bulk selection helpers =======
- const toggleSelect = (id: string) => {
-  setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
- };
- const toggleSelectAll = (checked: boolean) => {
-  if (!checked) { setSelectedIds([]); return; }
-  setSelectedIds(data.map(d => d.id));
- };
- const bulkUpdate = async (toStatus: 'proses_cetak' | 'new') => {
-  if (selectedIds.length === 0) return;
-  const msg = toStatus === 'proses_cetak'
-   ? `Set ${selectedIds.length} order ke PROSES CETAK?`
-   : `Batalkan PROSES CETAK pada ${selectedIds.length} order?`;
- if (!confirm(msg)) return;
- const toastId = showLoading('Menyimpan perubahan...');
- try {
-   const { data: updated, error: updErr } = await supabase
-     .from('orders')
-     .update({ order_status: toStatus })
-     .in('id', selectedIds)
-     .select('id');
-   if (updErr) throw updErr;
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+  const toggleSelectAll = (checked: boolean) => {
+    if (!checked) { setSelectedIds([]); return; }
+    setSelectedIds(data.map(d => d.id));
+  };
 
-   // refresh cepat secara lokal
-   const setLocal = new Set((updated || []).map((r: any) => r.id));
-   setData(prev => prev.map(row => setLocal.has(row.id) ? { ...row, order_status: toStatus } : row));
-   showSuccess('Perubahan tersimpan.');
- } catch (e: any) {
-   console.error(e);
-   showError(e?.message || 'Gagal menyimpan perubahan.');
- } finally {
-   dismissToast(toastId);
- }
- };
+  // ⬇️ update: 'new' untuk batal proses
+  const bulkUpdate = async (toStatus: 'proses_cetak' | 'new') => {
+    if (selectedIds.length === 0) return;
+    const msg = toStatus === 'proses_cetak'
+      ? `Set ${selectedIds.length} order ke PROSES CETAK?`
+      : `Batalkan PROSES CETAK pada ${selectedIds.length} order (kembali SIAP CETAK)?`;
+    if (!confirm(msg)) return;
+
+    const toastId = showLoading('Menyimpan perubahan...');
+    try {
+      const { data: updated, error: updErr } = await supabase
+        .from('orders')
+        .update({ order_status: toStatus })
+        .in('id', selectedIds)
+        .select('id');
+      if (updErr) throw updErr;
+
+      const setLocal = new Set((updated || []).map((r: any) => r.id));
+      setData(prev => prev.map(row => setLocal.has(row.id) ? { ...row, order_status: toStatus } : row));
+      showSuccess('Perubahan tersimpan.');
+    } catch (e: any) {
+      console.error(e);
+      showError(e?.message || 'Gagal menyimpan perubahan.');
+    } finally {
+      dismissToast(toastId);
+    }
+  };
 
   /* ============ RENDER ============ */
   return (
     <div className="space-y-6">
-      {/* Audio tersembunyi */}
       <audio ref={audioElRef} hidden preload="auto" />
 
-      {/* HEADER BAR */}
       <div className="mb-4 flex items-center gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Status Order</h1>
@@ -405,7 +403,6 @@ const StatusOrder: React.FC = () => {
         </button>
       </div>
 
-      {/* TABEL */}
       <StatusOrderTable
         data={data}
         loading={loading}
@@ -414,7 +411,10 @@ const StatusOrder: React.FC = () => {
         onSearchChange={handleSearchChange}
         durationFilter={durationFilter}
         onDurationFilterChange={handleDurationFilterChange}
-        onRefresh={() => fetchStatusOrders({ searchTerm, durationFilter })}
+        // ⬇️ NEW: pass status filter
+        statusFilter={statusFilter}
+        onStatusFilterChange={handleStatusFilterChange}
+        onRefresh={() => fetchStatusOrders({ searchTerm, durationFilter, statusFilter })}
         onContinue={handleContinue}
         onDelete={handleDelete}
         onRekap={handleRekap}
@@ -433,7 +433,6 @@ const StatusOrder: React.FC = () => {
               <h3 className="text-lg font-semibold">Pilih Suara Notifikasi</h3>
             </div>
 
-            {/* Daftar opsi */}
             <div className="max-h-64 overflow-auto border rounded-md divide-y">
               {options.map((opt) => (
                 <div key={opt.url} className="flex items-center gap-3 p-3">
@@ -466,37 +465,10 @@ const StatusOrder: React.FC = () => {
               ))}
             </div>
 
-            {/* Tambah suara kustom */}
             <div className="hidden mt-4 space-y-2">
-              <div className="font-medium text-sm">Tambah Suara</div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Nama/Label (mis. 'Chime Keras')"
-                  value={newLabel}
-                  onChange={(e) => setNewLabel(e.target.value)}
-                  className="flex-1 px-3 py-2 border rounded-md"
-                />
-                <input
-                  type="text"
-                  placeholder="URL (mis. /sounds/chime.wav)"
-                  value={newUrl}
-                  onChange={(e) => setNewUrl(e.target.value)}
-                  className="flex-[2] px-3 py-2 border rounded-md"
-                />
-                <button
-                  onClick={handleAddOption}
-                  className="px-3 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
-                >
-                  Tambah
-                </button>
-              </div>
-              <div className="text-xs text-gray-500">
-                Tips: taruh file di <code>/public/sounds/</code> lalu isi URL-nya, contoh: <code>/sounds/namafile.wav</code>
-              </div>
+              {/* form tambah suara (disembunyikan seperti sebelumnya) */}
             </div>
 
-            {/* Actions */}
             <div className="mt-5 flex items-center justify-between">
               <button
                 onClick={handleResetDefault}

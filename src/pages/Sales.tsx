@@ -422,6 +422,8 @@ const Sales: React.FC = () => {
     );
   }
 
+  const effectiveOrderStatus = (orderFormData as any)?.order_status ?? 'new';
+
   return (
     <div className="h-full w-full space-y-6 p-6 bg-gray-100 flex flex-col">
       <div className="flex items-center justify-between mb-6 flex-shrink-0">
@@ -461,6 +463,7 @@ const Sales: React.FC = () => {
             onRemoveItem={handleRemoveItem}
             onUpdateItemDesigner={handleUpdateItemDesigner}
             currentUserId={currentUserId}
+            orderStatus={effectiveOrderStatus}
           />
           <OrderSummary
             totalAmount={orderFormData.total_amount}

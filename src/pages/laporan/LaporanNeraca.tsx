@@ -1,7 +1,28 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Search, Printer } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Search, Printer, Info } from 'lucide-react';
 import { useNeracaData } from '../../hooks/useNeracaData';
 import NeracaChart from '../../components/laporan/NeracaChart';
+
+const InfoTip: React.FC<{ text: string }> = ({ text }) => {
+  // Ikon selalu terlihat; bubble tooltip hanya untuk hover (disembunyikan saat print)
+  return (
+    <span className="relative inline-flex items-center align-middle group">
+      <button
+        type="button"
+        className="p-0.5 -m-0.5 outline-none info-icon-wrapper"
+        aria-label="Info"
+        title={text} // fallback native
+      >
+        {/* class info-icon --> dipaksa terlihat & warna hitam saat print */}
+        <Info className="info-icon h-4 w-4 ml-2 text-gray-400 group-hover:text-gray-600" aria-hidden="true" />
+      </button>
+      {/* bubble tooltip (non-print) */}
+      <span className="info-tip-bubble pointer-events-none absolute left-1/2 top-full z-20 hidden -translate-x-1/2 translate-y-2 whitespace-pre rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg group-hover:block">
+        {text}
+      </span>
+    </span>
+  );
+};
 
 const LaporanNeraca: React.FC = () => {
   const today = new Date().toISOString().split('T')[0];
@@ -15,7 +36,7 @@ const LaporanNeraca: React.FC = () => {
   const [selectedMonthYear, setSelectedMonthYear] = useState<string>(currentMonthYear);
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
 
-  // APPLIED state (dipakai query)
+  // APPLIED state (dipakai data & label periode)
   const [appliedFilterPeriod, setAppliedFilterPeriod] = useState<'daily' | 'monthly' | 'yearly'>('daily');
   const [appliedStartDate, setAppliedStartDate] = useState<string>(today);
   const [appliedEndDate, setAppliedEndDate] = useState<string>(today);
@@ -30,7 +51,7 @@ const LaporanNeraca: React.FC = () => {
     allChartSeriesOptions.map(s => s.key)
   );
 
-  // Data hook: autoFetch=false agar default 0
+  // Data hook: autoFetch=false agar default 0 sampai user klik
   const { summary, periodData, loading, error, fetchNeracaSummary, resetToZero } = useNeracaData({
     startDate: appliedStartDate,
     endDate: appliedEndDate,
@@ -38,25 +59,17 @@ const LaporanNeraca: React.FC = () => {
     autoFetch: false,
   });
 
-  // Reset ke nol sekali saat mount (antisipasi HMR)
+  // Pastikan awalnya nol (tanpa auto-fetch)
   useEffect(() => {
     resetToZero();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch hanya setelah APPLIED berubah (skip render pertama)
-  const didMountRef = useRef(false);
-  useEffect(() => {
-    if (!didMountRef.current) {
-      didMountRef.current = true;
-      return;
-    }
-    fetchNeracaSummary();
-  }, [appliedStartDate, appliedEndDate, appliedFilterPeriod, fetchNeracaSummary]);
-
+  // Tombol Lihat → commit UI ke APPLIED, lalu fetch dengan override (hindari race setState)
   const handleLihatClick = () => {
     let newStartDate: string;
     let newEndDate: string;
+
     if (filterPeriod === 'daily') {
       newStartDate = selectedDailyStartDate;
       newEndDate = selectedDailyEndDate;
@@ -69,12 +82,36 @@ const LaporanNeraca: React.FC = () => {
       newStartDate = `${selectedYear}-01-01`;
       newEndDate = `${selectedYear}-12-31`;
     }
+
     setAppliedFilterPeriod(filterPeriod);
     setAppliedStartDate(newStartDate);
     setAppliedEndDate(newEndDate);
+
+    // Fetch langsung dengan parameter yang sama (tidak menunggu state ter-commit)
+    fetchNeracaSummary({
+      startDate: newStartDate,
+      endDate: newEndDate,
+      filterPeriod,
+    });
   };
 
   const handlePrint = () => window.print();
+
+  // Label periode (berdasarkan APPLIED agar sesuai data yang tampil)
+  const periodeLabel = useMemo(() => {
+    const fmt = (d: string) => new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+    if (appliedFilterPeriod === 'daily') {
+      return appliedStartDate === appliedEndDate
+        ? `Periode: ${fmt(appliedStartDate)}`
+        : `Periode: ${fmt(appliedStartDate)} – ${fmt(appliedEndDate)}`;
+    }
+    if (appliedFilterPeriod === 'monthly') {
+      const d = new Date(appliedStartDate);
+      return `Periode: ${d.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}`;
+    }
+    // yearly
+    return `Periode: ${new Date(appliedStartDate).getFullYear()}`;
+  }, [appliedFilterPeriod, appliedStartDate, appliedEndDate]);
 
   const yearsOptions = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i);
 
@@ -90,7 +127,6 @@ const LaporanNeraca: React.FC = () => {
     } else {
       setSelectedChartSeries(['Omset']);
     }
-    // hanya UI, tidak memicu fetch
   }, [filterPeriod]);
 
   const ValueOrSkeleton: React.FC<{ children: React.ReactNode }> = ({ children }) =>
@@ -100,7 +136,11 @@ const LaporanNeraca: React.FC = () => {
     return (
       <div className="text-center p-4 text-red-600">
         <p>Error: {error}</p>
-        <button onClick={fetchNeracaSummary} className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+        <button onClick={() => fetchNeracaSummary({
+          startDate: appliedStartDate,
+          endDate: appliedEndDate,
+          filterPeriod: appliedFilterPeriod,
+        })} className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
           Coba Lagi
         </button>
       </div>
@@ -119,14 +159,14 @@ const LaporanNeraca: React.FC = () => {
 
       {/* SECTION yang akan dicetak */}
       <div id="print-neraca-section" className="bg-white rounded-lg shadow-sm p-6">
-        {/* Judul khusus untuk print (disembunyikan di layar) */}
-        <h2 className="print-title text-2xl font-bold text-gray-900" style={{ display: 'none' }}>
-          Laporan Neraca
-        </h2>
+        {/* Judul + periode (tampil di layar & ikut tercetak) */}
+        <div className="mb-4">
+          <h2 className="text-xl font-bold text-gray-900">Laporan Neraca</h2>
+          <p className="text-sm text-gray-600">{periodeLabel}</p>
+        </div>
 
         {/* Filter & tombol (jangan dicetak) */}
         <div className="flex flex-col md:flex-row gap-4 items-center mb-6 no-print">
-          {/* Filter Period */}
           <div className="flex items-center gap-4 w-full md:w-auto">
             <label className="text-sm font-medium text-gray-700">Periode:</label>
             <div className="flex space-x-2">
@@ -236,78 +276,127 @@ const LaporanNeraca: React.FC = () => {
           </button>
         </div>
 
-        {/* Summary */}
+        {/* Summary + tooltips */}
         <div className="space-y-3 mb-6">
           <div className="flex justify-between items-center">
-            <span className="text-gray-700">Omset:</span>
+            <span className="text-gray-700 inline-flex items-center">
+              Omset <InfoTip text="Total penjualan fix yang sudah lunas maupun belum lunas" />
+            </span>
             <ValueOrSkeleton>Rp {summary.omset.toLocaleString('id-ID')}</ValueOrSkeleton>
           </div>
+
           <div className="flex justify-between items-center">
-            <span className="text-gray-700">Realisasi Tunai:</span>
+            <span className="text-gray-700 inline-flex items-center">
+              Realisasi Tunai <InfoTip text="Jumlah uang masuk yang sudah fix order dengan metode pembayaran tunai" />
+            </span>
             <ValueOrSkeleton>Rp {summary.order_paid_cash.toLocaleString('id-ID')}</ValueOrSkeleton>
           </div>
+
           <div className="flex justify-between items-center">
-            <span className="text-gray-700">Realisasi Transfer:</span>
+            <span className="text-gray-700 inline-flex items-center">
+              Realisasi Transfer <InfoTip text="Jumlah uang masuk yang sudah fix order dengan metode pembayaran transfer" />
+            </span>
             <ValueOrSkeleton>Rp {summary.order_paid_transfer.toLocaleString('id-ID')}</ValueOrSkeleton>
           </div>
+
           <div className="flex justify-between items-center">
-            <span className="text-gray-700">Non Realisasi:</span>
+            <span className="text-gray-700 inline-flex items-center">
+              Non Realisasi <InfoTip text="Jumlah fix order yang belum bayar" />
+            </span>
             <ValueOrSkeleton>Rp {summary.order_not_paid.toLocaleString('id-ID')}</ValueOrSkeleton>
           </div>
 
           <div className="flex justify-between items-center">
-            <span className="text-gray-700">Kas Masuk Tunai:</span>
+            <span className="text-gray-700 inline-flex items-center">
+              Kas Masuk Tunai <InfoTip text="Total dari pemasukan menu 'Kas masuk' tunai" />
+            </span>
             <ValueOrSkeleton>Rp {summary.kas_masuk_tunai.toLocaleString('id-ID')}</ValueOrSkeleton>
           </div>
+
           <div className="flex justify-between items-center">
-            <span className="text-gray-700">Kas Masuk Transfer:</span>
+            <span className="text-gray-700 inline-flex items-center">
+              Kas Masuk Transfer <InfoTip text="Total dari pemasukan menu 'Kas masuk' transfer" />
+            </span>
             <ValueOrSkeleton>Rp {summary.kas_masuk_transfer.toLocaleString('id-ID')}</ValueOrSkeleton>
           </div>
+
           <div className="flex justify-between items-center">
-            <span className="text-gray-700">Kas Keluar Tunai:</span>
+            <span className="text-gray-700 inline-flex items-center">
+              Kas Keluar Tunai <InfoTip text="Total dari pengeluaran menu 'Kas keluar' tunai" />
+            </span>
             <ValueOrSkeleton>Rp {summary.kas_keluar_tunai.toLocaleString('id-ID')}</ValueOrSkeleton>
           </div>
+
           <div className="flex justify-between items-center">
-            <span className="text-gray-700">Kas Keluar Transfer:</span>
+            <span className="text-gray-700 inline-flex items-center">
+              Kas Keluar Transfer <InfoTip text="Total dari pengeluaran menu 'Kas keluar' transfer" />
+            </span>
             <ValueOrSkeleton>Rp {summary.kas_keluar_transfer.toLocaleString('id-ID')}</ValueOrSkeleton>
           </div>
 
           <div className="flex justify-between items-center">
-            <span className="text-gray-700">Jumlah Saldo Tunai / Cash:</span>
+            <span className="text-gray-700 inline-flex items-center">
+              Jumlah Saldo Tunai / Cash <InfoTip text="Total jumlah realisasi tunai + kas masuk tunai" />
+            </span>
             <ValueOrSkeleton>Rp {summary.jumlah_saldo_tunai.toLocaleString('id-ID')}</ValueOrSkeleton>
           </div>
+
           <div className="flex justify-between items-center text-base">
-            <span className="text-gray-700">Jumlah Saldo Non Tunai:</span>
+            <span className="text-gray-700 inline-flex items-center">
+              Jumlah Saldo Non Tunai <InfoTip text="Total jumlah realisasi transfer + kas masuk transfer" />
+            </span>
             <ValueOrSkeleton>Rp {summary.jumlah_saldo_non_tunai.toLocaleString('id-ID')}</ValueOrSkeleton>
           </div>
 
           <div className="flex justify-between items-center text-base font-semibold">
-            <span className="text-gray-700">Total Jumlah Saldo:</span>
+            <span className="text-gray-700 inline-flex items-center">
+              Total Jumlah Saldo <InfoTip text="Jumlah saldo tunai + non tunai" />
+            </span>
             <ValueOrSkeleton>Rp {summary.total_jumlah_saldo.toLocaleString('id-ID')}</ValueOrSkeleton>
           </div>
+
           <div className="flex justify-between items-center text-base font-semibold">
-            <span className="text-gray-700">Total Pengeluaran:</span>
+            <span className="text-gray-700 inline-flex items-center">
+              Total Pengeluaran <InfoTip text="Penjumlahan dari kas keluar" />
+            </span>
             <ValueOrSkeleton>Rp {summary.total_pengeluaran.toLocaleString('id-ID')}</ValueOrSkeleton>
           </div>
 
           <div className="flex justify-between items-center text-base font-semibold">
-            <span className="text-gray-700">Jumlah Hutang:</span>
+            <span className="text-gray-700 inline-flex items-center">
+              Jumlah Hutang <InfoTip text="Jumlah hutang ke supplier" />
+            </span>
             <ValueOrSkeleton>Rp {summary.jumlah_hutang.toLocaleString('id-ID')}</ValueOrSkeleton>
           </div>
+
           <div className="flex justify-between items-center text-base font-semibold">
-            <span className="text-gray-700">Jumlah Piutang:</span>
+            <span className="text-gray-700 inline-flex items-center">
+              Jumlah Piutang <InfoTip text="Jumlah fix order yang belum bayar" />
+            </span>
             <ValueOrSkeleton>Rp {summary.jumlah_piutang.toLocaleString('id-ID')}</ValueOrSkeleton>
           </div>
 
           <div className="flex justify-between items-center text-base font-bold">
-            <span className="text-gray-700">Saldo Seharusnya:</span>
+            <span className="text-gray-700 inline-flex items-center">
+              Saldo Seharusnya <InfoTip text="Jumlah saldo + jumlah piutang - jumlah hutang" />
+            </span>
             <ValueOrSkeleton>Rp {summary.saldo_seharusnya.toLocaleString('id-ID')}</ValueOrSkeleton>
           </div>
         </div>
 
         {error && (
           <div className="text-sm text-red-600 mt-2">
-            Error: {error} <button onClick={fetchNeracaSummary} className="underline">Coba lagi</button>
+            Error: {error}{' '}
+            <button
+              onClick={() => fetchNeracaSummary({
+                startDate: appliedStartDate,
+                endDate: appliedEndDate,
+                filterPeriod: appliedFilterPeriod,
+              })}
+              className="underline"
+            >
+              Coba lagi
+            </button>
           </div>
         )}
       </div>
@@ -340,7 +429,7 @@ const LaporanNeraca: React.FC = () => {
       <style>
         {`
           @media print {
-            /* Sembunyikan semua */
+            /* Sembunyikan semua di luar section */
             body * { visibility: hidden !important; }
 
             /* Tampilkan hanya section neraca + isinya */
@@ -348,16 +437,28 @@ const LaporanNeraca: React.FC = () => {
               visibility: visible !important;
             }
 
-            /* Judul khusus print: tampilkan */
-            .print-title { display: block !important; margin-bottom: 12px; }
-
             /* Sembunyikan semua yang bertanda no-print */
             .no-print { display: none !important; }
 
-            /* Taruh section di halaman penuh & rapikan */
+            /* Pastikan section rapi di halaman */
             #print-neraca-section {
               position: absolute; inset: 0; width: 100%;
               box-shadow: none !important;
+              background: #fff !important;
+            }
+
+            /* ---- Tooltip/ikon print fixes ---- */
+            /* Bubble tooltip jangan dicetak */
+            .info-tip-bubble { display: none !important; }
+
+            /* Paksa ikon terlihat jelas saat print */
+            .info-icon-wrapper { display: inline-flex !important; }
+            .info-icon {
+              display:none;
+              // color: #000 !important;
+              // stroke: #000 !important;
+              // -webkit-print-color-adjust: exact !important;
+              // print-color-adjust: exact !important;
             }
 
             @page { margin: 16mm; }

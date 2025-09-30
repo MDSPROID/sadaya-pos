@@ -44,9 +44,19 @@ interface OrderItemsTableProps {
   onRemoveItem: (tempId: string) => void;
   onUpdateItemDesigner: (tempId: string, designerId: string, designerName: string) => void;
   currentUserId?: string;
+
+  /** NEW: status order induk. Jika bukan "new", tombol hapus disembunyikan */
+  orderStatus?: 'new' | 'proses_cetak' | 'siap_ambil' | string | null;
 }
 
-const OrderItemsTable: React.FC<OrderItemsTableProps> = ({ items, designerOptions, onRemoveItem, onUpdateItemDesigner, currentUserId, }) => {
+const OrderItemsTable: React.FC<OrderItemsTableProps> = ({
+  items,
+  designerOptions,
+  onRemoveItem,
+  onUpdateItemDesigner,
+  currentUserId,
+  orderStatus = 'new', // default agar perilaku lama tetap jika belum dipassing
+}) => {
 
   useEffect(() => {
     if (!currentUserId) return;
@@ -123,9 +133,16 @@ const OrderItemsTable: React.FC<OrderItemsTableProps> = ({ items, designerOption
                   <td className="px-4 py-2 text-sm text-gray-900">{item.quantity}</td>
                   <td className="px-4 py-2 text-sm text-gray-900">Rp {item.subtotal_per_item.toLocaleString('id-ID')}</td> {/* Fixed: Changed from subtotal_per_per_item */}
                   <td className="px-4 py-2 text-right">
-                    <button onClick={() => onRemoveItem(item.tempId)} className="text-red-600 hover:text-red-900">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {/* Hanya tampilkan tombol hapus jika status order adalah "new" */}
+                    {orderStatus !== 'new'  &&  (
+                      <button
+                        onClick={() => onRemoveItem(item.tempId)}
+                        className="text-red-600 hover:text-red-900"
+                        title="Hapus item"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))

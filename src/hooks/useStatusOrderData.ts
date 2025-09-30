@@ -7,8 +7,13 @@ import { PendingOrderItem } from '../types/orderTypes';
 interface UseStatusOrderDataProps {
   durationFilter: string;
   searchTerm: string;
+  statusFilter: 'all' | 'new' | 'proses_cetak' | 'siap_ambil'; // ⬅️ NEW
 }
-type FetchOverride = { searchTerm?: string; durationFilter?: string };
+type FetchOverride = {
+  searchTerm?: string;
+  durationFilter?: string;
+  statusFilter?: 'all' | 'new' | 'proses_cetak' | 'siap_ambil';
+};
 
 const joinName = (first?: string | null, last?: string | null) => {
   const a = (first || '').trim();
@@ -17,7 +22,6 @@ const joinName = (first?: string | null, last?: string | null) => {
   return s || null;
 };
 
-// Samakan rumus durasi dengan History Pending
 const calculateDuration = (orderDate: string): number => {
   const today = new Date();
   const order = new Date(orderDate);
@@ -25,7 +29,7 @@ const calculateDuration = (orderDate: string): number => {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 };
 
-export const useStatusOrderData = ({ durationFilter, searchTerm }: UseStatusOrderDataProps) => {
+export const useStatusOrderData = ({ durationFilter, searchTerm, statusFilter }: UseStatusOrderDataProps) => {
   const [data, setData] = useState<PendingOrderItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +40,7 @@ export const useStatusOrderData = ({ durationFilter, searchTerm }: UseStatusOrde
     try {
       const sTerm = override?.searchTerm ?? searchTerm;
       const dFilter = override?.durationFilter ?? durationFilter;
+      const stFilter = override?.statusFilter ?? statusFilter;
 
       let fromDays = 0, toDays = 99999;
       if (dFilter === '1-7')      { fromDays = 1;  toDays = 7; }
@@ -59,6 +64,11 @@ export const useStatusOrderData = ({ durationFilter, searchTerm }: UseStatusOrde
         .eq('ready_status', 'ready')
         .order('created_at', { ascending: false });
 
+      // ⬇️ NEW: terapkan filter status (new | proses_cetak | siap_ambil)
+      if (stFilter !== 'all') {
+        query = query.eq('order_status', stFilter);
+      }
+
       if (sTerm?.trim()) {
         query = query.or([
           `customer_display_name.ilike.%${sTerm}%`,
@@ -70,7 +80,6 @@ export const useStatusOrderData = ({ durationFilter, searchTerm }: UseStatusOrde
       const { data: rows, error: qErr } = await query;
       if (qErr) throw qErr;
 
-      // Kumpulkan user id unik
       const idSet = new Set<string>();
       (rows ?? []).forEach((r: any) => {
         [r.kasir_id, r.operator_id, r.designer_id, r.finishing_id]
@@ -84,7 +93,6 @@ export const useStatusOrderData = ({ durationFilter, searchTerm }: UseStatusOrde
       });
       const idList = Array.from(idSet);
 
-      // Map id -> nama
       let nameById: Record<string, string> = {};
       if (idList.length > 0) {
         const { data: profs, error: profErr } = await supabase
@@ -102,7 +110,6 @@ export const useStatusOrderData = ({ durationFilter, searchTerm }: UseStatusOrde
 
       const mapped = (rows ?? [])
         .map((row: any) => {
-          // Gunakan rumus durasi yang sama dengan History Pending
           const durasi = calculateDuration(row.order_date);
 
           const itemDesignerIds: string[] = Array.from(
@@ -142,7 +149,7 @@ export const useStatusOrderData = ({ durationFilter, searchTerm }: UseStatusOrde
     } finally {
       setLoading(false);
     }
-  }, [durationFilter, searchTerm]);
+  }, [durationFilter, searchTerm, statusFilter]);
 
   useEffect(() => { fetchStatusOrders(); }, [fetchStatusOrders]);
 
