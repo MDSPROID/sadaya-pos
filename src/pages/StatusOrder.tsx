@@ -7,10 +7,14 @@ import { useNavigate } from 'react-router-dom';
 
 type SoundOption = { label: string; url: string; builtin?: boolean };
 
+const base = (import.meta as any)?.env?.BASE_URL || '/';
+const withBase = (p: string) =>
+  (base.endsWith('/') ? base.slice(0, -1) : base) + p;
+
 const DEFAULT_SOUNDS: SoundOption[] = [
-  { label: 'Notif 1', url: '/sounds/sound1.wav', builtin: true },
-  { label: 'Notif 2', url: '/sounds/sound2.wav', builtin: true },
-  { label: 'Notif 3', url: '/sounds/sound3.wav', builtin: true },
+  { label: 'Notif 1', url: withBase('/sounds/sound1.mp3'), builtin: true },
+  { label: 'Notif 2', url: withBase('/sounds/sound2.mp3'), builtin: true },
+  { label: 'Notif 3', url: withBase('/sounds/sound3.mp3'), builtin: true },
 ];
 
 const LS_SOUND_URL_KEY = 'statusOrderSound';
