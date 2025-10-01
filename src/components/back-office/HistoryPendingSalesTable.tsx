@@ -340,7 +340,7 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
                         {item.order_status !== 'new' && (
                           <button
                             type="button"
-                            onClick={() => onDelete(item.id)}
+                            onClick={() => onDelete(item.id)} 
                             className="text-red-600 hover:text-red-900"
                             title="Hapus Transaksi"
                           >
