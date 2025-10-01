@@ -134,7 +134,7 @@ const OrderItemsTable: React.FC<OrderItemsTableProps> = ({
                   <td className="px-4 py-2 text-sm text-gray-900">Rp {item.subtotal_per_item.toLocaleString('id-ID')}</td> {/* Fixed: Changed from subtotal_per_per_item */}
                   <td className="px-4 py-2 text-right">
                     {/* Hanya tampilkan tombol hapus jika status order adalah "new" */}
-                    {orderStatus !== 'new'  &&  (
+                    {orderStatus === 'new'  &&  (
                       <button
                         onClick={() => onRemoveItem(item.tempId)}
                         className="text-red-600 hover:text-red-900"

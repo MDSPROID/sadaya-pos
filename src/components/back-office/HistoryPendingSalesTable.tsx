@@ -337,7 +337,7 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
                         </button>
 
                         {/* ⬇️ NEW: sembunyikan tombol Hapus saat status proses_cetak */}
-                        {item.order_status !== 'new' && (
+                        {item.order_status === 'new' && (
                           <button
                             type="button"
                             onClick={() => onDelete(item.id)} 
