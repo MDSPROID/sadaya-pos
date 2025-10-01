@@ -16,7 +16,7 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ user, onLogout, onMenuToggle, isMobileNavOpen, setIsMobileNavOpen }) => {
-  const [companyName, setCompanyName] = useState<string>('Sadaya Printing'); // fallback
+  const [companyName, setCompanyName] = useState<string>('Digital Printing'); // fallback
 
   useEffect(() => {
     let mounted = true;
