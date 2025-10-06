@@ -6,7 +6,7 @@ interface Product {
   nama_produk: string;
   kategori: { nama: string } | null;
   satuan: { nama: string } | null;
-  bahan: { id: string; nama: string; ukuran_panjang: number | null; ukuran_lebar: number | null } | null; // Added 'id' to bahan
+  bahan: { id: string; nama: string; ukuran_panjang: number | null; ukuran_lebar: number | null } | null;
   quantity_bahan: number;
   use_mesin: boolean;
   mesin: { nama: string } | null;
@@ -29,15 +29,13 @@ interface ProductInputFormProps {
   setItemQuantity: (qty: number) => void;
   itemNotes: string;
   setItemNotes: (notes: string) => void;
-  // Updated type for itemDimensions to include tebal_bahan_id and tebal_bahan_nama
   itemDimensions: { panjang?: number; lebar?: number; satuan?: string; tebal_bahan_id?: string; tebal_bahan_nama?: string };
-  // Updated setItemDimensions type to match the full state setter type
   setItemDimensions: (dims: { panjang?: number; lebar?: number; satuan?: string; tebal_bahan_id?: string; tebal_bahan_nama?: string }) => void;
   itemDiscount: number;
   setItemDiscount: (discount: number) => void;
   onSelectProductClick: () => void;
   onAddItemToOrder: () => void;
-  onOpenProductDetailModal: () => void; // New prop for opening detail modal
+  onOpenProductDetailModal: () => void;
 }
 
 const ProductInputForm: React.FC<ProductInputFormProps> = ({
@@ -52,9 +50,93 @@ const ProductInputForm: React.FC<ProductInputFormProps> = ({
   setItemDiscount,
   onSelectProductClick,
   onAddItemToOrder,
-  onOpenProductDetailModal, // Destructure new prop
+  onOpenProductDetailModal,
 }) => {
-  // Removed unused type alias ItemDimensionsState
+  // Fungsi untuk memformat angka dengan pemisah ribuan
+  const formatNumber = (value: number | undefined): string => {
+    if (value === undefined || value === null || isNaN(value)) return '';
+    return value.toLocaleString('id-ID');
+  };
+
+  // Fungsi untuk menghapus format dan mengembalikan angka
+  const parseFormattedNumber = (formattedValue: string): number => {
+    if (formattedValue === '') return 0;
+    // Hapus semua karakter non-digit kecuali koma untuk desimal
+    const numericValue = formattedValue.replace(/\./g, '');
+    return parseFloat(numericValue) || 0;
+  };
+
+  // Handler untuk input Panjang dengan format real-time
+  const handlePanjangChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    
+    // Jika input kosong
+    if (value === '') {
+      setItemDimensions({ ...itemDimensions, panjang: undefined });
+      return;
+    }
+
+    // Hapus semua karakter non-digit
+    const cleanValue = value.replace(/[^\d]/g, '');
+    
+    // Konversi ke number
+    const numericValue = parseFloat(cleanValue);
+    
+    if (!isNaN(numericValue)) {
+      setItemDimensions({ ...itemDimensions, panjang: numericValue });
+    }
+  };
+
+  // Handler untuk input Lebar dengan format real-time
+  const handleLebarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    
+    if (value === '') {
+      setItemDimensions({ ...itemDimensions, lebar: undefined });
+      return;
+    }
+
+    const cleanValue = value.replace(/[^\d]/g, '');
+    const numericValue = parseFloat(cleanValue);
+    
+    if (!isNaN(numericValue)) {
+      setItemDimensions({ ...itemDimensions, lebar: numericValue });
+    }
+  };
+
+  // Handler untuk input Quantity dengan format real-time
+  const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    
+    if (value === '') {
+      setItemQuantity(0);
+      return;
+    }
+
+    const cleanValue = value.replace(/[^\d]/g, '');
+    const numericValue = parseFloat(cleanValue);
+    
+    if (!isNaN(numericValue)) {
+      setItemQuantity(numericValue);
+    }
+  };
+
+  // Handler untuk input Diskon dengan format real-time
+  const handleDiscountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    
+    if (value === '') {
+      setItemDiscount(0);
+      return;
+    }
+
+    const cleanValue = value.replace(/[^\d]/g, '');
+    const numericValue = parseFloat(cleanValue);
+    
+    if (!isNaN(numericValue)) {
+      setItemDiscount(numericValue);
+    }
+  };
 
   return (
     <div className="bg-white rounded-lg shadow-sm p-6 flex-shrink-0">
@@ -126,11 +208,13 @@ const ProductInputForm: React.FC<ProductInputFormProps> = ({
               P
             </label>
             <input
-              type="number"
+              type="text"
               id="dim_panjang"
-              value={itemDimensions.panjang || ''}
-              onChange={(e) => setItemDimensions({ ...itemDimensions, panjang: parseFloat(e.target.value) || undefined })}
+              value={formatNumber(itemDimensions.panjang)}
+              onChange={handlePanjangChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="0"
+              inputMode="numeric"
             />
           </div>
           <div>
@@ -138,11 +222,13 @@ const ProductInputForm: React.FC<ProductInputFormProps> = ({
               L
             </label>
             <input
-              type="number"
+              type="text"
               id="dim_lebar"
-              value={itemDimensions.lebar || ''}
-              onChange={(e) => setItemDimensions({ ...itemDimensions, lebar: parseFloat(e.target.value) || undefined })}
+              value={formatNumber(itemDimensions.lebar)}
+              onChange={handleLebarChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="0"
+              inputMode="numeric"
             />
           </div>
           <div>
@@ -151,7 +237,7 @@ const ProductInputForm: React.FC<ProductInputFormProps> = ({
             </label>
             <select
               id="dim_satuan"
-              value={itemDimensions.satuan || 'M'} // Changed default to 'M'
+              value={itemDimensions.satuan || 'M'}
               onChange={(e) => setItemDimensions({ ...itemDimensions, satuan: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
@@ -179,12 +265,13 @@ const ProductInputForm: React.FC<ProductInputFormProps> = ({
               QTY
             </label>
             <input
-              type="number"
+              type="text"
               id="item_quantity"
-              value={itemQuantity}
-              onChange={(e) => setItemQuantity(parseFloat(e.target.value) || 0)}
+              value={formatNumber(itemQuantity)}
+              onChange={handleQuantityChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              min="1"
+              placeholder="0"
+              inputMode="numeric"
             />
           </div>
           <div>
@@ -192,20 +279,21 @@ const ProductInputForm: React.FC<ProductInputFormProps> = ({
               Diskon Item (Rp)
             </label>
             <input
-              type="number"
+              type="text"
               id="item_discount"
-              value={itemDiscount}
-              onChange={(e) => setItemDiscount(parseFloat(e.target.value) || 0)}
+              value={formatNumber(itemDiscount)}
+              onChange={handleDiscountChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              min="0"
+              placeholder="0"
+              inputMode="numeric"
             />
           </div>
         </div>
         <button
           type="button"
-          onClick={onOpenProductDetailModal} // Button to open the detail modal
+          onClick={onOpenProductDetailModal}
           className="w-full flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          disabled={!selectedProduct} // Disable if no product is selected
+          disabled={!selectedProduct}
         >
           <Search className="h-5 w-5 mr-2" />
           Detail Produk

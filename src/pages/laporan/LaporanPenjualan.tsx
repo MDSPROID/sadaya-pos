@@ -341,6 +341,37 @@ const LaporanPenjualan: React.FC = () => {
     return `${y}-${m}-${da}`;
   };
 
+  // --- helper parse dp_amount dari kolom notes ---
+  const getDpFromNotes = (notes: any): number => {
+    try {
+      if (!notes) return 0;
+
+      // Jika notes berbentuk object & punya dp_amount
+      if (typeof notes === 'object' && notes !== null) {
+        if (typeof notes.dp_amount === 'number') return notes.dp_amount || 0;
+        if (typeof (notes as any).PaymentDetails?.dp_amount === 'number') return (notes as any).PaymentDetails.dp_amount || 0;
+      }
+
+      // Jika string diawali "Payment Details: { ... }"
+      const str = String(notes).trim();
+      const prefix = 'Payment Details:';
+      let jsonPart = str.startsWith(prefix) ? str.slice(prefix.length).trim() : str;
+
+      // Coba parse JSON langsung
+      const parsed = JSON.parse(jsonPart);
+
+      // Bentuk yang umum: { dp_amount: 1000000, ... }
+      if (typeof parsed?.dp_amount === 'number') return parsed.dp_amount || 0;
+
+      // Antisipasi variasi kunci (jaga-jaga)
+      if (typeof parsed?.PaymentDetails?.dp_amount === 'number') return parsed.PaymentDetails.dp_amount || 0;
+
+      return 0;
+    } catch {
+      return 0;
+    }
+  };
+
   const filteredSummary = useMemo(() => {
     let omset = 0;
     let piutang = 0;
@@ -353,11 +384,18 @@ const LaporanPenjualan: React.FC = () => {
       if (it.payment_status === 'paid') {
         omset += Number(it.final_amount || 0);
       } else if (it.payment_status === 'pending') {
-        const due =
-          Number(it.due_amount ?? 0) ||
-          Math.max(0, Number(it.final_amount || 0) - Number(it.paid_amount ?? 0)) ||
-          Number(it.final_amount || 0);
-        piutang += due;
+        // const due =
+        //   Number(it.due_amount ?? 0) ||
+        //   Math.max(0, Number(it.final_amount || 0) - Number(it.paid_amount ?? 0)) ||
+        //   Number(it.final_amount || 0);
+        // piutang += due;
+        // ⬇️ perubahan di sini: piutang = final_amount - dp_amount (dari notes)
+        const finalAmount = Number(it.final_amount || 0);
+        const dpAmount = getDpFromNotes(it.notes);
+        const remaining = Math.max(0, finalAmount - Number(dpAmount || 0));
+
+        console.log(it.invoice_number+' - '+remaining);
+        piutang += remaining;
       }
     });
 
