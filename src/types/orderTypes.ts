@@ -9,6 +9,14 @@ export interface BaseOrder {
   customer_display_phone: string | null;
   pelanggan: Array<{ nama_pelanggan: string; telepon: string | null }> | null;
   kasir_id: string | null;
+  operator_id?: string | null;
+  designer_id?: string | null;
+  finishing_id?: string | null;
+  kasir_name?: string | null;
+  operator_name?: string | null;
+  designer_name?: string | null;
+  designer_names?: string[] | null;
+  finishing_name?: string | null;
   profiles: { first_name: string | null; last_name: string | null } | null;
   total_amount: number;
   notes: string | null;

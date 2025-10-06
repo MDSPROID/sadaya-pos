@@ -383,7 +383,7 @@ const LaporanPenjualan: React.FC = () => {
 
       if (it.payment_status === 'paid') {
         omset += Number(it.final_amount || 0);
-      } else if (it.payment_status === 'pending') {
+      } else if (it.payment_status === 'pending' && it.payment_method !== null && it.payment_method !== '') {
         // const due =
         //   Number(it.due_amount ?? 0) ||
         //   Math.max(0, Number(it.final_amount || 0) - Number(it.paid_amount ?? 0)) ||
@@ -393,8 +393,6 @@ const LaporanPenjualan: React.FC = () => {
         const finalAmount = Number(it.final_amount || 0);
         const dpAmount = getDpFromNotes(it.notes);
         const remaining = Math.max(0, finalAmount - Number(dpAmount || 0));
-
-        console.log(it.invoice_number+' - '+remaining);
         piutang += remaining;
       }
     });
