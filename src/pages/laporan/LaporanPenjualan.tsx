@@ -429,13 +429,14 @@ const LaporanPenjualan: React.FC = () => {
 
     const toastId = showLoading('Menghapus transaksi...');
     try {
-      const { error: deleteItemsError } = await supabase.from('order_items').delete().eq('order_id', selectedSalesItem.id);
-      if (deleteItemsError) throw deleteItemsError;
+      // const { error: deleteItemsError } = await supabase.from('order_items').delete().eq('order_id', selectedSalesItem.id);
+      // if (deleteItemsError) throw deleteItemsError;
 
-      const { error: deleteOrderError } = await supabase.from('orders').delete().eq('id', selectedSalesItem.id);
-      if (deleteOrderError) throw deleteOrderError;
+      // const { error: deleteOrderError } = await supabase.from('orders').delete().eq('id', selectedSalesItem.id);
+      // if (deleteOrderError) throw deleteOrderError;
 
-      showSuccess('Transaksi berhasil dihapus!');
+      // showSuccess('Transaksi berhasil dihapus!');
+      showSuccess('Transaksi tidak dapat dihapus!');
       setSelectedSalesItem(null);
       fetchSalesData();
     } catch (err: any) {
@@ -457,15 +458,15 @@ const LaporanPenjualan: React.FC = () => {
 
     const toastId = showLoading('Menghapus semua transaksi yang difilter...');
     try {
-      const orderIdsToDelete = filteredAndSortedData.map(item => item.id);
+      // const orderIdsToDelete = filteredAndSortedData.map(item => item.id);
 
-      const { error: deleteItemsError } = await supabase.from('order_items').delete().in('order_id', orderIdsToDelete);
-      if (deleteItemsError) throw deleteItemsError;
+      // const { error: deleteItemsError } = await supabase.from('order_items').delete().in('order_id', orderIdsToDelete);
+      // if (deleteItemsError) throw deleteItemsError;
 
-      const { error: deleteOrdersError } = await supabase.from('orders').delete().in('id', orderIdsToDelete);
-      if (deleteOrdersError) throw deleteOrdersError;
-
-      showSuccess('Semua transaksi yang difiltered berhasil dihapus!');
+      // const { error: deleteOrdersError } = await supabase.from('orders').delete().in('id', orderIdsToDelete);
+      // if (deleteOrdersError) throw deleteOrdersError;
+      // showSuccess('Semua transaksi yang difiltered berhasil dihapus!');
+      showSuccess('Transaksi tidak dapat dihapus!');
       setSelectedSalesItem(null);
       fetchSalesData();
     } catch (err: any) {

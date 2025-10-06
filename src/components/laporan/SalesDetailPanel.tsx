@@ -53,7 +53,7 @@ const SalesDetailPanel: React.FC<SalesDetailPanelProps> = ({ selectedItem }) => 
                       <div className="text-xs text-gray-500">({item.notes_per_item})</div>
                     )}
                   </td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-4 py-2 text-sm text-gray-900">
                     {item.dimensions?.panjang && item.dimensions?.lebar
                       ? `${item.dimensions.panjang}x${item.dimensions.lebar} ${item.dimensions.satuan || ''}`
                       : '-'}

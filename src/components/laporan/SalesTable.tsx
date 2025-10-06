@@ -7,21 +7,17 @@ import { supabase } from '../../integrations/supabase/client';
 const getDpFromNotes = (notes: any): number => {
   try {
     if (!notes) return 0;
-
     if (typeof notes === 'object' && notes !== null) {
       if (typeof notes.dp_amount === 'number') return notes.dp_amount || 0;
       if (typeof (notes as any).PaymentDetails?.dp_amount === 'number')
         return (notes as any).PaymentDetails.dp_amount || 0;
     }
-
     const str = String(notes).trim();
     const prefix = 'Payment Details:';
     const jsonPart = str.startsWith(prefix) ? str.slice(prefix.length).trim() : str;
-
     const parsed = JSON.parse(jsonPart);
     if (typeof parsed?.dp_amount === 'number') return parsed.dp_amount || 0;
     if (typeof parsed?.PaymentDetails?.dp_amount === 'number') return parsed.PaymentDetails.dp_amount || 0;
-
     return 0;
   } catch {
     return 0;
@@ -37,9 +33,7 @@ const nameFromProfile = (p: any) => {
 
 type CombinedSalesItem = SalesItem | PendingOrderItem;
 
-interface KasirOption { id: string; name: string; }
 interface CustomerOption { id: string; name: string; }
-interface OptionItem { id: string; name: string; }
 
 interface SalesTableProps {
   data: CombinedSalesItem[];
@@ -61,29 +55,43 @@ interface SalesTableProps {
   selectedPaymentMethod: string;
   onPaymentMethodChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
 
-  // props lama masih diterima; sekarang nilainya diisi "nama" (bukan id).
-  kasirOptions: KasirOption[]; // tak dipakai untuk opsi filter, tapi tetap diterima agar kompatibel
-  selectedKasirId: string;
-  onKasirChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
-
+  // Customer filter (tetap dari props)
   customerOptions: CustomerOption[];
   selectedCustomerId: string;
   onCustomerChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
 
-  designerOptions: OptionItem[]; // tak dipakai untuk opsi filter
+  // Controlled values (UUID) untuk filter petugas
+  selectedKasirId: string;
+  onKasirChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   selectedDesignerId: string;
   onDesignerChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
-
-  operatorOptions: OptionItem[]; // tak dipakai untuk opsi filter
   selectedOperatorId: string;
   onOperatorChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
-
-  finishingOptions: OptionItem[]; // tak dipakai untuk opsi filter
   selectedFinishingId: string;
   onFinishingChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
 
   isRefreshing?: boolean;
 }
+
+type ProfileRow = { id: string; first_name: string | null; last_name: string | null; role_id: string };
+type RoleRow = { id: string; nama?: string | null; slug?: string | null };
+
+// ------ Konfigurasi pencocokan role ------
+// Ubah kalau di DB kamu nama/slug-nya berbeda
+const ROLE_MATCHERS = {
+  kasir: ['kasir'],
+  designer: ['designer'],
+  operator: ['operator'],
+  finishing: ['finishing'],
+};
+
+// util label nama
+const displayName = (p: { first_name?: string | null; last_name?: string | null }) => {
+  const fn = String(p.first_name ?? '').trim();
+  const ln = String(p.last_name ?? '').trim();
+  const nm = [fn, ln].filter(Boolean).join(' ').trim();
+  return nm || '-';
+};
 
 const SalesTable: React.FC<SalesTableProps> = ({
   data,
@@ -104,21 +112,17 @@ const SalesTable: React.FC<SalesTableProps> = ({
   onPaymentStatusFilterChange,
   selectedPaymentMethod,
   onPaymentMethodChange,
-
-  // props lama:
-  kasirOptions,
-  selectedKasirId,
-  onKasirChange,
   customerOptions,
   selectedCustomerId,
   onCustomerChange,
-  designerOptions,
+
+  // controlled petugas UUID
+  selectedKasirId,
+  onKasirChange,
   selectedDesignerId,
   onDesignerChange,
-  operatorOptions,
   selectedOperatorId,
   onOperatorChange,
-  finishingOptions,
   selectedFinishingId,
   onFinishingChange,
 
@@ -137,7 +141,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
   };
 
   // =========================
-  // 1) Ambil nama dari profiles (batch)
+  // A) Cache profile untuk tampilan nama di tabel
   // =========================
   type ProfileName = { first_name: string | null; last_name: string | null };
   const [profileCache, setProfileCache] = useState<Record<string, ProfileName>>({});
@@ -145,13 +149,13 @@ const SalesTable: React.FC<SalesTableProps> = ({
   useEffect(() => {
     const ids = new Set<string>();
     data.forEach((item: any) => {
-      ['kasir_id', 'designer_id', 'operator_id'].forEach((key) => {
+      ['kasir_id', 'designer_id', 'operator_id', 'finishing_id'].forEach((key) => {
         const val = item?.[key];
         if (val) ids.add(String(val));
       });
       const items = Array.isArray((item as any)?.order_items) ? (item as any).order_items : [];
       items.forEach((it: any) => {
-        ['designer_id', 'operator_id'].forEach((key) => {
+        ['designer_id', 'operator_id', 'finishing_id'].forEach((key) => {
           const val = it?.[key];
           if (val) ids.add(String(val));
         });
@@ -184,71 +188,113 @@ const SalesTable: React.FC<SalesTableProps> = ({
     if (!id) return '';
     const rec = profileCache[String(id)];
     if (!rec) return '';
-    const fn = String(rec.first_name ?? '').trim();
-    const ln = String(rec.last_name ?? '').trim();
-    return [fn, ln].filter(Boolean).join(' ').trim();
+    return displayName(rec);
   };
 
   // =========================
-  // 2) Ekstrak "Finishing" dari additional_options (sesuai status order)
+  // B) Ambil opsi dropdown dari roles -> profiles (TERPISAH DARI DATA)
   // =========================
-  const findFinishingFromItems = (order: any): string => {
-    try {
-      const labels = new Set<string>();
-      const items = Array.isArray(order?.order_items) ? order.order_items : [];
-      items.forEach((it: any) => {
-        const opts = it?.dimensions?.additional_options;
-        if (Array.isArray(opts)) {
-          opts.forEach((op: any) => {
-            const n = String(op?.name ?? op?.label ?? '').toLowerCase();
-            const t = String(op?.type ?? op?.category ?? '').toLowerCase();
-            const isFin =
-              t === 'finishing' ||
-              /finishing|laminasi|potong|lipat|jahit|spiral|ring|emboss|spot uv|vernish/.test(n);
-            if (isFin) {
-              const label = String(op?.label ?? op?.name ?? '').trim();
-              if (label) labels.add(label);
-            }
+  type LabeledId = { id: string; label: string };
+
+  const [roleOptions, setRoleOptions] = useState<{
+    kasir: LabeledId[];
+    designer: LabeledId[];
+    operator: LabeledId[];
+    finishing: LabeledId[];
+  }>({ kasir: [], designer: [], operator: [], finishing: [] });
+
+  const [loadingRoles, setLoadingRoles] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      setLoadingRoles(true);
+      try {
+        // 1) Ambil semua roles
+        const { data: roles, error: roleErr } = await supabase
+          .from('roles')
+          .select('id, nama');
+        if (roleErr) throw roleErr;
+
+        const findRoleIds = (aliases: string[]) => {
+          const lowers = aliases.map(a => a.toLowerCase());
+          const matched = (roles as any[]).filter(r => {
+            const nm = (r.nama ?? '').toLowerCase();
+            return lowers.includes(nm);
           });
+          return matched.map(m => m.id);
+        };
+
+        const kasirRoleIds = findRoleIds(ROLE_MATCHERS.kasir);
+        const designerRoleIds = findRoleIds(ROLE_MATCHERS.designer);
+        const operatorRoleIds = findRoleIds(ROLE_MATCHERS.operator);
+        const finishingRoleIds = findRoleIds(ROLE_MATCHERS.finishing);
+
+        // 2) Ambil profiles untuk semua role yang diperlukan (sekali query lalu kelompokkan)
+        const allRoleIds = [
+          ...kasirRoleIds,
+          ...designerRoleIds,
+          ...operatorRoleIds,
+          ...finishingRoleIds,
+        ];
+        console.log(allRoleIds);
+        const uniqRoleIds = Array.from(new Set(allRoleIds));
+        let profilesByRole: ProfileRow[] = [];
+        if (uniqRoleIds.length > 0) {
+          const { data: profs, error: profErr } = await supabase
+            .from('profiles')
+            .select('id, first_name, last_name, role_id')
+            .in('role_id', uniqRoleIds);
+          if (profErr) throw profErr;
+          profilesByRole = (profs || []) as ProfileRow[];
         }
-      });
-      return Array.from(labels).join(', ');
-    } catch {
-      return '';
-    }
-  };
+
+        const toLabeled = (rows: ProfileRow[]) =>
+          rows
+            .map((p) => ({ id: p.id, label: displayName(p) || p.id.slice(0, 8) }))
+            .sort((a, b) => a.label.localeCompare(b.label, 'id'));
+
+        const next = {
+          kasir: toLabeled(profilesByRole.filter(p => kasirRoleIds.includes(p.role_id))),
+          designer: toLabeled(profilesByRole.filter(p => designerRoleIds.includes(p.role_id))),
+          operator: toLabeled(profilesByRole.filter(p => operatorRoleIds.includes(p.role_id))),
+          finishing: toLabeled(profilesByRole.filter(p => finishingRoleIds.includes(p.role_id))),
+        };
+
+        if (!cancelled) setRoleOptions(next);
+      } catch (e) {
+        console.error('fetch roles/profiles error:', e);
+        if (!cancelled) {
+          setRoleOptions({ kasir: [], designer: [], operator: [], finishing: [] });
+        }
+      } finally {
+        if (!cancelled) setLoadingRoles(false);
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, []); // load sekali; kalau mau, bisa ditrigger ulang via tombol refresh
 
   // =========================
-  // 3) Normalisasi nama Petugas yang DITAMPILKAN DI TABEL
-  //    (harus match dengan tampilan kolom Petugas)
+  // C) Nama Petugas untuk tampilan tabel (independen dari filter)
   // =========================
   const computePetugasNames = (item: any) => {
-    // Designer
-    const designerJoined =
-      Array.isArray(item?.designer_names) && item.designer_names.length
-        ? item.designer_names.filter(Boolean).join(', ')
-        : '';
+    // Designer/Operator/Finishing/Kasir untuk tampilan
     const designerName =
       String(item?.designer_name ?? '').trim() ||
       getNameFromProfilesById(item?.designer_id) ||
-      designerJoined ||
       '';
 
-    // Operator
     const operatorName =
       String(item?.operator_name ?? '').trim() ||
       getNameFromProfilesById(item?.operator_id) ||
       '';
 
-    // Finishing
-    const finishingFromField = String(item?.finishing_name ?? '').trim();
-    const finishingFromItems = findFinishingFromItems(item);
     const finishingName =
-      finishingFromField ||
-      finishingFromItems ||
+      String(item?.finishing_name ?? '').trim() ||
+      getNameFromProfilesById(item?.finishing_id) || // jika finishing juga profil user
       '';
 
-    // Kasir
     let kasirName =
       String(item?.kasir_name ?? '').trim() ||
       getNameFromProfilesById(item?.kasir_id) ||
@@ -269,105 +315,10 @@ const SalesTable: React.FC<SalesTableProps> = ({
   };
 
   // =========================
-  // 4) Kumpulkan opsi filter dari KOLOM PETUGAS (dedup by lower-case)
+  // D) Filter by UUID (top-level & order_items)
   // =========================
-  const { kasirOptionsFromData, designerOptionsFromData, operatorOptionsFromData, finishingOptionsFromData } =
-    useMemo(() => {
-      const add = (map: Map<string, string>, label: string) => {
-        const trimmed = (label ?? '').trim();
-        if (!trimmed) return;
-        const parts = trimmed.split(',').map(s => s.trim()).filter(Boolean);
-        parts.forEach(p => {
-          const key = p.toLocaleLowerCase();
-          if (!map.has(key)) map.set(key, p);
-        });
-      };
-
-      const kasirMap = new Map<string, string>();
-      const designerMap = new Map<string, string>();
-      const operatorMap = new Map<string, string>();
-      const finishingMap = new Map<string, string>();
-
-      data.forEach((item) => {
-        const p = computePetugasNames(item);
-        add(kasirMap, p.kasir);
-        add(designerMap, p.designer);
-        add(operatorMap, p.operator);
-        add(finishingMap, p.finishing);
-      });
-
-      const sortByLabel = (a: string, b: string) => a.localeCompare(b, 'id');
-
-      const toArray = (m: Map<string, string>) => Array.from(m.values()).sort(sortByLabel);
-
-      // Pastikan '-' tetap hadir bila memang ada di data
-      return {
-        kasirOptionsFromData: toArray(kasirMap),
-        designerOptionsFromData: toArray(designerMap),
-        operatorOptionsFromData: toArray(operatorMap),
-        finishingOptionsFromData: toArray(finishingMap),
-      };
-    }, [data, profileCache]);
-
-  // =========================
-  // 5) State lokal fallback utk filter (kalau parent tidak mengontrol)
-  // =========================
-  const [localKasir, setLocalKasir] = useState('');
-  const [localDesigner, setLocalDesigner] = useState('');
-  const [localOperator, setLocalOperator] = useState('');
-  const [localFinishing, setLocalFinishing] = useState('');
-
-  const kasirValue = (selectedKasirId ?? localKasir) || '';
-  const designerValue = (selectedDesignerId ?? localDesigner) || '';
-  const operatorValue = (selectedOperatorId ?? localOperator) || '';
-  const finishingValue = (selectedFinishingId ?? localFinishing) || '';
-
-  const handleKasirChange =
-    onKasirChange ??
-    ((e: React.ChangeEvent<HTMLSelectElement>) => setLocalKasir(e.target.value));
-  const handleDesignerChange =
-    onDesignerChange ??
-    ((e: React.ChangeEvent<HTMLSelectElement>) => setLocalDesigner(e.target.value));
-  const handleOperatorChange =
-    onOperatorChange ??
-    ((e: React.ChangeEvent<HTMLSelectElement>) => setLocalOperator(e.target.value));
-  const handleFinishingChange =
-    onFinishingChange ??
-    ((e: React.ChangeEvent<HTMLSelectElement>) => setLocalFinishing(e.target.value));
-
-  // =========================
-  // 6) Render cell Petugas (harus sama dengan basis filter)
-  // =========================
-  const renderPetugasCell = (item: any) => {
-    const p = computePetugasNames(item);
-    const rows: Array<[string, string]> = [
-      ['Designer', p.designer],
-      ['Kasir', p.kasir],
-      ['Operator', p.operator],
-      ['Finishing', p.finishing],
-    ];
-    return (
-      <div className="whitespace-pre-line break-words">
-        {rows.map(([label, val]) => (
-          <div key={label}>
-            <span className="text-gray-500">{label}: </span>
-            <span className="text-gray-900">{val}</span>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  // =========================
-  // 7) Filter baris berdasarkan NAMA petugas yang tampil
-  // =========================
-  const nameHasToken = (cellValue: string, token: string) => {
-    if (!token) return true;
-    if (!cellValue) return false;
-    const cellParts = cellValue.split(',').map(s => s.trim().toLocaleLowerCase()).filter(Boolean);
-    const t = token.trim().toLocaleLowerCase();
-    return cellParts.includes(t);
-  };
+  const anyOrderItemMatch = (arr: any[] | undefined, key: string, uuid: string) =>
+    Array.isArray(arr) && arr.some((x) => String(x?.[key] ?? '') === uuid);
 
   const filteredData = useMemo(() => {
     return data
@@ -376,36 +327,45 @@ const SalesTable: React.FC<SalesTableProps> = ({
           it.payment_status === 'paid' ||
           (it.payment_status === 'pending' && it.payment_method !== null && it.payment_method !== '')
       )
-      .filter((it) => {
-        // filter existing (status + metode) tetap di parent via props
+      .filter((it: any) => {
         if (paymentStatusFilter !== 'all' && it.payment_status !== paymentStatusFilter) return false;
         if (selectedPaymentMethod !== 'all' && (it.payment_method ?? '') !== selectedPaymentMethod) return false;
 
-        // filter Petugas (berdasarkan yang tampil)
-        const p = computePetugasNames(it);
-        if (kasirValue && !nameHasToken(p.kasir, kasirValue)) return false;
-        if (designerValue && !nameHasToken(p.designer, designerValue)) return false;
-        if (operatorValue && !nameHasToken(p.operator, operatorValue)) return false;
-        if (finishingValue && !nameHasToken(p.finishing, finishingValue)) return false;
+        // UUID filters (ambil dari props controlled)
+        if (selectedKasirId && String(it.kasir_id ?? '') !== selectedKasirId) return false;
 
-        // filter pencarian teks bebas (optional)
+        if (selectedDesignerId) {
+          const matchTop = String(it.designer_id ?? '') === selectedDesignerId;
+          const matchItems = anyOrderItemMatch(it.order_items, 'designer_id', selectedDesignerId);
+          if (!matchTop && !matchItems) return false;
+        }
+
+        if (selectedOperatorId) {
+          const matchTop = String(it.operator_id ?? '') === selectedOperatorId;
+          const matchItems = anyOrderItemMatch(it.order_items, 'operator_id', selectedOperatorId);
+          if (!matchTop && !matchItems) return false;
+        }
+
+        if (selectedFinishingId) {
+          const matchTop = String(it.finishing_id ?? '') === selectedFinishingId;
+          const matchItems = anyOrderItemMatch(it.order_items, 'finishing_id', selectedFinishingId);
+          if (!matchTop && !matchItems) return false;
+        }
+
+        // free text search
         if (searchTerm?.trim()) {
+          const p = computePetugasNames(it);
           const q = searchTerm.trim().toLocaleLowerCase();
           const hay = [
             it.invoice_number,
             it.customer_display_name,
             it.customer_display_phone,
-            p.kasir,
-            p.designer,
-            p.operator,
-            p.finishing,
-          ]
-            .filter(Boolean)
-            .join(' | ')
-            .toLocaleLowerCase();
+            p.kasir, p.designer, p.operator, p.finishing,
+          ].filter(Boolean).join(' | ').toLocaleLowerCase();
           if (!hay.includes(q)) return false;
         }
-        // filter customer
+
+        // customer filter (by label)
         if (selectedCustomerId && String(selectedCustomerId).trim()) {
           const label = it.customer_display_name || (it as any).pelanggan?.[0]?.nama_pelanggan || 'Umum';
           if (String(label).trim() !== String(selectedCustomerId).trim()) return false;
@@ -418,13 +378,15 @@ const SalesTable: React.FC<SalesTableProps> = ({
     searchTerm,
     paymentStatusFilter,
     selectedPaymentMethod,
-    kasirValue,
-    designerValue,
-    operatorValue,
-    finishingValue,
-    profileCache,
+    selectedKasirId,
+    selectedDesignerId,
+    selectedOperatorId,
+    selectedFinishingId,
   ]);
 
+  // =========================
+  // UI
+  // =========================
   return (
     <div className="space-y-6">
       {/* TOP CONTROLS */}
@@ -473,7 +435,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
           >
             <option value="all">Semua Status</option>
             <option value="paid">Lunas</option>
-            <option value="pending">Tertunda</option>
+            <option value="pending">Pending</option>
           </select>
         </div>
 
@@ -507,19 +469,20 @@ const SalesTable: React.FC<SalesTableProps> = ({
         </div>
       </div>
 
-      {/* FILTER BAR — ROW 2 (opsi dari KOLOM PETUGAS) */}
+      {/* FILTER BAR — ROW 2 (UUID dari roles→profiles) */}
       <div className="bg-white rounded-lg shadow-sm p-6 grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
         <div className="flex items-center gap-2">
           <label htmlFor="kasirFilter" className="text-sm font-medium text-gray-700">Kasir:</label>
           <select
             id="kasirFilter"
-            value={kasirValue}
-            onChange={handleKasirChange}
+            value={selectedKasirId || ''}
+            onChange={onKasirChange}
+            disabled={loadingRoles}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
           >
-            <option value="">Semua Kasir</option>
-            {kasirOptionsFromData.map(name => (
-              <option key={name} value={name}>{name}</option>
+            <option value="">{loadingRoles ? 'Memuat...' : 'Semua Kasir'}</option>
+            {roleOptions.kasir.map(opt => (
+              <option key={opt.id} value={opt.id}>{opt.label}</option>
             ))}
           </select>
         </div>
@@ -528,13 +491,14 @@ const SalesTable: React.FC<SalesTableProps> = ({
           <label htmlFor="designerFilter" className="text-sm font-medium text-gray-700">Designer:</label>
           <select
             id="designerFilter"
-            value={designerValue}
-            onChange={handleDesignerChange}
+            value={selectedDesignerId || ''}
+            onChange={onDesignerChange}
+            disabled={loadingRoles}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
           >
-            <option value="">Semua Designer</option>
-            {designerOptionsFromData.map(name => (
-              <option key={name} value={name}>{name}</option>
+            <option value="">{loadingRoles ? 'Memuat...' : 'Semua Designer'}</option>
+            {roleOptions.designer.map(opt => (
+              <option key={opt.id} value={opt.id}>{opt.label}</option>
             ))}
           </select>
         </div>
@@ -543,13 +507,14 @@ const SalesTable: React.FC<SalesTableProps> = ({
           <label htmlFor="operatorFilter" className="text-sm font-medium text-gray-700">Operator:</label>
           <select
             id="operatorFilter"
-            value={operatorValue}
-            onChange={handleOperatorChange}
+            value={selectedOperatorId || ''}
+            onChange={onOperatorChange}
+            disabled={loadingRoles}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
           >
-            <option value="">Semua Operator</option>
-            {operatorOptionsFromData.map(name => (
-              <option key={name} value={name}>{name}</option>
+            <option value="">{loadingRoles ? 'Memuat...' : 'Semua Operator'}</option>
+            {roleOptions.operator.map(opt => (
+              <option key={opt.id} value={opt.id}>{opt.label}</option>
             ))}
           </select>
         </div>
@@ -558,13 +523,14 @@ const SalesTable: React.FC<SalesTableProps> = ({
           <label htmlFor="finishingFilter" className="text-sm font-medium text-gray-700">Finishing:</label>
           <select
             id="finishingFilter"
-            value={finishingValue}
-            onChange={handleFinishingChange}
+            value={selectedFinishingId || ''}
+            onChange={onFinishingChange}
+            disabled={loadingRoles}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
           >
-            <option value="">Semua Finishing</option>
-            {finishingOptionsFromData.map(name => (
-              <option key={name} value={name}>{name}</option>
+            <option value="">{loadingRoles ? 'Memuat...' : 'Semua Finishing'}</option>
+            {roleOptions.finishing.map(opt => (
+              <option key={opt.id} value={opt.id}>{opt.label}</option>
             ))}
           </select>
         </div>
@@ -652,9 +618,28 @@ const SalesTable: React.FC<SalesTableProps> = ({
                       </div>
                     </td>
 
-                    {/* PETUGAS */}
+                    {/* PETUGAS (tampilan) */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {renderPetugasCell(item)}
+                      {(() => {
+                        const p = {
+                          ...computePetugasNames(item),
+                        };
+                        return (
+                          <div className="whitespace-pre-line break-words">
+                            {[
+                              ['Designer', p.designer],
+                              ['Kasir', p.kasir],
+                              ['Operator', p.operator],
+                              ['Finishing', p.finishing],
+                            ].map(([label, val]) => (
+                              <div key={label}>
+                                <span className="text-gray-500">{label}: </span>
+                                <span className="text-gray-900">{val}</span>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </td>
 
                     {/* JUMLAH TOTAL + badge sisa piutang */}
@@ -676,7 +661,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
                             <span>{fmt(finalAmount)}</span>
                             {eligible && remaining > 0 && (
                               <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                                +{fmt(remaining)}
+                                -{fmt(remaining)}
                               </span>
                             )}
                           </div>
@@ -695,7 +680,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
                             : 'bg-red-100 text-red-800'
                         }`}
                       >
-                        {item.payment_status === 'paid' ? 'Lunas' : item.payment_status === 'pending' ? 'Tertunda' : 'Batal'}
+                        {item.payment_status === 'paid' ? 'Lunas' : item.payment_status === 'pending' ? 'Pending' : 'Batal'}
                       </span>
                     </td>
 
