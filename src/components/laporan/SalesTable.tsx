@@ -55,12 +55,12 @@ interface SalesTableProps {
   selectedPaymentMethod: string;
   onPaymentMethodChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
 
-  // Customer filter (tetap dari props)
+  // props lama (compat)
   customerOptions: CustomerOption[];
-  selectedCustomerId: string;
+  selectedCustomerId: string; // harus berisi customer_id
   onCustomerChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
 
-  // Controlled values (UUID) untuk filter petugas
+  // filter petugas (UUID)
   selectedKasirId: string;
   onKasirChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   selectedDesignerId: string;
@@ -74,10 +74,7 @@ interface SalesTableProps {
 }
 
 type ProfileRow = { id: string; first_name: string | null; last_name: string | null; role_id: string };
-type RoleRow = { id: string; nama?: string | null; slug?: string | null };
 
-// ------ Konfigurasi pencocokan role ------
-// Ubah kalau di DB kamu nama/slug-nya berbeda
 const ROLE_MATCHERS = {
   kasir: ['kasir'],
   designer: ['designer'],
@@ -85,7 +82,6 @@ const ROLE_MATCHERS = {
   finishing: ['finishing'],
 };
 
-// util label nama
 const displayName = (p: { first_name?: string | null; last_name?: string | null }) => {
   const fn = String(p.first_name ?? '').trim();
   const ln = String(p.last_name ?? '').trim();
@@ -116,7 +112,6 @@ const SalesTable: React.FC<SalesTableProps> = ({
   selectedCustomerId,
   onCustomerChange,
 
-  // controlled petugas UUID
   selectedKasirId,
   onKasirChange,
   selectedDesignerId,
@@ -140,9 +135,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
     return method.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
-  // =========================
-  // A) Cache profile untuk tampilan nama di tabel
-  // =========================
+  // ===== A) Cache profile untuk tampilan nama =====
   type ProfileName = { first_name: string | null; last_name: string | null };
   const [profileCache, setProfileCache] = useState<Record<string, ProfileName>>({});
 
@@ -191,9 +184,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
     return displayName(rec);
   };
 
-  // =========================
-  // B) Ambil opsi dropdown dari roles -> profiles (TERPISAH DARI DATA)
-  // =========================
+  // ===== B) Dropdown petugas dari roles → profiles =====
   type LabeledId = { id: string; label: string };
 
   const [roleOptions, setRoleOptions] = useState<{
@@ -210,7 +201,6 @@ const SalesTable: React.FC<SalesTableProps> = ({
     const run = async () => {
       setLoadingRoles(true);
       try {
-        // 1) Ambil semua roles
         const { data: roles, error: roleErr } = await supabase
           .from('roles')
           .select('id, nama');
@@ -230,14 +220,12 @@ const SalesTable: React.FC<SalesTableProps> = ({
         const operatorRoleIds = findRoleIds(ROLE_MATCHERS.operator);
         const finishingRoleIds = findRoleIds(ROLE_MATCHERS.finishing);
 
-        // 2) Ambil profiles untuk semua role yang diperlukan (sekali query lalu kelompokkan)
         const allRoleIds = [
           ...kasirRoleIds,
           ...designerRoleIds,
           ...operatorRoleIds,
           ...finishingRoleIds,
         ];
-        console.log(allRoleIds);
         const uniqRoleIds = Array.from(new Set(allRoleIds));
         let profilesByRole: ProfileRow[] = [];
         if (uniqRoleIds.length > 0) {
@@ -273,13 +261,10 @@ const SalesTable: React.FC<SalesTableProps> = ({
     };
     run();
     return () => { cancelled = true; };
-  }, []); // load sekali; kalau mau, bisa ditrigger ulang via tombol refresh
+  }, []); // load sekali
 
-  // =========================
-  // C) Nama Petugas untuk tampilan tabel (independen dari filter)
-  // =========================
+  // ===== C) Nama petugas untuk tampilan =====
   const computePetugasNames = (item: any) => {
-    // Designer/Operator/Finishing/Kasir untuk tampilan
     const designerName =
       String(item?.designer_name ?? '').trim() ||
       getNameFromProfilesById(item?.designer_id) ||
@@ -292,7 +277,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
 
     const finishingName =
       String(item?.finishing_name ?? '').trim() ||
-      getNameFromProfilesById(item?.finishing_id) || // jika finishing juga profil user
+      getNameFromProfilesById(item?.finishing_id) ||
       '';
 
     let kasirName =
@@ -314,16 +299,23 @@ const SalesTable: React.FC<SalesTableProps> = ({
     };
   };
 
-  // =========================
-  // D) Filter by UUID (top-level & order_items)
-  // =========================
+  // ===== D) CUSTOMER (label & id) – STRICT pakai order.customer_id =====
+  const extractCustomerLabel = (it: any): string => {
+    return it.customer_display_name || it?.pelanggan?.[0]?.nama_pelanggan || 'Umum';
+  };
+  const extractCustomerId = (it: any): string | null => {
+    const raw = it?.customer_id; // <- SESUAI PERMINTAAN: hanya dari order.customer_id
+    return raw != null && raw !== '' ? String(raw) : null;
+  };
+
+  // ===== E) Data tanpa filter customer =====
   const anyOrderItemMatch = (arr: any[] | undefined, key: string, uuid: string) =>
     Array.isArray(arr) && arr.some((x) => String(x?.[key] ?? '') === uuid);
 
-  const filteredData = useMemo(() => {
+  const baseDataNoCustomerFilter = useMemo(() => {
     return data
       .filter(
-        (it) =>
+        (it: any) =>
           it.payment_status === 'paid' ||
           (it.payment_status === 'pending' && it.payment_method !== null && it.payment_method !== '')
       )
@@ -331,7 +323,6 @@ const SalesTable: React.FC<SalesTableProps> = ({
         if (paymentStatusFilter !== 'all' && it.payment_status !== paymentStatusFilter) return false;
         if (selectedPaymentMethod !== 'all' && (it.payment_method ?? '') !== selectedPaymentMethod) return false;
 
-        // UUID filters (ambil dari props controlled)
         if (selectedKasirId && String(it.kasir_id ?? '') !== selectedKasirId) return false;
 
         if (selectedDesignerId) {
@@ -352,7 +343,6 @@ const SalesTable: React.FC<SalesTableProps> = ({
           if (!matchTop && !matchItems) return false;
         }
 
-        // free text search
         if (searchTerm?.trim()) {
           const p = computePetugasNames(it);
           const q = searchTerm.trim().toLocaleLowerCase();
@@ -363,12 +353,6 @@ const SalesTable: React.FC<SalesTableProps> = ({
             p.kasir, p.designer, p.operator, p.finishing,
           ].filter(Boolean).join(' | ').toLocaleLowerCase();
           if (!hay.includes(q)) return false;
-        }
-
-        // customer filter (by label)
-        if (selectedCustomerId && String(selectedCustomerId).trim()) {
-          const label = it.customer_display_name || (it as any).pelanggan?.[0]?.nama_pelanggan || 'Umum';
-          if (String(label).trim() !== String(selectedCustomerId).trim()) return false;
         }
 
         return true;
@@ -384,9 +368,64 @@ const SalesTable: React.FC<SalesTableProps> = ({
     selectedFinishingId,
   ]);
 
-  // =========================
-  // UI
-  // =========================
+  // ===== F) Build opsi Customer (hanya yang customer_id != null) =====
+  type CustomerOptionLocal = { id: string; name: string };
+  const [dynamicCustomerOptions, setDynamicCustomerOptions] = useState<CustomerOptionLocal[]>([]);
+
+  useEffect(() => {
+    // HANYA refresh opsi saat selectedCustomerId kosong
+    if ((selectedCustomerId ?? '') === '') {
+      const uniq = new Map<string, CustomerOptionLocal>();
+      for (const it of baseDataNoCustomerFilter as any[]) {
+        const cid = extractCustomerId(it);
+        if (!cid) continue; // abaikan yang customer_id null/kosong
+        const label = (extractCustomerLabel(it) || '').trim() || cid;
+        if (!uniq.has(cid)) {
+          uniq.set(cid, { id: cid, name: label });
+        }
+      }
+      const arr = Array.from(uniq.values()).sort((a, b) => a.name.localeCompare(b.name, 'id'));
+      setDynamicCustomerOptions(arr);
+    }
+  }, [baseDataNoCustomerFilter, selectedCustomerId]);
+
+  // --- DEBUG: taruh console.log di sini (setelah baseDataNoCustomerFilter dihitung) ---
+  useEffect(() => {
+    console.log(
+      'cid list',
+      baseDataNoCustomerFilter.map((it: any) => ({
+        inv: it.invoice_number,
+        cid: extractCustomerId(it),
+        label: extractCustomerLabel(it),
+      }))
+    );
+  }, [baseDataNoCustomerFilter]);
+  // ------------------------------------------------------------------
+
+  // ===== G) Terapkan filter customer (strict by customer_id) =====
+  const filteredData = useMemo(() => {
+    const sel = String(selectedCustomerId ?? '').trim();
+    if (!sel) return baseDataNoCustomerFilter;
+    return baseDataNoCustomerFilter.filter((it: any) => String(extractCustomerId(it) ?? '') === sel);
+  }, [baseDataNoCustomerFilter, selectedCustomerId]);
+
+  // ===== H) Hitung dibayar & kekurangan =====
+  const computePaidAndRemaining = (item: any) => {
+    const finalAmount = Number(item.final_amount || 0);
+    if (item.payment_status === 'paid') {
+      return { paid: finalAmount, remaining: 0 };
+    }
+    const eligible = item.payment_status === 'pending' && item.payment_method !== null && item.payment_method !== '';
+    const dpAmount = eligible ? getDpFromNotes((item as any).notes) : 0;
+    const paid = Math.min(finalAmount, Number(dpAmount || 0));
+    const remaining = Math.max(0, finalAmount - paid);
+    return { paid, remaining };
+  };
+
+  const fmtIDR0 = (n: number) =>
+    n.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
+
+  // ===== UI =====
   return (
     <div className="space-y-6">
       {/* TOP CONTROLS */}
@@ -435,7 +474,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
           >
             <option value="all">Semua Status</option>
             <option value="paid">Lunas</option>
-            <option value="pending">Pending</option>
+            <option value="pending">Belum Lunas</option>
           </select>
         </div>
 
@@ -453,6 +492,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
           </select>
         </div>
 
+        {/* CUSTOMER FILTER — value = order.customer_id; exclude null */}
         <div className="flex items-center gap-2">
           <label htmlFor="customerFilter" className="text-sm font-medium text-gray-700">Customer:</label>
           <select
@@ -462,14 +502,14 @@ const SalesTable: React.FC<SalesTableProps> = ({
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
           >
             <option value="">Semua Customer</option>
-            {customerOptions.map(customer => (
-              <option key={customer.id} value={customer.name}>{customer.name}</option>
+            {dynamicCustomerOptions.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
         </div>
       </div>
 
-      {/* FILTER BAR — ROW 2 (UUID dari roles→profiles) */}
+      {/* FILTER BAR — ROW 2 (UUID petugas) */}
       <div className="bg-white rounded-lg shadow-sm p-6 grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
         <div className="flex items-center gap-2">
           <label htmlFor="kasirFilter" className="text-sm font-medium text-gray-700">Kasir:</label>
@@ -584,6 +624,8 @@ const SalesTable: React.FC<SalesTableProps> = ({
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => onSort('final_amount')}>
                   <div className="flex items-center">Jumlah Total {renderSortIcon('final_amount')}</div>
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dibayar</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kekurangan</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => onSort('payment_status')}>
                   <div className="flex items-center">Status Pembayaran {renderSortIcon('payment_status')}</div>
                 </th>
@@ -593,103 +635,92 @@ const SalesTable: React.FC<SalesTableProps> = ({
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">Tidak ada data penjualan.</td>
+                  <td colSpan={10} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                    Tidak ada data penjualan.
+                  </td>
                 </tr>
               ) : (
-                filteredData.map((item, index) => (
-                  <tr
-                    key={item.id}
-                    className={`cursor-pointer hover:bg-gray-50 ${selectedItemId === item.id ? 'bg-blue-50' : ''}`}
-                    onClick={() => onRowClick(item)}
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{index + 1}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {new Date(item.order_date).toLocaleDateString('id-ID')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {item.invoice_number || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        {item.customer_display_name || (item as any).pelanggan?.[0]?.nama_pelanggan || 'Umum'}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {item.customer_display_phone || (item as any).pelanggan?.[0]?.telepon || 'N/A'}
-                      </div>
-                    </td>
+                filteredData.map((item, index) => {
+                  const finalAmount = Number(item.final_amount || 0);
+                  const { paid, remaining } = computePaidAndRemaining(item as any);
 
-                    {/* PETUGAS (tampilan) */}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {(() => {
-                        const p = {
-                          ...computePetugasNames(item),
-                        };
-                        return (
-                          <div className="whitespace-pre-line break-words">
-                            {[
-                              ['Designer', p.designer],
-                              ['Kasir', p.kasir],
-                              ['Operator', p.operator],
-                              ['Finishing', p.finishing],
-                            ].map(([label, val]) => (
-                              <div key={label}>
-                                <span className="text-gray-500">{label}: </span>
-                                <span className="text-gray-900">{val}</span>
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })()}
-                    </td>
+                  return (
+                    <tr
+                      key={item.id}
+                      className={`cursor-pointer hover:bg-gray-50 ${selectedItemId === item.id ? 'bg-blue-50' : ''}`}
+                      onClick={() => onRowClick(item)}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{index + 1}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(item.order_date).toLocaleDateString('id-ID')}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {item.invoice_number || 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">
+                          {extractCustomerLabel(item)}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {item.customer_display_phone || (item as any)?.pelanggan?.[0]?.telepon || 'N/A'}
+                        </div>
+                      </td>
 
-                    {/* JUMLAH TOTAL + badge sisa piutang */}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {(() => {
-                        const finalAmount = Number(item.final_amount || 0);
-                        const eligible =
-                          item.payment_status === 'pending' &&
-                          item.payment_method !== null &&
-                          item.payment_method !== '';
-                        const dpAmount = eligible ? getDpFromNotes((item as any).notes) : 0;
-                        const remaining = Math.max(0, finalAmount - Number(dpAmount || 0));
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {(() => {
+                          const p = { ...computePetugasNames(item) };
+                          return (
+                            <div className="whitespace-pre-line break-words">
+                              {[
+                                ['Designer', p.designer],
+                                ['Kasir', p.kasir],
+                                ['Operator', p.operator],
+                                ['Finishing', p.finishing],
+                              ].map(([label, val]) => (
+                                <div key={String(label)}>
+                                  <span className="text-gray-500">{label}: </span>
+                                  <span className="text-gray-900">{val}</span>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </td>
 
-                        const fmt = (n: number) =>
-                          n.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {fmtIDR0(finalAmount)}
+                      </td>
 
-                        return (
-                          <div className="flex items-center gap-2">
-                            <span>{fmt(finalAmount)}</span>
-                            {eligible && remaining > 0 && (
-                              <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                                -{fmt(remaining)}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {fmtIDR0(paid)}
+                      </td>
 
-                    {/* STATUS */}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span
-                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          item.payment_status === 'paid'
-                            ? 'bg-green-100 text-green-800'
-                            : item.payment_status === 'pending'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}
-                      >
-                        {item.payment_status === 'paid' ? 'Lunas' : item.payment_status === 'pending' ? 'Pending' : 'Batal'}
-                      </span>
-                    </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <div className="flex items-center gap-2">
+                          <span>{fmtIDR0(remaining)}</span>
+                        </div>
+                      </td>
 
-                    {/* METODE */}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatPaymentMethod((item as any).payment_method)}
-                    </td>
-                  </tr>
-                ))
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <span
+                          className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            item.payment_status === 'paid'
+                              ? 'bg-green-100 text-green-800'
+                              : item.payment_status === 'pending'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}
+                        >
+                          {item.payment_status === 'paid' ? 'Lunas' : item.payment_status === 'pending' ? 'Belum Lunas' : 'Batal'}
+                        </span>
+                      </td>
+
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatPaymentMethod((item as any).payment_method)}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
