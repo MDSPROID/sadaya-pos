@@ -1,3 +1,88 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ===== PRINT-ONLY RULES ===== */
+@media print {
+    @page {
+      size: A4 landscape;   /* Landscape */
+      margin: 10mm;         /* Margin aman supaya tidak kepotong */
+    }
+  
+    /* Sembunyikan semua */
+    body * {
+      visibility: hidden !important;
+    }
+  
+    /* Tampilkan hanya area tabel + isinya */
+    #purchase-print-area,
+    #purchase-print-area * {
+      visibility: visible !important;
+    }
+  
+    /* Pastikan area cetak berada di posisi atas, lebar penuh */
+    #purchase-print-area {
+      position: absolute !important;
+      left: 0 !important;
+      top: 0 !important;
+      width: 100% !important;
+    }
+  
+    /* Utility: elemen yang tidak perlu dicetak */
+    .no-print {
+      display: none !important;
+    }
+  
+    /* Utility: blok penuh saat print */
+    .print-only-block {
+      display: block !important;
+      box-shadow: none !important;
+      border-radius: 0 !important;
+    }
+  
+    /* Pastikan tabel fit dan tidak ada scroll */
+    .print-w-full,
+    .print-w-full * {
+      width: 100% !important;
+      max-width: 100% !important;
+      overflow: visible !important;
+    }
+  
+    /* Hindari baris terbelah antar halaman */
+    tr.avoid-break,
+    tr.avoid-break * {
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
+  
+    thead {
+      display: table-header-group !important; /* header muncul di setiap halaman */
+    }
+    tfoot {
+      display: table-footer-group !important;
+    }
+  
+    /* Tipiskan padding & kecilkan font agar muat */
+    table.min-w-full th,
+    table.min-w-full td {
+      padding: 6px 8px !important;
+      font-size: 12px !important;
+      white-space: nowrap;
+    }
+  
+    /* Pakai di sel yang boleh wrap */
+    .wrap-cell {
+      white-space: normal !important;
+      word-break: break-word !important;
+    }
+  }
+  
+  /* ===== (Opsional) daftarkan utilitas agar urutan pas dengan Tailwind ===== */
+  @layer utilities {
+    .no-print { /* tidak apa-apa kosong di layar; aktif di @media print */ }
+    .print-only-block { /* aktif di @media print */ }
+    .print-w-full { /* aktif di @media print */ }
+    .avoid-break { /* aktif di @media print */ }
+    .wrap-cell { /* aktif di @media print */ }
+  }
+  

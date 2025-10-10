@@ -3,17 +3,11 @@ import { Search, Printer, ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
 import { PurchaseReportItem } from '../../types/purchaseOrderTypes';
 import { formatCurrency, formatPaymentMethod } from '../../utils/formatters';
 
-interface SupplierOption {
-  id: string;
-  name: string;
-}
-
-interface RecordedByOption {
-  id: string;
-  name: string;
-}
+interface SupplierOption { id: string; name: string; }
+interface RecordedByOption { id: string; name: string; }
 
 interface PurchaseReportTableProps {
+  loading?: boolean; // <<<<<< baru
   data: PurchaseReportItem[];
   searchTerm: string;
   onSearchChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -43,6 +37,7 @@ interface PurchaseReportTableProps {
 }
 
 const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
+  loading = false,
   data,
   searchTerm,
   onSearchChange,
@@ -71,15 +66,34 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
   onDeleteAllFiltered,
 }) => {
   const renderSortIcon = (column: string) => {
-    if (sortColumn === column) {
-      return sortDirection === 'asc' ? <ArrowUp className="ml-1 h-4 w-4" /> : <ArrowDown className="ml-1 h-4 w-4" />;
-    }
+    if (sortColumn === column) return sortDirection === 'asc' ? <ArrowUp className="ml-1 h-4 w-4" /> : <ArrowDown className="ml-1 h-4 w-4" />;
     return null;
   };
 
+  // Skeleton row component
+  const RowSkeleton = ({ idx }: { idx: number }) => (
+    <tr key={`s-${idx}`}>
+      <td className="px-6 py-4"><div className="h-4 w-6 bg-gray-200 rounded animate-pulse" /></td>
+      <td className="px-6 py-4"><div className="h-4 w-24 bg-gray-200 rounded animate-pulse" /></td>
+      <td className="px-6 py-4"><div className="h-4 w-28 bg-gray-200 rounded animate-pulse" /></td>
+      <td className="px-6 py-4">
+        <div className="h-4 w-40 bg-gray-200 rounded animate-pulse mb-2" />
+        <div className="h-3 w-32 bg-gray-200 rounded animate-pulse" />
+      </td>
+      <td className="px-6 py-4"><div className="h-4 w-20 bg-gray-200 rounded animate-pulse" /></td>
+      <td className="px-6 py-4"><div className="h-4 w-24 bg-gray-200 rounded animate-pulse" /></td>
+      <td className="px-6 py-4"><div className="h-4 w-20 bg-gray-200 rounded animate-pulse" /></td>
+      <td className="px-6 py-4"><div className="h-4 w-28 bg-gray-200 rounded animate-pulse" /></td>
+      <td className="px-6 py-4"><div className="h-4 w-36 bg-gray-200 rounded animate-pulse" /></td>
+    </tr>
+  );
+
+  const showEmpty = !loading && data.length === 0;
+
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow-sm p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-start">
+      {/* Filter bar */}
+      <div className="bg-white rounded-lg shadow-sm p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-start no-print">
         <div className="relative sm:col-span-2 lg:col-span-2 xl:col-span-2">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
           <input
@@ -145,8 +159,8 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
             <option value="">Semua Supplier</option>
-            {supplierOptions.map(supplier => (
-              <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
+            {supplierOptions.map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
         </div>
@@ -159,8 +173,8 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
             <option value="">Semua Petugas</option>
-            {recordedByOptions.map(user => (
-              <option key={user.id} value={user.id}>{user.name}</option>
+            {recordedByOptions.map(u => (
+              <option key={u.id} value={u.id}>{u.name}</option>
             ))}
           </select>
         </div>
@@ -173,144 +187,99 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
         </button>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm p-6 text-right">
+      {/* Summary total - juga JANGAN ikut dicetak */}
+      <div className="bg-white rounded-lg shadow-sm p-6 text-right no-print">
         <h2 className="text-xl font-bold text-gray-900">
           Total Pembelian: {formatCurrency(totalPurchaseAmount)}
         </h2>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+      {/* === INI AREA YANG AKAN DICETAK === */}
+      <div id="purchase-print-area" className="bg-white rounded-lg shadow-sm overflow-hidden print-only-block">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  No.
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No.</th>
+                <th onClick={() => onSort('order_date')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                  <div className="flex items-center">Tanggal {renderSortIcon('order_date')}</div>
                 </th>
-                <th
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                  onClick={() => onSort('order_date')}
-                >
-                  <div className="flex items-center">
-                    Tanggal
-                    {renderSortIcon('order_date')}
-                  </div>
+                <th onClick={() => onSort('invoice_number')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                  <div className="flex items-center">Faktur {renderSortIcon('invoice_number')}</div>
                 </th>
-                <th
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                  onClick={() => onSort('invoice_number')}
-                >
-                  <div className="flex items-center">
-                    Faktur
-                    {renderSortIcon('invoice_number')}
-                  </div>
+                <th onClick={() => onSort('supplier')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                  <div className="flex items-center">Supplier {renderSortIcon('supplier')}</div>
                 </th>
-                <th
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                  onClick={() => onSort('supplier')}
-                >
-                  <div className="flex items-center">
-                    Supplier
-                    {renderSortIcon('supplier')}
-                  </div>
+                <th onClick={() => onSort('final_amount')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                  <div className="flex items-center">Jumlah Total {renderSortIcon('final_amount')}</div>
                 </th>
-                <th
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                  onClick={() => onSort('final_amount')}
-                >
-                  <div className="flex items-center">
-                    Jumlah Total
-                    {renderSortIcon('final_amount')}
-                  </div>
+                <th onClick={() => onSort('due_date')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                  <div className="flex items-center">Tgl Tempo {renderSortIcon('due_date')}</div>
                 </th>
-                <th
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                  onClick={() => onSort('due_date')}
-                >
-                  <div className="flex items-center">
-                    Tgl Tempo
-                    {renderSortIcon('due_date')}
-                  </div>
+                <th onClick={() => onSort('due_amount')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                  <div className="flex items-center">Hutang {renderSortIcon('due_amount')}</div>
                 </th>
-                <th
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                  onClick={() => onSort('due_amount')}
-                >
-                  <div className="flex items-center">
-                    Hutang
-                    {renderSortIcon('due_amount')}
-                  </div>
+                <th onClick={() => onSort('payment_method')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                  <div className="flex items-center">Metode {renderSortIcon('payment_method')}</div>
                 </th>
-                <th
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                  onClick={() => onSort('payment_method')}
-                >
-                  <div className="flex items-center">
-                    Metode
-                    {renderSortIcon('payment_method')}
-                  </div>
-                </th>
-                <th
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                  onClick={() => onSort('recorded_by')}
-                >
-                  <div className="flex items-center">
-                    Petugas
-                    {renderSortIcon('recorded_by')}
-                  </div>
+                <th onClick={() => onSort('recorded_by')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                  <div className="flex items-center">Petugas {renderSortIcon('recorded_by')}</div>
                 </th>
               </tr>
             </thead>
+
             <tbody className="bg-white divide-y divide-gray-200">
-              {data.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
-                    Tidak ada data pembelian.
-                  </td>
-                </tr>
-              ) : (
-                data.map((item, index) => (
-                  <tr
-                    key={item.id}
-                    className={`cursor-pointer hover:bg-gray-50 ${selectedItemId === item.id ? 'bg-blue-50' : ''}`}
-                    onClick={() => onRowClick(item)}
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {index + 1}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {new Date(item.order_date).toLocaleDateString('id-ID')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {item.invoice_number || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        {item.supplier_display_name || item.supplier?.nama || 'N/A'}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {item.supplier_display_phone || item.supplier?.telepon || 'N/A'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatCurrency(item.final_amount)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {item.due_date ? new Date(item.due_date).toLocaleDateString('id-ID') : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatCurrency(item.due_amount)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatPaymentMethod(item.payment_method)}
-                      {item.bank_name && ` (${item.bank_name})`}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {item.profiles ? `${item.profiles.first_name} ${item.profiles.last_name || ''}` : 'N/A'}
+              {loading
+                ? Array.from({ length: 8 }).map((_, i) => <RowSkeleton key={i} idx={i} />)
+                : showEmpty ? (
+                  <tr>
+                    <td colSpan={9} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                      Tidak ada data pembelian.
                     </td>
                   </tr>
-                ))
-              )}
+                ) : (
+                  data.map((item, index) => (
+                    <tr
+                      key={item.id}
+                      className={`cursor-pointer hover:bg-gray-50 ${selectedItemId === item.id ? 'bg-blue-50' : ''}`}
+                      onClick={() => onRowClick(item)}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {index + 1}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(item.order_date).toLocaleDateString('id-ID')}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {item.invoice_number || 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">
+                          {item.supplier_display_name || item.supplier?.nama || 'N/A'}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {item.supplier_display_phone || item.supplier?.telepon || 'N/A'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatCurrency(item.final_amount)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {item.due_date ? new Date(item.due_date).toLocaleDateString('id-ID') : 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatCurrency(item.due_amount)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatPaymentMethod(item.payment_method)}
+                        {item.bank_name && ` (${item.bank_name})`}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {item.profiles ? `${item.profiles.first_name} ${item.profiles.last_name || ''}` : 'N/A'}
+                      </td>
+                    </tr>
+                  ))
+                )}
             </tbody>
           </table>
         </div>
@@ -320,6 +289,7 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
         <button
           onClick={onDeleteSelected}
           className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          disabled={loading}
         >
           <Trash2 className="h-5 w-5 mr-2" />
           Hapus Transaksi
@@ -327,6 +297,7 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
         <button
           onClick={onDeleteAllFiltered}
           className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          disabled={loading}
         >
           <Trash2 className="h-5 w-5 mr-2" />
           Hapus Semua (Filter)

@@ -55,18 +55,20 @@ interface SalesTableProps {
   selectedPaymentMethod: string;
   onPaymentMethodChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
 
-  // props lama (compat)
   customerOptions: CustomerOption[];
-  selectedCustomerId: string; // harus berisi customer_id
+  selectedCustomerId: string; // value = customer_id
   onCustomerChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
 
-  // filter petugas (UUID)
+  kasirOptions?: { id: string; name: string }[];
   selectedKasirId: string;
   onKasirChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  designerOptions?: { id: string; name: string }[];
   selectedDesignerId: string;
   onDesignerChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  operatorOptions?: { id: string; name: string }[];
   selectedOperatorId: string;
   onOperatorChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  finishingOptions?: { id: string; name: string }[];
   selectedFinishingId: string;
   onFinishingChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
 
@@ -112,17 +114,77 @@ const SalesTable: React.FC<SalesTableProps> = ({
   selectedCustomerId,
   onCustomerChange,
 
+  kasirOptions: kasirOptionsFromParent,
   selectedKasirId,
   onKasirChange,
+  designerOptions: designerOptionsFromParent,
   selectedDesignerId,
   onDesignerChange,
+  operatorOptions: operatorOptionsFromParent,
   selectedOperatorId,
   onOperatorChange,
+  finishingOptions: finishingOptionsFromParent,
   selectedFinishingId,
   onFinishingChange,
 
   isRefreshing = false,
 }) => {
+  // ===== PRINT STYLES: rapi & tanpa scroll, header repeat, baris tidak putus =====
+  const PrintStyles = () => (
+    <style>
+      {`
+      /* Optional: set size/margin; comment kalau tidak ingin lock ukuran */
+      @page { margin: 16mm; } /* atau: size: A4;  | size: A4 landscape; */
+
+      .print-only { display: none; }
+      .no-print { }
+
+      @media print {
+        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        body * { visibility: hidden; }
+        #sales-print-area, #sales-print-area * { visibility: visible; }
+        #sales-print-area { position: absolute; left: 0; top: 0; width: 100%; }
+
+        /* Hilangkan bayangan/warna UI */
+        .shadow-sm, .shadow, .rounded-lg, .bg-white { box-shadow: none !important; }
+        .bg-white { background: transparent !important; }
+
+        /* Hilangkan scroll container */
+        .print-table-wrap { overflow: visible !important; }
+
+        /* Tabel full, header repeat, baris tidak putus */
+        table { width: 100% !important; border-collapse: collapse !important; page-break-inside: auto; }
+        thead { display: table-header-group; }
+        tfoot { display: table-row-group; }
+        tr, td, th { page-break-inside: avoid !important; break-inside: avoid !important; }
+        tr { page-break-after: auto; }
+
+        /* Tone warna text */
+        th { background: #f9fafb !important; }
+
+        /* Sembunyikan semua kontrol */
+        .no-print { display: none !important; }
+
+        /* Chip filter */
+        .print-chip { 
+          display: inline-flex; gap: 6px; align-items: center;
+          border: 1px solid #e5e7eb; border-radius: 9999px; padding: 2px 10px;
+          font-size: 12px; margin: 4px 6px 0 0;
+        }
+
+        /* Grid ringkasan filter */
+        .print-filter-grid {
+          display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px;
+          font-size: 12px; margin-bottom: 10px;
+        }
+        .print-filter-grid div { display:flex; gap:6px; }
+        .print-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+        .print-subtitle { font-size: 12px; color: #6b7280; margin-bottom: 6px; }
+      }
+    `}
+    </style>
+  );
+
   const renderSortIcon = (column: string) => {
     if (sortColumn === column) {
       return sortDirection === 'asc' ? <ArrowUp className="ml-1 h-4 w-4" /> : <ArrowDown className="ml-1 h-4 w-4" />;
@@ -135,7 +197,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
     return method.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
-  // ===== A) Cache profile untuk tampilan nama =====
+  // ===== A) Cache profile =====
   type ProfileName = { first_name: string | null; last_name: string | null };
   const [profileCache, setProfileCache] = useState<Record<string, ProfileName>>({});
 
@@ -184,7 +246,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
     return displayName(rec);
   };
 
-  // ===== B) Dropdown petugas dari roles → profiles =====
+  // ===== B) Dropdown petugas (roles → profiles) =====
   type LabeledId = { id: string; label: string };
 
   const [roleOptions, setRoleOptions] = useState<{
@@ -263,7 +325,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
     return () => { cancelled = true; };
   }, []); // load sekali
 
-  // ===== C) Nama petugas untuk tampilan =====
+  // ===== C) Nama petugas tampilan =====
   const computePetugasNames = (item: any) => {
     const designerName =
       String(item?.designer_name ?? '').trim() ||
@@ -299,12 +361,12 @@ const SalesTable: React.FC<SalesTableProps> = ({
     };
   };
 
-  // ===== D) CUSTOMER (label & id) – STRICT pakai order.customer_id =====
+  // ===== D) CUSTOMER (label & id) =====
   const extractCustomerLabel = (it: any): string => {
-    return it.customer_display_name || it?.pelanggan?.[0]?.nama_pelanggan || 'Umum';
+    return (it.customer_display_name ? it.customer_display_name.charAt(0).toUpperCase() + it.customer_display_name.slice(1) : '') || it?.pelanggan?.[0]?.nama_pelanggan || 'Umum';
   };
   const extractCustomerId = (it: any): string | null => {
-    const raw = it?.customer_id; // <- SESUAI PERMINTAAN: hanya dari order.customer_id
+    const raw = it?.customer_id;
     return raw != null && raw !== '' ? String(raw) : null;
   };
 
@@ -368,17 +430,16 @@ const SalesTable: React.FC<SalesTableProps> = ({
     selectedFinishingId,
   ]);
 
-  // ===== F) Build opsi Customer (hanya yang customer_id != null) =====
+  // ===== F) Opsi customer (hanya yang ada customer_id) =====
   type CustomerOptionLocal = { id: string; name: string };
   const [dynamicCustomerOptions, setDynamicCustomerOptions] = useState<CustomerOptionLocal[]>([]);
 
   useEffect(() => {
-    // HANYA refresh opsi saat selectedCustomerId kosong
     if ((selectedCustomerId ?? '') === '') {
       const uniq = new Map<string, CustomerOptionLocal>();
       for (const it of baseDataNoCustomerFilter as any[]) {
         const cid = extractCustomerId(it);
-        if (!cid) continue; // abaikan yang customer_id null/kosong
+        if (!cid) continue;
         const label = (extractCustomerLabel(it) || '').trim() || cid;
         if (!uniq.has(cid)) {
           uniq.set(cid, { id: cid, name: label });
@@ -389,20 +450,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
     }
   }, [baseDataNoCustomerFilter, selectedCustomerId]);
 
-  // --- DEBUG: taruh console.log di sini (setelah baseDataNoCustomerFilter dihitung) ---
-  useEffect(() => {
-    console.log(
-      'cid list',
-      baseDataNoCustomerFilter.map((it: any) => ({
-        inv: it.invoice_number,
-        cid: extractCustomerId(it),
-        label: extractCustomerLabel(it),
-      }))
-    );
-  }, [baseDataNoCustomerFilter]);
-  // ------------------------------------------------------------------
-
-  // ===== G) Terapkan filter customer (strict by customer_id) =====
+  // ===== G) Terapkan filter customer =====
   const filteredData = useMemo(() => {
     const sel = String(selectedCustomerId ?? '').trim();
     if (!sel) return baseDataNoCustomerFilter;
@@ -425,11 +473,60 @@ const SalesTable: React.FC<SalesTableProps> = ({
   const fmtIDR0 = (n: number) =>
     n.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
 
+  // ===== Label filter aktif untuk area print =====
+  const findLabelById = (id: string, source?: { id: string; name: string }[], fallback?: {id:string; label:string}[]) => {
+    if (!id) return '';
+    const fromParent = source?.find(x => x.id === id)?.name;
+    if (fromParent) return fromParent;
+    const fromRole = fallback?.find(x => x.id === id)?.label;
+    return fromRole || id;
+  };
+
+  const activeFilter = useMemo(() => {
+    const items: { k: string; v: string }[] = [];
+    items.push({ k: 'Periode', v: `${startDate || '-'} s/d ${endDate || '-'}` });
+
+    items.push({ k: 'Status', v: (paymentStatusFilter === 'all') ? 'Semua Status' : (paymentStatusFilter === 'paid' ? 'Lunas' : 'Belum Lunas') });
+    items.push({ k: 'Metode', v: (selectedPaymentMethod === 'all') ? 'Semua Metode' : selectedPaymentMethod.replace(/_/g, ' ') });
+
+    if (selectedCustomerId) {
+      const custName = dynamicCustomerOptions.find(c => c.id === selectedCustomerId)?.name
+        || customerOptions.find(c => c.id === selectedCustomerId)?.name
+        || selectedCustomerId;
+      items.push({ k: 'Customer', v: custName });
+    }
+    if (selectedKasirId) {
+      items.push({ k: 'Kasir', v: findLabelById(selectedKasirId, kasirOptionsFromParent, roleOptions.kasir) });
+    }
+    if (selectedDesignerId) {
+      items.push({ k: 'Designer', v: findLabelById(selectedDesignerId, designerOptionsFromParent, roleOptions.designer) });
+    }
+    if (selectedOperatorId) {
+      items.push({ k: 'Operator', v: findLabelById(selectedOperatorId, operatorOptionsFromParent, roleOptions.operator) });
+    }
+    if (selectedFinishingId) {
+      items.push({ k: 'Finishing', v: findLabelById(selectedFinishingId, finishingOptionsFromParent, roleOptions.finishing) });
+    }
+    if (searchTerm?.trim()) {
+      items.push({ k: 'Pencarian', v: `"${searchTerm}"` });
+    }
+    return items;
+  }, [
+    startDate, endDate,
+    paymentStatusFilter, selectedPaymentMethod,
+    selectedCustomerId, dynamicCustomerOptions, customerOptions,
+    selectedKasirId, selectedDesignerId, selectedOperatorId, selectedFinishingId,
+    kasirOptionsFromParent, designerOptionsFromParent, operatorOptionsFromParent, finishingOptionsFromParent,
+    roleOptions, searchTerm
+  ]);
+
   // ===== UI =====
   return (
     <div className="space-y-6">
-      {/* TOP CONTROLS */}
-      <div className="bg-white rounded-lg shadow-sm p-6 grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
+      <PrintStyles />
+
+      {/* TOP CONTROLS (no-print) */}
+      <div className="no-print bg-white rounded-lg shadow-sm p-6 grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
         <div className="relative md:col-span-2">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
           <input
@@ -462,8 +559,8 @@ const SalesTable: React.FC<SalesTableProps> = ({
         </div>
       </div>
 
-      {/* FILTER BAR — ROW 1 */}
-      <div className="bg-white rounded-lg shadow-sm p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* FILTER BAR — ROW 1 (no-print) */}
+      <div className="no-print bg-white rounded-lg shadow-sm p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="flex items-center gap-2">
           <label htmlFor="paymentStatusFilter" className="text-sm font-medium text-gray-700">Status Pembayaran:</label>
           <select
@@ -492,7 +589,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
           </select>
         </div>
 
-        {/* CUSTOMER FILTER — value = order.customer_id; exclude null */}
+        {/* CUSTOMER FILTER — value = order.customer_id */}
         <div className="flex items-center gap-2">
           <label htmlFor="customerFilter" className="text-sm font-medium text-gray-700">Customer:</label>
           <select
@@ -509,21 +606,20 @@ const SalesTable: React.FC<SalesTableProps> = ({
         </div>
       </div>
 
-      {/* FILTER BAR — ROW 2 (UUID petugas) */}
-      <div className="bg-white rounded-lg shadow-sm p-6 grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+      {/* FILTER BAR — ROW 2 (no-print) */}
+      <div className="no-print bg-white rounded-lg shadow-sm p-6 grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
         <div className="flex items-center gap-2">
           <label htmlFor="kasirFilter" className="text-sm font-medium text-gray-700">Kasir:</label>
           <select
             id="kasirFilter"
             value={selectedKasirId || ''}
             onChange={onKasirChange}
-            disabled={loadingRoles}
+            disabled={loadingRoles && !(kasirOptionsFromParent?.length)}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
           >
-            <option value="">{loadingRoles ? 'Memuat...' : 'Semua Kasir'}</option>
-            {roleOptions.kasir.map(opt => (
-              <option key={opt.id} value={opt.id}>{opt.label}</option>
-            ))}
+            <option value="">{(loadingRoles && !(kasirOptionsFromParent?.length)) ? 'Memuat...' : 'Semua Kasir'}</option>
+            {(kasirOptionsFromParent?.length ? kasirOptionsFromParent.map(o => ({id:o.id,label:o.name})) : roleOptions.kasir)
+              .map(opt => (<option key={opt.id} value={opt.id}>{(opt as any).label || (opt as any).name}</option>))}
           </select>
         </div>
 
@@ -533,13 +629,12 @@ const SalesTable: React.FC<SalesTableProps> = ({
             id="designerFilter"
             value={selectedDesignerId || ''}
             onChange={onDesignerChange}
-            disabled={loadingRoles}
+            disabled={loadingRoles && !(designerOptionsFromParent?.length)}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
           >
-            <option value="">{loadingRoles ? 'Memuat...' : 'Semua Designer'}</option>
-            {roleOptions.designer.map(opt => (
-              <option key={opt.id} value={opt.id}>{opt.label}</option>
-            ))}
+            <option value="">{(loadingRoles && !(designerOptionsFromParent?.length)) ? 'Memuat...' : 'Semua Designer'}</option>
+            {(designerOptionsFromParent?.length ? designerOptionsFromParent.map(o => ({id:o.id,label:o.name})) : roleOptions.designer)
+              .map(opt => (<option key={opt.id} value={opt.id}>{(opt as any).label || (opt as any).name}</option>))}
           </select>
         </div>
 
@@ -549,13 +644,12 @@ const SalesTable: React.FC<SalesTableProps> = ({
             id="operatorFilter"
             value={selectedOperatorId || ''}
             onChange={onOperatorChange}
-            disabled={loadingRoles}
+            disabled={loadingRoles && !(operatorOptionsFromParent?.length)}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
           >
-            <option value="">{loadingRoles ? 'Memuat...' : 'Semua Operator'}</option>
-            {roleOptions.operator.map(opt => (
-              <option key={opt.id} value={opt.id}>{opt.label}</option>
-            ))}
+            <option value="">{(loadingRoles && !(operatorOptionsFromParent?.length)) ? 'Memuat...' : 'Semua Operator'}</option>
+            {(operatorOptionsFromParent?.length ? operatorOptionsFromParent.map(o => ({id:o.id,label:o.name})) : roleOptions.operator)
+              .map(opt => (<option key={opt.id} value={opt.id}>{(opt as any).label || (opt as any).name}</option>))}
           </select>
         </div>
 
@@ -565,20 +659,19 @@ const SalesTable: React.FC<SalesTableProps> = ({
             id="finishingFilter"
             value={selectedFinishingId || ''}
             onChange={onFinishingChange}
-            disabled={loadingRoles}
+            disabled={loadingRoles && !(finishingOptionsFromParent?.length)}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
           >
-            <option value="">{loadingRoles ? 'Memuat...' : 'Semua Finishing'}</option>
-            {roleOptions.finishing.map(opt => (
-              <option key={opt.id} value={opt.id}>{opt.label}</option>
-            ))}
+            <option value="">{(loadingRoles && !(finishingOptionsFromParent?.length)) ? 'Memuat...' : 'Semua Finishing'}</option>
+            {(finishingOptionsFromParent?.length ? finishingOptionsFromParent.map(o => ({id:o.id,label:o.name})) : roleOptions.finishing)
+              .map(opt => (<option key={opt.id} value={opt.id}>{(opt as any).label || (opt as any).name}</option>))}
           </select>
         </div>
 
         <div className="md:justify-self-end">
           <button
             onClick={onPrint}
-            className="w-full md:w-auto flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            className="no-print w-full md:w-auto flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
           >
             <Printer className="h-5 w-5 mr-2" />
             Cetak
@@ -586,7 +679,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
         </div>
 
         {isRefreshing && (
-          <div className="col-span-1 md:col-span-5 flex justify-center pt-1">
+          <div className="no-print col-span-1 md:col-span-5 flex justify-center pt-1">
             <span className="inline-flex items-center text-xs text-gray-500" aria-live="polite" aria-busy="true">
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               Memperbarui data…
@@ -595,16 +688,31 @@ const SalesTable: React.FC<SalesTableProps> = ({
         )}
       </div>
 
-      {/* TOTAL */}
-      <div className="bg-white rounded-lg shadow-sm p-6 text-right">
+      {/* TOTAL (no-print) */}
+      <div className="no-print bg-white rounded-lg shadow-sm p-6 text-right">
         <h2 className="text-xl font-bold text-gray-900">
           Total Penjualan: {formatCurrency(totalSalesAmount)}
         </h2>
       </div>
 
-      {/* TABLE */}
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+      {/* ====== AREA KHUSUS CETAK ====== */}
+      <div id="sales-print-area">
+        {/* Header & Ringkasan filter (print only) */}
+        <div className="print-only" style={{ marginBottom: 8 }}>
+          <div className="print-title">Digital Printing POS System</div>
+          <div className="print-subtitle">Laporan Penjualan</div>
+          <div className="print-filter-grid">
+            {activeFilter.map((it, idx) => (
+              <div key={idx}>
+                <strong>{it.k}:</strong>
+                <span>{it.v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* TABLE (no scroll saat print) */}
+        <div className="bg-white rounded-lg shadow-sm overflow-x-auto print-table-wrap">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -662,7 +770,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
                           {extractCustomerLabel(item)}
                         </div>
                         <div className="text-xs text-gray-500">
-                          {item.customer_display_phone || (item as any)?.pelanggan?.[0]?.telepon || 'N/A'}
+                          {item.customer_display_phone || (item as any)?.pelanggan?.[0]?.telepon || '-'}
                         </div>
                       </td>
 
@@ -726,6 +834,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
           </table>
         </div>
       </div>
+      {/* ====== /AREA KHUSUS CETAK ====== */}
     </div>
   );
 };
