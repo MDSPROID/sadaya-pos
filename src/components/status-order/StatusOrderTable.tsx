@@ -29,7 +29,7 @@ interface PendingOrderItem {
   discount_amount?: number;
   tax_amount?: number;
   final_amount?: number;
-  order_status?: 'new' | 'proses_cetak' | 'siap_ambil' | 'new' | string | null; // ⬅️ include legacy 'new'
+  order_status?: 'new' | 'proses_cetak' | 'siap_ambil' | string | null; // ⬅️ include legacy 'new'
 }
 
 /* ===== Helpers ===== */
@@ -53,6 +53,7 @@ const ucfirst = (s?: string | null): string => {
 function renderNotes(raw: string | null) {
   if (!raw) return <span>-</span>;
 
+  // === KEMBALIKAN VERSI LAMA: cari "Payment Details: {...}" atau JSON penuh ===
   const match = /Payment Details:\s*({[\s\S]*})/i.exec(raw);
   let before = raw.trim();
   let details: any | null = null;
@@ -177,10 +178,12 @@ interface StatusOrderTableProps {
   searchTerm: string;
   onSearchChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 
-  durationFilter: string;
-  onDurationFilterChange: (value: string) => void;
+  startDate: string; // 'YYYY-MM-DD'
+  endDate: string;   // 'YYYY-MM-DD'
+  onStartDateChange: (value: string) => void;
+  onEndDateChange: (value: string) => void;
 
-  // ⬇️ NEW: status filter props
+  // status filter props
   statusFilter: 'all' | 'new' | 'proses_cetak' | 'siap_ambil';
   onStatusFilterChange: (value: 'all' | 'new' | 'proses_cetak' | 'siap_ambil') => void;
 
@@ -204,8 +207,10 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
   error,
   searchTerm,
   onSearchChange,
-  durationFilter,
-  onDurationFilterChange,
+  startDate,
+  endDate,
+  onStartDateChange,
+  onEndDateChange,
   statusFilter,
   onStatusFilterChange,
   onRefresh,
@@ -231,24 +236,27 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
 
       {/* Filter bar */}
       <div className="bg-white rounded-lg shadow-sm p-6 flex flex-col md:flex-row gap-4 items-center">
+        {/* Rentang Tanggal */}
         <div className="flex items-center gap-2 w-full md:w-auto">
-          <label htmlFor="durationFilter" className="text-sm font-medium text-gray-700">
-            Durasi Tunggu:
-          </label>
-          <select
-            id="durationFilter"
-            value={durationFilter}
-            onChange={(e) => onDurationFilterChange(e.target.value)}
+          <label className="text-sm font-medium text-gray-700">Tanggal:</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => onStartDateChange(e.target.value)}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="all">Semua Durasi</option>
-            <option value="1-7">1-7 Hari</option>
-            <option value="8-14">8-14 Hari</option>
-            <option value=">14">&gt;14 Hari</option>
-          </select>
+          />
+        </div>
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <span className="text-gray-500">s/d</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => onEndDateChange(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
         </div>
 
-        {/* ⬇️ NEW: Status Order */}
+        {/* Status Order */}
         <div className="flex items-center gap-2 w-full md:w-auto">
           <label htmlFor="statusFilter" className="text-sm font-medium text-gray-700">
             Status Order:
@@ -266,6 +274,7 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
           </select>
         </div>
 
+        {/* Search */}
         <div className="relative flex-1 w-full md:w-auto">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
           <input
@@ -451,7 +460,7 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
         </div>
       </div>
 
-      {/* Action Buttons */}
+      {/* Action Buttons (dikembalikan) */}
       <div className="flex justify-end space-x-3 mt-6">
         <button
           type="button"

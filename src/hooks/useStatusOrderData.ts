@@ -5,13 +5,15 @@ import { showError } from '../utils/toast';
 import { PendingOrderItem } from '../types/orderTypes';
 
 interface UseStatusOrderDataProps {
-  durationFilter: string;
+  startDate: string; // 'YYYY-MM-DD'
+  endDate: string;   // 'YYYY-MM-DD'
   searchTerm: string;
   statusFilter: 'all' | 'new' | 'proses_cetak' | 'siap_ambil'; // ⬅️ NEW
 }
 type FetchOverride = {
   searchTerm?: string;
-  durationFilter?: string;
+  startDate?: string;
+  endDate?: string;
   statusFilter?: 'all' | 'new' | 'proses_cetak' | 'siap_ambil';
 };
 
@@ -29,7 +31,7 @@ const calculateDuration = (orderDate: string): number => {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 };
 
-export const useStatusOrderData = ({ durationFilter, searchTerm, statusFilter }: UseStatusOrderDataProps) => {
+export const useStatusOrderData = ({ startDate, endDate, searchTerm, statusFilter }: UseStatusOrderDataProps) => {
   const [data, setData] = useState<PendingOrderItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,13 +41,14 @@ export const useStatusOrderData = ({ durationFilter, searchTerm, statusFilter }:
     setError(null);
     try {
       const sTerm = override?.searchTerm ?? searchTerm;
-      const dFilter = override?.durationFilter ?? durationFilter;
+      const sDate = override?.startDate ?? startDate; // 'YYYY-MM-DD'
+      const eDate = override?.endDate ?? endDate;     // 'YYYY-MM-DD'
       const stFilter = override?.statusFilter ?? statusFilter;
 
-      let fromDays = 0, toDays = 99999;
-      if (dFilter === '1-7')      { fromDays = 1;  toDays = 7; }
-      else if (dFilter === '8-14'){ fromDays = 8;  toDays = 14; }
-      else if (dFilter === '>14') { fromDays = 15; toDays = 99999; }
+      // let fromDays = 0, toDays = 99999;
+      // if (dFilter === '1-7')      { fromDays = 1;  toDays = 7; }
+      // else if (dFilter === '8-14'){ fromDays = 8;  toDays = 14; }
+      // else if (dFilter === '>14') { fromDays = 15; toDays = 99999; }
 
       let query = supabase
         .from('orders')
@@ -61,7 +64,7 @@ export const useStatusOrderData = ({ durationFilter, searchTerm, statusFilter }:
             discount_per_item, subtotal_per_item, designer_id
           )
         `)
-        .eq('ready_status', 'ready')
+        // .eq('ready_status', 'ready')
         .order('created_at', { ascending: false });
 
       // ⬇️ NEW: terapkan filter status (new | proses_cetak | siap_ambil)
@@ -76,6 +79,12 @@ export const useStatusOrderData = ({ durationFilter, searchTerm, statusFilter }:
           `customer_display_phone.ilike.%${sTerm}%`
         ].join(','));
       }
+
+      // ⬇️ Filter tanggal (inklusif)
+      // Jika kolom order_date bertipe DATE, cukup YYYY-MM-DD.
+      // Jika bertipe timestamp, tetap aman karena .gte/.lte akan cocok string prefix.
+      if (sDate) query = query.gte('order_date', sDate);
+      if (eDate) query = query.lte('order_date', eDate);
 
       const { data: rows, error: qErr } = await query;
       if (qErr) throw qErr;
@@ -138,8 +147,7 @@ export const useStatusOrderData = ({ durationFilter, searchTerm, statusFilter }:
             designer_names: designer_names.length ? designer_names : null,
             durasi_tunggu: durasi,
           };
-        })
-        .filter((row: any) => row.durasi_tunggu >= fromDays && row.durasi_tunggu <= toDays);
+        });
 
       setData(mapped as any);
     } catch (e: any) {
@@ -149,7 +157,7 @@ export const useStatusOrderData = ({ durationFilter, searchTerm, statusFilter }:
     } finally {
       setLoading(false);
     }
-  }, [durationFilter, searchTerm, statusFilter]);
+  }, [startDate, endDate, searchTerm, statusFilter]);
 
   useEffect(() => { fetchStatusOrders(); }, [fetchStatusOrders]);
 

@@ -4,10 +4,11 @@ import { showError } from '../utils/toast';
 import { PendingOrderItem } from '../types/orderTypes';
 
 interface UseHistoryPendingSalesDataProps {
-  durationFilter: string;
+  startDate: string; // 'YYYY-MM-DD'
+  endDate: string;   // 'YYYY-MM-DD'
   searchTerm: string;
 }
-type FetchOverride = { searchTerm?: string; durationFilter?: string };
+type FetchOverride = { searchTerm?: string; startDate?: string; endDate?: string };
 
 const joinName = (first?: string | null, last?: string | null) => {
   const a = (first || '').trim();
@@ -16,7 +17,6 @@ const joinName = (first?: string | null, last?: string | null) => {
   return s || null;
 };
 
-// NOTE: Biarkan rumus ini seperti History Pending sebelumnya (sesuai permintaanmu)
 const calculateDuration = (orderDate: string): number => {
   const today = new Date();
   const order = new Date(orderDate);
@@ -24,7 +24,7 @@ const calculateDuration = (orderDate: string): number => {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 };
 
-export const useHistoryPendingSalesData = ({ durationFilter, searchTerm }: UseHistoryPendingSalesDataProps) => {
+export const useHistoryPendingSalesData = ({ startDate, endDate, searchTerm }: UseHistoryPendingSalesDataProps) => {
   const [data, setData] = useState<PendingOrderItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,14 +34,10 @@ export const useHistoryPendingSalesData = ({ durationFilter, searchTerm }: UseHi
     setError(null);
     try {
       const sTerm = override?.searchTerm ?? searchTerm ?? '';
-      const dFilter = override?.durationFilter ?? durationFilter ?? 'all';
+      const sDate = override?.startDate ?? startDate;
+      const eDate = override?.endDate ?? endDate;
 
-      let fromDays = 0, toDays = 99999;
-      if (dFilter === '1-7')      { fromDays = 1;  toDays = 7; }
-      else if (dFilter === '8-14'){ fromDays = 8;  toDays = 14; }
-      else if (dFilter === '>14') { fromDays = 15; toDays = 99999; }
-
-      // 1) Ambil orders pending
+      // 1) Ambil orders pending, terapkan filter tanggal inkusif
       let q = supabase
         .from('orders')
         .select(`
@@ -53,6 +49,9 @@ export const useHistoryPendingSalesData = ({ durationFilter, searchTerm }: UseHi
         `)
         .eq('payment_status', 'pending')
         .order('created_at', { ascending: false });
+
+      if (sDate) q = q.gte('order_date', sDate);
+      if (eDate) q = q.lte('order_date', eDate);
 
       if (sTerm.trim()) {
         q = q.or([
@@ -71,7 +70,7 @@ export const useHistoryPendingSalesData = ({ durationFilter, searchTerm }: UseHi
       }
 
       // 2) Ambil order_items untuk kumpulkan designer per order
-      const orderIds = rows.map(r => r.id);
+      const orderIds = rows.map((r: any) => r.id);
       const { data: itemsRaw, error: itemsErr } = await supabase
         .from('order_items')
         .select('order_id, designer_id')
@@ -116,7 +115,7 @@ export const useHistoryPendingSalesData = ({ durationFilter, searchTerm }: UseHi
         designersPerOrder.set(it.order_id, arr);
       });
 
-      // 6) Bentuk payload + hitung durasi + filter durasi
+      // 6) Bentuk payload + hitung durasi (untuk tampilan kolom) + filter teks client-side
       const mapped = (rows as any[]).map((row) => {
         const durasi = calculateDuration(row.order_date);
         const itemDesignerNames = designersPerOrder.get(row.id) || [];
@@ -131,9 +130,8 @@ export const useHistoryPendingSalesData = ({ durationFilter, searchTerm }: UseHi
           designer_names: itemDesignerNames.length ? itemDesignerNames : null,
           durasi_tunggu:  durasi,
         } as PendingOrderItem;
-      }).filter((row: any) => row.durasi_tunggu >= fromDays && row.durasi_tunggu <= toDays);
+      });
 
-      // 7) Filter teks client-side (tambahkan nama petugas juga)
       const term = sTerm.toLowerCase();
       const finalFilteredData = term
         ? mapped.filter((item: any) => {
@@ -142,7 +140,7 @@ export const useHistoryPendingSalesData = ({ durationFilter, searchTerm }: UseHi
             const dn = (Array.isArray(item.designer_names) ? item.designer_names.join(' ') : '').toLowerCase();
             return (
               (item.invoice_number || '').toLowerCase().includes(term) ||
-              item.id.toLowerCase().includes(term) ||
+              String(item.id || '').toLowerCase().includes(term) ||
               customerName.includes(term) ||
               customerPhone.includes(term) ||
               (item.notes || '').toLowerCase().includes(term) ||
@@ -163,7 +161,7 @@ export const useHistoryPendingSalesData = ({ durationFilter, searchTerm }: UseHi
     } finally {
       setLoading(false);
     }
-  }, [durationFilter, searchTerm]);
+  }, [startDate, endDate, searchTerm]);
 
   useEffect(() => { fetchPendingSales(); }, [fetchPendingSales]);
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '../utils/toast';
 import { useSession } from '../components/SessionContextProvider';
@@ -17,7 +17,6 @@ import {
   OrderDataToSave,
   ItemToInsert
 } from '../types/salesOrderTypes';
-
 
 /** Replace semua "Payment Details: {...}" lama di notes dengan satu entri baru */
 const upsertPaymentDetailsInNotes = (
@@ -238,32 +237,66 @@ export const useSalesOrder = (
   const [itemDiscount, setItemDiscount] = useState<number>(0);
   const [itemAdditionalOptions, setItemAdditionalOptions] = useState<AdditionalOption[]>([]);
 
-  const currentItemSubtotal = (() => {
+  // === currentItemSubtotal: gunakan useMemo + fallback harga + guard NaN ===
+  const currentItemSubtotal = useMemo(() => {
     if (!selectedProduct || itemQuantity <= 0) return 0;
 
-    const unitPrice = selectedProduct.harga_jual_umum;
-    let calculatedPanjang = itemDimensions.panjang || 0;
-    let calculatedLebar = itemDimensions.lebar || 0;
+    // Fallback berurutan agar tidak 0 saat kolom tertentu di-mask RLS
+    const unitPrice =
+      Number((selectedProduct as any).harga_jual_khusus) ||
+      Number(selectedProduct.harga_jual_umum) ||
+      Number((selectedProduct as any).harga_pokok) ||
+      0;
 
-    if (itemDimensions.satuan === 'CM') {
-      calculatedPanjang /= 100;
-      calculatedLebar /= 100;
+    if (!isFinite(unitPrice) || unitPrice <= 0) return 0;
+
+    const satuan = (itemDimensions.satuan || 'M').toUpperCase();
+    let p = Number(itemDimensions.panjang) || 0;
+    let l = Number(itemDimensions.lebar)   || 0;
+
+    if (satuan === 'CM') {
+      p = p / 100; l = l / 100;
     }
 
     let subtotal = unitPrice * itemQuantity;
-    if (selectedProduct.kategori?.nama === 'Cetak Outdoor' && calculatedPanjang > 0 && calculatedLebar > 0) {
-      const area = calculatedPanjang * calculatedLebar;
+
+    // === NEW: robust area-pricing detection (won't rely only on kategori for designer role)
+    const areaPricing = (() => {
+      const kat = (selectedProduct.kategori?.nama || '').toLowerCase();
+      const sat = (selectedProduct.satuan?.nama || '').toUpperCase();
+      if (kat === 'cetak outdoor') return true;            // existing rule
+      if (sat.includes('M2') || sat === 'M²') return true; // unit in square meters
+      // if both dimensions provided, allow area pricing as fallback (so designer still sees updates)
+      if (p > 0 && l > 0) return true;
+      return false;
+    })();
+
+    if (areaPricing) {
+      const area = Math.max(p, 0) * Math.max(l, 0) || 1; // minimal 1 if invalid area
       subtotal = unitPrice * area * itemQuantity;
     }
 
-    const additionalCost = itemAdditionalOptions.reduce((total: number, option: AdditionalOption) => {
-      return total + (option.selected && option.quantity > 0 ? option.cost * option.quantity : 0);
-    }, 0);
-    subtotal += additionalCost;
-    subtotal -= itemDiscount;
+    const additionalCost = itemAdditionalOptions.reduce((acc, opt) => (
+      acc + (opt.selected && opt.quantity > 0 ? Number(opt.cost) * Number(opt.quantity) : 0)
+    ), 0);
 
-    return subtotal;
-  })();
+    subtotal = Math.max(0, (subtotal + additionalCost) - (Number(itemDiscount) || 0));
+
+    return Math.round(subtotal);
+  }, [
+    selectedProduct?.id,
+    selectedProduct?.kategori?.nama,
+    // harga yang mungkin di-mask per role
+    (selectedProduct as any)?.harga_jual_khusus,
+    selectedProduct?.harga_jual_umum,
+    (selectedProduct as any)?.harga_pokok,
+    itemQuantity,
+    itemDiscount,
+    itemDimensions?.panjang,
+    itemDimensions?.lebar,
+    itemDimensions?.satuan,
+    JSON.stringify(itemAdditionalOptions),
+  ]);
 
   const resetCurrentItemForm = useCallback(() => {
     setSelectedProduct(null);
@@ -437,26 +470,49 @@ export const useSalesOrder = (
       return;
     }
 
-    const unitPrice = selectedProduct.harga_jual_umum;
-    let calculatedPanjang = itemDimensions.panjang || 0;
-    let calculatedLebar = itemDimensions.lebar || 0;
+    // === gunakan fallback harga yang sama dengan currentItemSubtotal ===
+    const unitPrice =
+      Number((selectedProduct as any).harga_jual_khusus) ||
+      Number(selectedProduct.harga_jual_umum) ||
+      Number((selectedProduct as any).harga_pokok) ||
+      0;
 
-    if (itemDimensions.satuan === 'CM') {
+    if (!isFinite(unitPrice) || unitPrice <= 0) {
+      showError('Harga produk tidak tersedia untuk role ini. Hubungi admin atau cek RLS/view harga.');
+      return;
+    }
+
+    const satuan = (itemDimensions.satuan || 'M').toUpperCase();
+    let calculatedPanjang = Number(itemDimensions.panjang) || 0;
+    let calculatedLebar   = Number(itemDimensions.lebar)   || 0;
+
+    if (satuan === 'CM') {
       calculatedPanjang /= 100;
-      calculatedLebar /= 100;
+      calculatedLebar   /= 100;
     }
 
     let subtotal = unitPrice * itemQuantity;
-    if (selectedProduct.kategori?.nama === 'Cetak Outdoor' && calculatedPanjang > 0 && calculatedLebar > 0) {
-      const area = calculatedPanjang * calculatedLebar;
+
+    // === NEW: robust area-pricing detection (works even if kategori hidden for designer)
+    const areaPricing = (() => {
+      const kat = (selectedProduct.kategori?.nama || '').toLowerCase();
+      const sat = (selectedProduct.satuan?.nama || '').toUpperCase();
+      if (kat === 'cetak outdoor') return true;
+      if (sat.includes('M2') || sat === 'M²') return true;
+      if (calculatedPanjang > 0 && calculatedLebar > 0) return true;
+      return false;
+    })();
+
+    if (areaPricing) {
+      const area = Math.max(calculatedPanjang, 0) * Math.max(calculatedLebar, 0) || 1;
       subtotal = unitPrice * area * itemQuantity;
     }
 
-    const additionalCost = itemAdditionalOptions.reduce((total: number, option: AdditionalOption) => {
-      return total + (option.selected && option.quantity > 0 ? option.cost * option.quantity : 0);
+    const additionalCost = itemAdditionalOptions.reduce((total, option) => {
+      return total + (option.selected && option.quantity > 0 ? Number(option.cost) * Number(option.quantity) : 0);
     }, 0);
-    subtotal += additionalCost;
-    subtotal -= itemDiscount;
+
+    subtotal = Math.max(0, (subtotal + additionalCost) - (Number(itemDiscount) || 0));
 
     const newItem: OrderItem = {
       tempId: Date.now().toString(),

@@ -29,7 +29,7 @@ interface PendingOrderItem {
   tax_amount?: number;
   final_amount?: number;
 
-  // ⬇️ NEW: dipakai untuk sembunyikan tombol Hapus saat proses_cetak
+  // dipakai untuk sembunyikan tombol Hapus saat proses_cetak
   order_status?: 'siap_cetak' | 'proses_cetak' | 'siap_ambil' | 'new' | string | null;
 }
 
@@ -38,8 +38,13 @@ interface HistoryPendingSalesTableProps {
   loading?: boolean;
   searchTerm: string;
   onSearchChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  durationFilter: string;
-  onDurationFilterChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+
+  // ganti ke filter tanggal
+  startDate: string; // 'YYYY-MM-DD'
+  endDate: string;   // 'YYYY-MM-DD'
+  onStartDateChange: (v: string) => void;
+  onEndDateChange: (v: string) => void;
+
   onRefresh: () => void;
   onContinue: (orderId: string) => void;
   onDelete: (orderId: string) => void;
@@ -66,6 +71,7 @@ const ucfirst = (s: string | null | undefined) =>
 function renderNotes(raw: string | null) {
   if (!raw) return <span>-</span>;
 
+  // sesuai versi semula: cari "Payment Details: {...}" atau JSON penuh
   const match = /Payment Details:\s*({[\s\S]*})/i.exec(raw);
   let before = raw.trim();
   let details: any | null = null;
@@ -94,7 +100,6 @@ function renderNotes(raw: string | null) {
     paid_amount = 0,
     final_amount = 0,
     payment_status,
-    order_status,
     payment_method,
     tempo_active,
     tempo_date,
@@ -103,19 +108,18 @@ function renderNotes(raw: string | null) {
   const dpNum = Number(dp_amount || 0);
   const paidNum = Number(paid_amount || 0);
   const finalNum = Number(final_amount || 0);
-
   const kekurangan = Math.max(finalNum - dpNum, 0);
 
   const lines: Array<[string, string]> = [];
 
-  if (before) lines.push(['Catatan ', before]);
-  if (paidNum) lines.push(['Dibayar ', formatRupiah(paidNum)]);
+  if (before) lines.push(['Catatan', before]);
+  if (paidNum) lines.push(['Dibayar', formatRupiah(paidNum)]);
   if (finalNum) {
-    lines.push(['Total Tagihan ', formatRupiah(finalNum)]);
-    if (dpNum) lines.push(['DP ', formatRupiah(dpNum)]);
-    lines.push(['Kekurangan ', formatRupiah(kekurangan)]);
+    lines.push(['Total Tagihan', formatRupiah(finalNum)]);
+    if (dpNum) lines.push(['DP', formatRupiah(dpNum)]);
+    lines.push(['Kekurangan', formatRupiah(kekurangan)]);
   }
-  if (payment_status) lines.push(['Status Bayar ', ucfirst(String(payment_status))]);
+  if (payment_status) lines.push(['Status Bayar', ucfirst(String(payment_status))]);
   if (payment_method) {
     const metode =
       payment_method === 'cash'
@@ -123,13 +127,13 @@ function renderNotes(raw: string | null) {
         : payment_method === 'bank_transfer'
         ? 'Transfer Bank'
         : String(payment_method);
-    lines.push(['Metode ', metode]);
+    lines.push(['Metode', metode]);
   }
 
   if (tempo_active === true) {
-    lines.push(['Tempo ', `Aktif (${formatDateID(tempo_date)})`]);
+    lines.push(['Tempo', `Aktif (${formatDateID(tempo_date)})`]);
   } else if (tempo_active === false) {
-    lines.push(['Tempo ', 'Non-aktif']);
+    lines.push(['Tempo', 'Non-aktif']);
   }
 
   if (lines.length === 0) return <span>-</span>;
@@ -151,8 +155,12 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
   loading = false,
   searchTerm,
   onSearchChange,
-  durationFilter,
-  onDurationFilterChange,
+
+  startDate,
+  endDate,
+  onStartDateChange,
+  onEndDateChange,
+
   onRefresh,
   onContinue,
   onDelete,
@@ -197,25 +205,27 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
           {error}
         </div>
       )}
-      {/* Filter Section */}
+      {/* Filter Section (ganti ke rentang tanggal) */}
       <div className="bg-white rounded-lg shadow-sm p-6 flex flex-col md:flex-row gap-4 items-center">
+        {/* Rentang Tanggal */}
         <div className="flex items-center gap-2 w-full md:w-auto">
-          <label htmlFor="durationFilter" className="text-sm font-medium text-gray-700">
-            Durasi Tunggu:
-          </label>
-          <select
-            id="durationFilter"
-            value={durationFilter}
-            onChange={onDurationFilterChange}
+          <label className="text-sm font-medium text-gray-700">Tanggal:</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => onStartDateChange(e.target.value)}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="all">Semua Durasi</option>
-            <option value="1-7">1-7 Hari</option>
-            <option value="8-14">8-14 Hari</option>
-            <option value=">14">&gt;14 Hari</option>
-          </select>
+          />
+          <span className="text-gray-500">s/d</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => onEndDateChange(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
         </div>
 
+        {/* Search */}
         <div className="relative flex-1 w-full md:w-auto">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
           <input
@@ -297,8 +307,8 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
-                        {ucfirstLocal(item.customer_display_name) ||
-                          ucfirstLocal(item.pelanggan?.[0]?.nama_pelanggan) ||
+                        {ucfirst(item.customer_display_name) ||
+                          ucfirst(item.pelanggan?.[0]?.nama_pelanggan) ||
                           'N/A'}
                       </div>
                     </td>
@@ -308,7 +318,7 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
                         '0'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      Rp {item.total_amount.toLocaleString('id-ID')}
+                      {formatRupiah(item.total_amount)}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900 max-w-xs">
                       {renderNotes(item.notes)}
@@ -336,11 +346,11 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
                           <Play className="h-5 w-5" />
                         </button>
 
-                        {/* ⬇️ NEW: sembunyikan tombol Hapus saat status proses_cetak */}
+                        {/* Sembunyikan tombol Hapus jika bukan 'new' */}
                         {item.order_status === 'new' && (
                           <button
                             type="button"
-                            onClick={() => onDelete(item.id)} 
+                            onClick={() => onDelete(item.id)}
                             className="text-red-600 hover:text-red-900"
                             title="Hapus Transaksi"
                           >
