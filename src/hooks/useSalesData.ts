@@ -20,7 +20,7 @@ interface Product {
   nama_produk: string;
   kategori: { nama: string } | null;
   satuan: { nama: string } | null;
-  bahan: { id: string; nama: string; ukuran_panjang: number | null; ukuran_lebar: number | null } | null; // Added 'id' to bahan
+  bahan: { id: string; nama: string; ukuran_panjang: number | null; ukuran_lebar: number | null; stok: number } | null; // Added 'id' to bahan
   quantity_bahan: number;
   use_mesin: boolean;
   mesin: { nama: string } | null;
@@ -86,7 +86,7 @@ export const useSalesData = () => {
 
       const { data: products, error: prodError } = await supabase
         .from('produk')
-        .select('*, kategori(nama), satuan(nama), bahan(id, nama, ukuran_panjang, ukuran_lebar), mesin(nama)'); // Select 'id' from bahan
+        .select('*, kategori(nama), satuan(nama), bahan(id, nama, ukuran_panjang, ukuran_lebar, stok), mesin(nama)'); // Select 'id' from bahan
       if (prodError) throw prodError;
       setProductOptions(products || []);
 

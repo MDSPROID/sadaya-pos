@@ -64,7 +64,7 @@ export const useStatusOrderData = ({ startDate, endDate, searchTerm, statusFilte
             discount_per_item, subtotal_per_item, designer_id
           )
         `)
-        // .eq('ready_status', 'ready')
+        .eq('ready_status', 'ready')
         .order('created_at', { ascending: false });
 
       // ⬇️ NEW: terapkan filter status (new | proses_cetak | siap_ambil)

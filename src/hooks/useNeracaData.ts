@@ -49,6 +49,36 @@ const ZERO_SUMMARY: NeracaSummary = {
   saldo_seharusnya: 0,
 };
 
+const getDpFromNotes = (notes: any): number => {
+  try {
+    if (!notes) return 0;
+
+    // Jika notes berbentuk object & punya dp_amount
+    if (typeof notes === 'object' && notes !== null) {
+      if (typeof notes.dp_amount === 'number') return notes.dp_amount || 0;
+      if (typeof (notes as any).PaymentDetails?.dp_amount === 'number') return (notes as any).PaymentDetails.dp_amount || 0;
+    }
+
+    // Jika string diawali "Payment Details: { ... }"
+    const str = String(notes).trim();
+    const prefix = 'Payment Details:';
+    let jsonPart = str.startsWith(prefix) ? str.slice(prefix.length).trim() : str;
+
+    // Coba parse JSON langsung
+    const parsed = JSON.parse(jsonPart);
+
+    // Bentuk yang umum: { dp_amount: 1000000, ... }
+    if (typeof parsed?.dp_amount === 'number') return parsed.dp_amount || 0;
+
+    // Antisipasi variasi kunci (jaga-jaga)
+    if (typeof parsed?.PaymentDetails?.dp_amount === 'number') return parsed.PaymentDetails.dp_amount || 0;
+
+    return 0;
+  } catch {
+    return 0;
+  }
+};
+
 export function useNeracaData({
   startDate,
   endDate,
@@ -71,23 +101,41 @@ export function useNeracaData({
   }, []);
 
   const getPaymentMethodFromNotes = (raw?: string | null): string | undefined => {
+    const norm = (x?: string | null) =>
+      (x ?? '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '_');
+
     if (!raw) return undefined;
-    const m = /Payment Details:\s*({[\s\S]*})/i.exec(raw);
+
     const tryParse = (txt: string) => {
       try {
         const obj = JSON.parse(txt);
-        const pm = obj?.payment_method;
-        return typeof pm === 'string' ? pm : undefined;
+        // coba beberapa lokasi umum
+        const a = obj?.payment_method;
+        const b = obj?.PaymentDetails?.payment_method;
+        const c = obj?.PaymentDetails?.method;
+        const d = obj?.method;
+        const pick = a ?? b ?? c ?? d;
+        return typeof pick === 'string' ? norm(pick) : undefined;
       } catch {
         return undefined;
       }
     };
+
+    // pola "Payment Details: {...}"
+    const m = /Payment Details:\s*({[\s\S]*})/i.exec(raw);
     if (m?.[1]) {
       const v = tryParse(m[1]);
       if (v) return v;
     }
+
+    // coba parse seluruh string sebagai JSON
     const v2 = tryParse(raw);
     if (v2) return v2;
+
     return undefined;
   };
 
@@ -118,7 +166,7 @@ export function useNeracaData({
 
         const { data: allOrdersForOmsetPeriod, error: allOrdersForOmsetPeriodError } = await supabase
           .from('orders')
-          .select('order_date, final_amount, payment_method, payment_status, notes')
+          .select('order_date, final_amount, payment_method, payment_status, notes, invoice_number, ready_status')
           .gte('order_date', sDate)
           .lte('order_date', eDate);
         if (allOrdersForOmsetPeriodError) throw allOrdersForOmsetPeriodError;
@@ -152,17 +200,43 @@ export function useNeracaData({
 
         let orderPaidCash = 0;
         let orderPaidTransfer = 0;
-        (allOrdersForOmsetPeriod || [])
-          .filter((o: any) => o.payment_status === 'paid')
-          .forEach((o: any) => {
-            const methodFromNotes = getPaymentMethodFromNotes(o.notes);
-            const method = methodFromNotes || o.payment_method || 'cash';
-            if (method === 'cash') orderPaidCash += o.final_amount || 0;
-            else orderPaidTransfer += o.final_amount || 0;
-          });
+        // (allOrdersForOmsetPeriod || [])
+        //   .filter((o: any) => o.payment_status === 'paid')
+        //   .forEach((o: any) => {
+        //     const methodFromNotes = getPaymentMethodFromNotes(o.notes);
+        //     const method = methodFromNotes || o.payment_method || 'cash';
+        //     if (method === 'cash') orderPaidCash += o.final_amount || 0;
+        //     else orderPaidTransfer += o.final_amount || 0;
+        // });
+
+        (allOrdersForOmsetPeriod || []).forEach((o: any) => {
+          const methodFromNotes = getPaymentMethodFromNotes(o.notes);
+          const method = methodFromNotes || o.payment_method || ''; // kosong kalau tidak diketahui
+
+          if (o.payment_status === 'paid') {
+            // paid: masukkan full final_amount ke bucket sesuai metode
+            if (method === 'cash') {
+              // default-kan kosong ke cash jika memang di sistemmu cash jadi default
+              orderPaidCash += o.final_amount || 0;
+            } else {
+              orderPaidTransfer += o.final_amount || 0;
+            }
+          } else if (o.payment_status === 'pending') {
+            // pending: jika cash, masukkan hanya DP
+            if (method === 'cash') {
+              const dp = getDpFromNotes(o.notes) || 0;
+              orderPaidCash += dp;
+            }else{
+              const dp = getDpFromNotes(o.notes) || 0;
+              orderPaidTransfer += dp;
+            }
+            // console.log(o.invoice_number+' - '+o.payment_method+' - '+o.payment_status+' - '+orderPaidCash)+'\n';
+          }
+        });
 
         const orderNotPaid = (allOrdersForOmsetPeriod || [])
           .filter((o: any) => o.payment_status !== 'paid')
+          .filter((o: any) => o.ready_status === 'ready')
           .reduce((s: number, o: any) => s + (o.final_amount || 0), 0);
 
         const kasMasukTunai = (kasMasukPeriodData || []).reduce(

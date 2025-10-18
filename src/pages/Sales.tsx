@@ -79,7 +79,7 @@ const Sales: React.FC = () => {
   } = useSalesData();
 
   // Pending list fetcher
-  const { fetchPendingSales } = useHistoryPendingSalesData({ durationFilter: 'all', searchTerm: '' });
+  const { fetchPendingSales } = useHistoryPendingSalesData({ startDate: '', endDate: '', searchTerm: '' });
 
   const {
     orderFormData,
@@ -388,7 +388,7 @@ const Sales: React.FC = () => {
       const status: 'paid' | 'pending' =
         detail?.payment_status ?? (detail.total_paid >= detail.final_amount ? 'paid' : 'pending');
 
-      await handleSaveOrder(status, detail, options);
+      await handleSaveOrder(status, detail, { ...(options || {}), suppressReadyPopup: true });
 
       setShowPaymentModal(false);
 

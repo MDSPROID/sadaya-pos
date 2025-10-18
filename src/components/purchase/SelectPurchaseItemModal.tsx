@@ -11,7 +11,7 @@ interface SelectPurchaseItemModalProps {
 
 const SelectPurchaseItemModal: React.FC<SelectPurchaseItemModalProps> = ({ onClose, onSelect, productOptions, bahanOptions }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'produk' | 'bahan'>('produk');
+  const [activeTab, setActiveTab] = useState<'produk' | 'bahan'>('bahan');
 
   const filteredProducts = productOptions.filter(p =>
     p.nama_produk.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -31,7 +31,7 @@ const SelectPurchaseItemModal: React.FC<SelectPurchaseItemModalProps> = ({ onClo
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6">
-        <h3 className="text-lg font-semibold mb-4">Pilih Produk atau Bahan</h3>
+        <h3 className="text-lg font-semibold mb-4">Pilih Bahan</h3>
         <div className="relative mb-4">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
           <input
@@ -46,7 +46,7 @@ const SelectPurchaseItemModal: React.FC<SelectPurchaseItemModalProps> = ({ onClo
         {/* Tabs for Produk / Bahan */}
         <div className="border-b border-gray-200 mb-4">
           <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-            <button
+            {/* <button
               type="button"
               onClick={() => setActiveTab('produk')}
               className={`
@@ -58,7 +58,7 @@ const SelectPurchaseItemModal: React.FC<SelectPurchaseItemModalProps> = ({ onClo
               `}
             >
               Produk
-            </button>
+            </button> */}
             <button
               type="button"
               onClick={() => setActiveTab('bahan')}
@@ -88,7 +88,7 @@ const SelectPurchaseItemModal: React.FC<SelectPurchaseItemModalProps> = ({ onClo
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {activeTab === 'produk' && (
+              {/* {activeTab === 'produk' && (
                 filteredProducts.length === 0 ? (
                   <tr><td colSpan={5} className="px-4 py-2 text-center text-sm text-gray-500">Tidak ada produk ditemukan.</td></tr>
                 ) : (
@@ -104,7 +104,7 @@ const SelectPurchaseItemModal: React.FC<SelectPurchaseItemModalProps> = ({ onClo
                     </tr>
                   ))
                 )
-              )}
+              )} */}
               {activeTab === 'bahan' && (
                 filteredBahans.length === 0 ? (
                   <tr><td colSpan={5} className="px-4 py-2 text-center text-sm text-gray-500">Tidak ada bahan ditemukan.</td></tr>

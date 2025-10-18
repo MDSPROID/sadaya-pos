@@ -26,6 +26,12 @@ const ProdukTable: React.FC<ProdukTableProps> = ({
     item.kategori?.nama?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const getBadgeClass = (qty: number) => {
+    if (qty > 50) return 'bg-green-100 text-green-800';
+    if (qty > 20) return 'bg-yellow-100 text-yellow-800';
+    return 'bg-red-100 text-red-800';
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -107,76 +113,114 @@ const ProdukTable: React.FC<ProdukTableProps> = ({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredData.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {item.id}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{item.id}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{item.nama_produk}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                      {item.kategori?.nama || 'N/A'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {item.satuan?.nama || 'N/A'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {item.bahan?.nama || 'N/A'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {item.use_mesin ? (item.mesin?.nama || 'Ya') : 'Tidak'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      item.stok > 50 ? 'bg-green-100 text-green-800' :
-                      item.stok > 20 ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      {item.stok}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatCurrency(item.harga_pokok)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatCurrency(item.harga_jual_umum)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {item.diskon_persen || '0'}%
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex space-x-2">
-                      <button
-                        type="button"
-                        onClick={() => onOpenModal('view', item)}
-                        className="text-blue-600 hover:text-blue-900"
+              {filteredData.map((item, idx) => {
+                const hasBahan =
+                  !!(item.bahan_id && String(item.bahan_id).trim() !== '');
+
+                // hitung stok yang ditampilkan
+                const displayedStock = hasBahan
+                  ? Number(item.bahan?.stok ?? 0)
+                  : Number(item.stok ?? 0);
+
+                return (
+                  <tr key={item.id} className="hover:bg-gray-50">
+                    {/* No. */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {idx + 1}
+                    </td>
+
+                    {/* ID */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">
+                        {item.id}
+                      </div>
+                    </td>
+
+                    {/* Produk */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">
+                        {item.nama_produk}
+                      </div>
+                    </td>
+
+                    {/* Kategori */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                        {item.kategori?.nama || 'N/A'}
+                      </span>
+                    </td>
+
+                    {/* Satuan */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {item.satuan?.nama || 'N/A'}
+                    </td>
+
+                    {/* Bahan */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {item.bahan?.nama || 'N/A'}
+                    </td>
+
+                    {/* Mesin */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {item.use_mesin ? (item.mesin?.nama || 'Ya') : 'Tidak'}
+                    </td>
+
+                    {/* Stok (pakai bahan jika dicentang) */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getBadgeClass(
+                          displayedStock
+                        )}`}
+                        title={hasBahan ? 'Pakai stok bahan' : 'Pakai stok produk'}
                       >
-                        <Eye className="h-5 w-5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onOpenModal('edit', item)}
-                        className="text-indigo-600 hover:text-indigo-900"
-                      >
-                        <Edit className="h-5 w-5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onDelete(item.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        <Trash2 className="h-5 w-5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        {displayedStock}
+                      </span>
+                    </td>
+
+                    {/* Harga Pokok */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {formatCurrency(item.harga_pokok)}
+                    </td>
+
+                    {/* Harga Jual */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {formatCurrency(item.harga_jual_umum)}
+                    </td>
+
+                    {/* Disc (%) */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {item.diskon_persen || '0'}%
+                    </td>
+
+                    {/* Aksi */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <div className="flex space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => onOpenModal('view', item)}
+                          className="text-blue-600 hover:text-blue-900"
+                        >
+                          <Eye className="h-5 w-5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenModal('edit', item)}
+                          className="text-indigo-600 hover:text-indigo-900"
+                        >
+                          <Edit className="h-5 w-5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDelete(item.id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          <Trash2 className="h-5 w-5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

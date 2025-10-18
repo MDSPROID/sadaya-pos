@@ -375,15 +375,16 @@ const LaporanPenjualan: React.FC = () => {
   const filteredSummary = useMemo(() => {
     let omset = 0;
     let piutang = 0;
-    let transactionsToday = 0;
-    const today = dateOnly(new Date());
+    let transactionsToday = filteredAndSortedData.length;
+    // let transactionsToday = 0;
+    // const today = dateOnly(new Date());
 
     filteredAndSortedData.forEach((it: any) => {
-      if (dateOnly(it.order_date) === today) transactionsToday += 1;
+      // if (dateOnly(it.order_date) === today) transactionsToday += 1;
 
       if (it.payment_status === 'paid') {
         omset += Number(it.final_amount || 0);
-      } else if (it.payment_status === 'pending' && it.payment_method !== null && it.payment_method !== '') {
+      }if (it.payment_status === 'pending' && it.payment_method !== null && it.payment_method !== '') {
         // const due =
         //   Number(it.due_amount ?? 0) ||
         //   Math.max(0, Number(it.final_amount || 0) - Number(it.paid_amount ?? 0)) ||
@@ -394,6 +395,10 @@ const LaporanPenjualan: React.FC = () => {
         const dpAmount = getDpFromNotes(it.notes);
         const remaining = Math.max(0, finalAmount - Number(dpAmount || 0));
         piutang += remaining;
+
+        if (dpAmount > 0) {
+          omset += dpAmount; // DP ikut omzet
+        }
       }
     });
 
@@ -537,7 +542,8 @@ const LaporanPenjualan: React.FC = () => {
           </div>
           <div className="ml-4">
             <p className="text-sm font-medium text-gray-600">Omset (Periode Ini)</p>
-            <p className="text-2xl font-bold text-gray-900">{formatCurrency(filteredSummary.omset)}</p>
+            <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalSalesAmountForFilteredData)}</p>
+            {/* filteredSummary.omset */}
           </div>
         </div>
         <div className="bg-yellow-100 rounded-lg shadow-sm p-6 flex items-center">
@@ -554,7 +560,7 @@ const LaporanPenjualan: React.FC = () => {
             <CalendarDays className="h-6 w-6 text-purple-600" />
           </div>
           <div className="ml-4">
-            <p className="text-sm font-medium text-gray-600">Transaksi Hari Ini</p>
+            <p className="text-sm font-medium text-gray-600">Total Transaksi</p>
             <p className="text-2xl font-bold text-gray-900">{filteredSummary.transactionsToday}</p>
           </div>
         </div>

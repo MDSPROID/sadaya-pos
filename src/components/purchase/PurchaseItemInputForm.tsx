@@ -44,7 +44,7 @@ const PurchaseItemInputForm: React.FC<PurchaseItemInputFormProps> = ({
               value={selectedPurchaseItem?.id || ''}
               disabled
               className="flex-1 px-3 py-2 border border-gray-300 rounded-lg disabled:bg-gray-50"
-              placeholder="Pilih produk/bahan..."
+              placeholder="Pilih bahan"
             />
             <button
               type="button"

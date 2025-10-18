@@ -3,6 +3,10 @@
 @tailwind utilities;
 
 /* ===== PRINT-ONLY RULES ===== */
+
+/* === Default: sembunyikan elemen khusus print === */
+.print-only { display: none !important; }
+
 @media print {
     @page {
       size: A4 landscape;   /* Landscape */
@@ -75,6 +79,64 @@
       white-space: normal !important;
       word-break: break-word !important;
     }
+
+    /* tampilkan elemen khusus print */
+    .print-only { display: block !important; }
+
+    /* header blok */
+    .print-header {
+      margin: 0 0 10mm 0 !important;  /* spasi bawah biar lega */
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .print-title {
+      font-size: 16px !important;
+      font-weight: 700 !important;
+      margin: 0 0 4px 0 !important;
+    }
+
+    .print-subtitle {
+      font-size: 12px !important;
+      color: #6b7280 !important; /* gray-500 */
+      margin: 0 0 6px 0 !important;
+    }
+
+    .print-divider {
+      height: 1px !important;
+      background: #e5e7eb !important; /* gray-200 */
+      margin: 6px 0 8px 0 !important;
+    }
+
+    /* grid filter 2 kolom di kertas */
+    .print-filter-grid {
+      display: grid !important;
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      gap: 6px 16px !important;        /* row-gap, col-gap */
+      font-size: 12px !important;
+      margin: 0 !important;
+    }
+
+    /* setiap baris filter = label + value */
+    .print-filter-row {
+      display: grid !important;
+      grid-template-columns: 120px 1fr !important; /* label tetap, value fleksibel */
+      align-items: start !important;
+      gap: 8px !important;
+    }
+
+    .print-k {
+      font-weight: 600 !important;
+      color: #374151 !important; /* gray-700 */
+      white-space: nowrap !important;
+    }
+
+    .print-v {
+      color: #111827 !important; /* gray-900 */
+      word-break: break-word !important;
+      overflow-wrap: anywhere !important;
+    }
+    
   }
   
   /* ===== (Opsional) daftarkan utilitas agar urutan pas dengan Tailwind ===== */

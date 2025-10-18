@@ -129,61 +129,6 @@ const SalesTable: React.FC<SalesTableProps> = ({
 
   isRefreshing = false,
 }) => {
-  // ===== PRINT STYLES: rapi & tanpa scroll, header repeat, baris tidak putus =====
-  const PrintStyles = () => (
-    <style>
-      {`
-      /* Optional: set size/margin; comment kalau tidak ingin lock ukuran */
-      @page { margin: 16mm; } /* atau: size: A4;  | size: A4 landscape; */
-
-      .print-only { display: none; }
-      .no-print { }
-
-      @media print {
-        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        body * { visibility: hidden; }
-        #sales-print-area, #sales-print-area * { visibility: visible; }
-        #sales-print-area { position: absolute; left: 0; top: 0; width: 100%; }
-
-        /* Hilangkan bayangan/warna UI */
-        .shadow-sm, .shadow, .rounded-lg, .bg-white { box-shadow: none !important; }
-        .bg-white { background: transparent !important; }
-
-        /* Hilangkan scroll container */
-        .print-table-wrap { overflow: visible !important; }
-
-        /* Tabel full, header repeat, baris tidak putus */
-        table { width: 100% !important; border-collapse: collapse !important; page-break-inside: auto; }
-        thead { display: table-header-group; }
-        tfoot { display: table-row-group; }
-        tr, td, th { page-break-inside: avoid !important; break-inside: avoid !important; }
-        tr { page-break-after: auto; }
-
-        /* Tone warna text */
-        th { background: #f9fafb !important; }
-
-        /* Sembunyikan semua kontrol */
-        .no-print { display: none !important; }
-
-        /* Chip filter */
-        .print-chip { 
-          display: inline-flex; gap: 6px; align-items: center;
-          border: 1px solid #e5e7eb; border-radius: 9999px; padding: 2px 10px;
-          font-size: 12px; margin: 4px 6px 0 0;
-        }
-
-        /* Grid ringkasan filter */
-        .print-filter-grid {
-          display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px;
-          font-size: 12px; margin-bottom: 10px;
-        }
-        .print-filter-grid div { display:flex; gap:6px; }
-        .print-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
-        .print-subtitle { font-size: 12px; color: #6b7280; margin-bottom: 6px; }
-      }
-    `}
-    </style>
-  );
 
   const renderSortIcon = (column: string) => {
     if (sortColumn === column) {
@@ -294,7 +239,8 @@ const SalesTable: React.FC<SalesTableProps> = ({
           const { data: profs, error: profErr } = await supabase
             .from('profiles')
             .select('id, first_name, last_name, role_id')
-            .in('role_id', uniqRoleIds);
+            .in('role_id', uniqRoleIds)
+            .eq('is_active', true);
           if (profErr) throw profErr;
           profilesByRole = (profs || []) as ProfileRow[];
         }
@@ -474,42 +420,134 @@ const SalesTable: React.FC<SalesTableProps> = ({
     n.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
 
   // ===== Label filter aktif untuk area print =====
-  const findLabelById = (id: string, source?: { id: string; name: string }[], fallback?: {id:string; label:string}[]) => {
+  const findLabelById = (
+    id: string,
+    source?: { id: string; name: string }[],
+    fallback?: { id: string; label: string }[],
+    profileCacheMap?: Record<string, { first_name: string | null; last_name: string | null }>
+  ) => {
     if (!id) return '';
-    const fromParent = source?.find(x => x.id === id)?.name;
-    if (fromParent) return fromParent;
-    const fromRole = fallback?.find(x => x.id === id)?.label;
-    return fromRole || id;
+
+    const isUuidLike = (s?: string) =>
+      !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
+    // 1) roleOptions (fallback param) — prioritas utama
+    const fromRole = fallback?.find(x => x.id === id)?.label?.trim();
+    if (fromRole && !isUuidLike(fromRole)) return fromRole;
+
+    // 2) profileCache — nama lengkap
+    const rec = profileCacheMap?.[id];
+    if (rec) {
+      const fn = String(rec.first_name ?? '').trim();
+      const ln = String(rec.last_name ?? '').trim();
+      const nm = [fn, ln].filter(Boolean).join(' ').trim();
+      if (nm && !isUuidLike(nm)) return nm;
+    }
+
+    // 3) sumber parent — hanya jika bukan UUID/ID mentah
+    const fromParent = source?.find(x => x.id === id)?.name?.trim();
+    if (fromParent && !isUuidLike(fromParent) && fromParent !== id) return fromParent;
+
+    // 4) terakhir: jangan tampilkan UUID
+    return '-';
   };
 
   const activeFilter = useMemo(() => {
     const items: { k: string; v: string }[] = [];
+
+    // Periode
     items.push({ k: 'Periode', v: `${startDate || '-'} s/d ${endDate || '-'}` });
 
-    items.push({ k: 'Status', v: (paymentStatusFilter === 'all') ? 'Semua Status' : (paymentStatusFilter === 'paid' ? 'Lunas' : 'Belum Lunas') });
-    items.push({ k: 'Metode', v: (selectedPaymentMethod === 'all') ? 'Semua Metode' : selectedPaymentMethod.replace(/_/g, ' ') });
+    // Status
+    items.push({
+      k: 'Status',
+      v: (paymentStatusFilter === 'all')
+        ? 'Semua Status'
+        : (paymentStatusFilter === 'paid' ? 'Lunas' : 'Belum Lunas')
+    });
 
-    if (selectedCustomerId) {
-      const custName = dynamicCustomerOptions.find(c => c.id === selectedCustomerId)?.name
-        || customerOptions.find(c => c.id === selectedCustomerId)?.name
-        || selectedCustomerId;
-      items.push({ k: 'Customer', v: custName });
+    // Metode
+    items.push({
+      k: 'Metode',
+      v: (selectedPaymentMethod === 'all')
+        ? 'Semua Metode'
+        : selectedPaymentMethod.replace(/_/g, ' ')
+    });
+
+    // Customer — selalu tampil
+    {
+      let v = 'Semua Customer';
+      if (selectedCustomerId) {
+        v =
+          dynamicCustomerOptions.find(c => c.id === selectedCustomerId)?.name
+          || customerOptions.find(c => c.id === selectedCustomerId)?.name
+          || '-'; // jangan pernah tampilkan UUID
+      }
+      items.push({ k: 'Customer', v });
     }
-    if (selectedKasirId) {
-      items.push({ k: 'Kasir', v: findLabelById(selectedKasirId, kasirOptionsFromParent, roleOptions.kasir) });
+
+    // Kasir — selalu tampil
+    {
+      let v = 'Semua Kasir';
+      if (selectedKasirId) {
+        v = findLabelById(
+          selectedKasirId,
+          kasirOptionsFromParent,
+          roleOptions.kasir,
+          profileCache
+        );
+      }
+      items.push({ k: 'Kasir', v });
     }
-    if (selectedDesignerId) {
-      items.push({ k: 'Designer', v: findLabelById(selectedDesignerId, designerOptionsFromParent, roleOptions.designer) });
+
+    // Designer — selalu tampil
+    {
+      let v = 'Semua Designer';
+      if (selectedDesignerId) {
+        v = findLabelById(
+          selectedDesignerId,
+          designerOptionsFromParent,
+          roleOptions.designer,
+          profileCache
+        );
+      }
+      items.push({ k: 'Designer', v });
     }
-    if (selectedOperatorId) {
-      items.push({ k: 'Operator', v: findLabelById(selectedOperatorId, operatorOptionsFromParent, roleOptions.operator) });
+
+    // Operator — selalu tampil
+    {
+      let v = 'Semua Operator';
+      if (selectedOperatorId) {
+        v = findLabelById(
+          selectedOperatorId,
+          operatorOptionsFromParent,
+          roleOptions.operator,
+          profileCache
+        );
+      }
+      items.push({ k: 'Operator', v });
     }
-    if (selectedFinishingId) {
-      items.push({ k: 'Finishing', v: findLabelById(selectedFinishingId, finishingOptionsFromParent, roleOptions.finishing) });
+
+    // Finishing — selalu tampil
+    {
+      let v = 'Semua Finishing';
+      if (selectedFinishingId) {
+        v = findLabelById(
+          selectedFinishingId,
+          finishingOptionsFromParent,
+          roleOptions.finishing,
+          profileCache
+        );
+      }
+      items.push({ k: 'Finishing', v });
     }
-    if (searchTerm?.trim()) {
-      items.push({ k: 'Pencarian', v: `"${searchTerm}"` });
-    }
+
+    // Pencarian — selalu tampil
+    items.push({
+      k: 'Pencarian',
+      v: (searchTerm?.trim() ? `"${searchTerm.trim()}"` : '-')
+    });
+
     return items;
   }, [
     startDate, endDate,
@@ -517,13 +555,25 @@ const SalesTable: React.FC<SalesTableProps> = ({
     selectedCustomerId, dynamicCustomerOptions, customerOptions,
     selectedKasirId, selectedDesignerId, selectedOperatorId, selectedFinishingId,
     kasirOptionsFromParent, designerOptionsFromParent, operatorOptionsFromParent, finishingOptionsFromParent,
-    roleOptions, searchTerm
+    roleOptions, profileCache, searchTerm
   ]);
+
+  const resolveLabel = (
+    id: string,
+    provided?: { id: string; name?: string }[],
+    fallback?: { id: string; label: string }[]
+  ) => {
+    if (!id) return '';
+    const fromProvided = provided?.find(x => x.id === id)?.name?.trim();
+    if (fromProvided) return fromProvided;
+    const fromFallback = fallback?.find(x => x.id === id)?.label?.trim();
+    if (fromFallback) return fromFallback;
+    return id; // terakhir banget, kalau dua-duanya tidak ada
+  };
 
   // ===== UI =====
   return (
     <div className="space-y-6">
-      <PrintStyles />
 
       {/* TOP CONTROLS (no-print) */}
       <div className="no-print bg-white rounded-lg shadow-sm p-6 grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
@@ -614,12 +664,13 @@ const SalesTable: React.FC<SalesTableProps> = ({
             id="kasirFilter"
             value={selectedKasirId || ''}
             onChange={onKasirChange}
-            disabled={loadingRoles && !(kasirOptionsFromParent?.length)}
+            disabled={loadingRoles}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
           >
-            <option value="">{(loadingRoles && !(kasirOptionsFromParent?.length)) ? 'Memuat...' : 'Semua Kasir'}</option>
-            {(kasirOptionsFromParent?.length ? kasirOptionsFromParent.map(o => ({id:o.id,label:o.name})) : roleOptions.kasir)
-              .map(opt => (<option key={opt.id} value={opt.id}>{(opt as any).label || (opt as any).name}</option>))}
+            <option value="">{loadingRoles ? 'Memuat...' : 'Semua Kasir'}</option>
+            {roleOptions.kasir.map(opt => (
+              <option key={opt.id} value={opt.id}>{opt.label}</option>
+            ))}
           </select>
         </div>
 
@@ -629,12 +680,14 @@ const SalesTable: React.FC<SalesTableProps> = ({
             id="designerFilter"
             value={selectedDesignerId || ''}
             onChange={onDesignerChange}
-            disabled={loadingRoles && !(designerOptionsFromParent?.length)}
+            // disabled={loadingRoles && !(designerOptionsFromParent?.length)}
+            disabled={loadingRoles}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
           >
             <option value="">{(loadingRoles && !(designerOptionsFromParent?.length)) ? 'Memuat...' : 'Semua Designer'}</option>
-            {(designerOptionsFromParent?.length ? designerOptionsFromParent.map(o => ({id:o.id,label:o.name})) : roleOptions.designer)
-              .map(opt => (<option key={opt.id} value={opt.id}>{(opt as any).label || (opt as any).name}</option>))}
+            {roleOptions.designer.map(opt => (
+              <option key={opt.id} value={opt.id}>{opt.label}</option>
+            ))}
           </select>
         </div>
 
@@ -644,12 +697,14 @@ const SalesTable: React.FC<SalesTableProps> = ({
             id="operatorFilter"
             value={selectedOperatorId || ''}
             onChange={onOperatorChange}
-            disabled={loadingRoles && !(operatorOptionsFromParent?.length)}
+            // disabled={loadingRoles && !(operatorOptionsFromParent?.length)}
+            disabled={loadingRoles}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
           >
             <option value="">{(loadingRoles && !(operatorOptionsFromParent?.length)) ? 'Memuat...' : 'Semua Operator'}</option>
-            {(operatorOptionsFromParent?.length ? operatorOptionsFromParent.map(o => ({id:o.id,label:o.name})) : roleOptions.operator)
-              .map(opt => (<option key={opt.id} value={opt.id}>{(opt as any).label || (opt as any).name}</option>))}
+            {roleOptions.operator.map(opt => (
+              <option key={opt.id} value={opt.id}>{opt.label}</option>
+            ))}
           </select>
         </div>
 
@@ -659,12 +714,14 @@ const SalesTable: React.FC<SalesTableProps> = ({
             id="finishingFilter"
             value={selectedFinishingId || ''}
             onChange={onFinishingChange}
-            disabled={loadingRoles && !(finishingOptionsFromParent?.length)}
+            // disabled={loadingRoles && !(finishingOptionsFromParent?.length)}
+            disabled={loadingRoles}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
           >
             <option value="">{(loadingRoles && !(finishingOptionsFromParent?.length)) ? 'Memuat...' : 'Semua Finishing'}</option>
-            {(finishingOptionsFromParent?.length ? finishingOptionsFromParent.map(o => ({id:o.id,label:o.name})) : roleOptions.finishing)
-              .map(opt => (<option key={opt.id} value={opt.id}>{(opt as any).label || (opt as any).name}</option>))}
+            {roleOptions.finishing.map(opt => (
+              <option key={opt.id} value={opt.id}>{opt.label}</option>
+            ))}
           </select>
         </div>
 
@@ -696,16 +753,19 @@ const SalesTable: React.FC<SalesTableProps> = ({
       </div>
 
       {/* ====== AREA KHUSUS CETAK ====== */}
-      <div id="sales-print-area">
+      <div id="purchase-print-area" className="print-only-block">
         {/* Header & Ringkasan filter (print only) */}
-        <div className="print-only" style={{ marginBottom: 8 }}>
-          <div className="print-title">Digital Printing POS System</div>
-          <div className="print-subtitle">Laporan Penjualan</div>
+        <div className="print-only print-header">
+          <div className="print-title">Laporan Penjualan</div>
+          {/* garis pemisah tipis */}
+          <div className="print-divider" />
+
+          {/* grid filter */}
           <div className="print-filter-grid">
             {activeFilter.map((it, idx) => (
-              <div key={idx}>
-                <strong>{it.k}:</strong>
-                <span>{it.v}</span>
+              <div className="print-filter-row" key={idx}>
+                <div className="print-k">{it.k}</div>
+                <div className="print-v">{it.v}</div>
               </div>
             ))}
           </div>
@@ -713,7 +773,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
 
         {/* TABLE (no scroll saat print) */}
         <div className="bg-white rounded-lg shadow-sm overflow-x-auto print-table-wrap">
-          <table className="min-w-full divide-y divide-gray-200">
+          <table className="min-w-full divide-y divide-gray-200 print-w-full">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No.</th>
@@ -755,9 +815,9 @@ const SalesTable: React.FC<SalesTableProps> = ({
                   return (
                     <tr
                       key={item.id}
-                      className={`cursor-pointer hover:bg-gray-50 ${selectedItemId === item.id ? 'bg-blue-50' : ''}`}
-                      onClick={() => onRowClick(item)}
-                    >
+                      className={`cursor-pointer hover:bg-gray-50 avoid-break ${selectedItemId === item.id ? 'bg-blue-50' : ''}`}
+                      onClick={() => onRowClick(item)}>
+
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{index + 1}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {new Date(item.order_date).toLocaleDateString('id-ID')}

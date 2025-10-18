@@ -343,7 +343,7 @@ const LaporanNeraca: React.FC = () => {
 
           <div className="flex justify-between items-center text-base">
             <span className="text-gray-700 inline-flex items-center">
-              Jumlah Saldo Non Tunai <InfoTip text="Total jumlah realisasi transfer + kas masuk transfer" />
+              Jumlah Saldo Transfer <InfoTip text="Total jumlah realisasi transfer + kas masuk transfer" />
             </span>
             <ValueOrSkeleton>Rp {summary.jumlah_saldo_non_tunai.toLocaleString('id-ID')}</ValueOrSkeleton>
           </div>

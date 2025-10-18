@@ -134,7 +134,7 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
           >
             <option value="all">Semua Status</option>
             <option value="paid">Lunas</option>
-            <option value="due">Tempo</option>
+            <option value="due">Belum Lunas</option>
           </select>
         </div>
         <div className="flex items-center gap-2">

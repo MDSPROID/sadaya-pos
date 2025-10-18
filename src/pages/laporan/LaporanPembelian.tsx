@@ -214,9 +214,10 @@ const LaporanPembelian: React.FC = () => {
     const totalPurchaseAmount = filteredAndSortedData.reduce((sum, i) => sum + (i.final_amount || 0), 0);
     const totalPaidAmount     = filteredAndSortedData.reduce((sum, i) => sum + (i.paid_amount  || 0), 0);
     const totalDueAmount      = filteredAndSortedData.reduce((sum, i) => sum + (i.due_amount   || 0), 0);
-  
-    const todayISO = new Date().toISOString().split('T')[0]; // yyyy-mm-dd
-    const transactionsToday = filteredAndSortedData.filter(i => i.order_date?.slice(0,10) === todayISO).length;
+    
+    let transactionsToday = filteredAndSortedData.length;
+    // const todayISO = new Date().toISOString().split('T')[0]; // yyyy-mm-dd
+    // const transactionsToday = filteredAndSortedData.filter(i => i.order_date?.slice(0,10) === todayISO).length;
   
     return { totalPurchaseAmount, totalPaidAmount, totalDueAmount, transactionsToday };
   }, [filteredAndSortedData]);
@@ -270,7 +271,7 @@ const LaporanPembelian: React.FC = () => {
             <Users className="h-6 w-6 text-purple-600" />
           </div>
           <div className="ml-4">
-            <p className="text-sm font-medium text-gray-600">Transaksi Hari Ini</p>
+            <p className="text-sm font-medium text-gray-600">Total Transaksi</p>
             <p className="text-2xl font-bold text-gray-900">{filteredSummary.transactionsToday}</p>
           </div>
         </div>

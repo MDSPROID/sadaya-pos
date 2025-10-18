@@ -58,6 +58,14 @@ const prepareOrderDataForSave = async (
     'sales'
   );
 
+  // === tambahkan aturan: tempo_active => READY meski DP = 0
+  const isTempoActive = Boolean(paymentDetails?.tempo_active);
+  const hasAnyPayment =
+    ((paymentDetails?.paid_amount ?? 0) + (paymentDetails?.dp_amount ?? 0)) > 0;
+
+  const shouldReady =
+    status === 'paid' || isTempoActive || hasAnyPayment;
+
   const orderDataToSave: OrderDataToSave = {
     order_date: formData.order_date,
     pickup_date: formData.pickup_date || null,
@@ -82,11 +90,14 @@ const prepareOrderDataForSave = async (
     // - Jika status 'paid' => ready
     // - Jika ada pembayaran parsial (DP / paid_amount > 0) => ready
     // - Jika pending tanpa pembayaran => not_ready
-    ready_status:
-      status === 'paid' ||
-      ((paymentDetails?.paid_amount ?? 0) + (paymentDetails?.dp_amount ?? 0) > 0)
-        ? 'ready'
-        : 'not_ready',
+    // ready_status:
+    //   status === 'paid' ||
+    //   ((paymentDetails?.paid_amount ?? 0) + (paymentDetails?.dp_amount ?? 0) > 0)
+    //     ? 'ready'
+    //     : 'not_ready',
+
+    // RULE READY jika status paid atau pending dengan tempo aktif meskipun dp nya 0
+    ready_status: shouldReady ? 'ready' : 'not_ready',
   };
 
   const itemsToInsert: ItemToInsert[] = formData.items.map(item => ({
@@ -561,7 +572,7 @@ export const useSalesOrder = (
   const handleSaveOrder = useCallback(async (
     status: 'pending' | 'paid',
     paymentDetails?: PaymentDetails,
-    options?: { skipPrint?: boolean }
+    options?: { skipPrint?: boolean; suppressReadyPopup?: boolean }
   ) => {
     if (orderFormData.items.length === 0) {
       showError('Keranjang belanja kosong.');
@@ -583,20 +594,47 @@ export const useSalesOrder = (
 
     // === PRE-CHECK: jika melanjutkan transaksi & klik "Pending Trx", cek ready_status sebelumnya
     let wasReady = false;
-    if (loadOrderId && status === 'pending') {
+    if (loadOrderId && status === 'pending' && !options?.suppressReadyPopup) {
       try {
         const { data: currentRow, error: curErr } = await supabase
           .from('orders')
-          .select('ready_status')
+          .select('ready_status, notes')
           .eq('id', loadOrderId)
           .single();
 
-        if (!curErr && currentRow?.ready_status === 'ready') {
-          const ok = window.confirm(
-            "Status Order ini sebelumnya telah 'SIAP CETAK'.\nApa Anda ingin membatalkannya?"
-          );
-          if (!ok) return; // batal → jangan lanjut simpan
-          wasReady = true;  // tandai agar nanti dipaksa jadi not_ready
+        // if (!curErr && currentRow?.ready_status === 'ready') {
+          // const ok = window.confirm(
+          //   "Status Order ini sebelumnya telah 'SIAP CETAK'.\nApa Anda ingin membatalkannya?"
+          // );
+          // if (!ok) return; // batal → jangan lanjut simpan
+          // wasReady = true;  // tandai agar nanti dipaksa jadi not_ready
+
+        // if (!curErr && currentRow) {
+        //   const isReady = currentRow.ready_status === 'ready';
+
+        //   // cek apakah di notes sebelumnya ada tempo_active:true
+        //   const notesText = currentRow.notes?.toString() || '';
+        //   const tempoActiveMatch = /"tempo_active":\s*true/.test(notesText);
+
+        //   // jika order sudah ready, dan tidak ada tempo aktif, baru tampilkan popup
+        //   if (isReady && !tempoActiveMatch) {
+        //     const ok = window.confirm(
+        //       "Status Order ini sebelumnya telah 'SIAP CETAK'.\nApa Anda ingin membatalkannya?"
+        //     );
+        //     if (!ok) return; // user batal → hentikan proses simpan
+        //     wasReady = true; // tandai agar nanti diset not_ready saat update
+        //   }
+        // }
+
+        if (!curErr && currentRow) {
+          const readyStatus = (currentRow.ready_status || '').toLowerCase().trim();
+          if (readyStatus === 'ready') {
+            const ok = window.confirm(
+              "Status Order ini sebelumnya telah 'SIAP CETAK'.\nApa Anda ingin membatalkannya?"
+            );
+            if (!ok) return;       // batal → jangan lanjut simpan
+            wasReady = true;        // tandai bila perlu dipaksa ke not_ready
+          }
         }
       } catch (e) {
         // kalau gagal cek, biarkan lanjut normal

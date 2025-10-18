@@ -15,6 +15,7 @@ export interface SatuanOption {
 export interface BahanOption {
   id: string;
   nama: string;
+  stok?: number
 }
 
 export interface MesinOption {
@@ -57,7 +58,7 @@ export interface ProdukItem {
   satuan_id: string | null;
   satuan: { nama: string } | null;
   bahan_id: string | null;
-  bahan: { nama: string } | null;
+  bahan: { nama: string; stok: number } | null;
   quantity_bahan: number;
   use_mesin: boolean;
   mesin_details: string;
@@ -113,7 +114,7 @@ export const useProdukData = ({ searchTerm, currentPage, pageSize }: UseProdukDa
 
     let query = supabase
       .from('produk')
-      .select('*, kategori(nama), satuan(nama), bahan(nama), mesin(nama)', { count: 'exact' })
+      .select('*, kategori(nama), satuan(nama), bahan(nama, stok), mesin(nama)', { count: 'exact' })
       .order('nama_produk', { ascending: true });
 
     if (searchTerm && searchTerm.trim() !== '') {
@@ -174,7 +175,7 @@ export const useProdukData = ({ searchTerm, currentPage, pageSize }: UseProdukDa
   const fetchBahanOptions = useCallback(async () => {
     const { data: bahanList, error } = await supabase
       .from('bahan')
-      .select('id, nama')
+      .select('id, nama, stok')
       .order('nama', { ascending: true });
     if (error) {
       console.error('Error fetching bahan options:', error);

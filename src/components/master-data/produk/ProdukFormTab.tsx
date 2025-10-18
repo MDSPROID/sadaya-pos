@@ -246,7 +246,13 @@ const ProdukFormTab: React.FC<ProdukFormTabProps> = ({
       </div>
       <div>
         <label htmlFor="stok" className="block text-sm font-medium text-gray-700 mb-1">
-          Stok
+          Stok {selectedItem.bahan_id && (
+            <span className="mt-1 text-xs text-gray-500">
+              {selectedItem.bahan_id && (
+                <>(Stok mengikuti bahan: {selectedItem.bahan?.nama ?? ''})</>
+              )}
+            </span>
+          )}
         </label>
         <input
           type="number"
@@ -254,7 +260,16 @@ const ProdukFormTab: React.FC<ProdukFormTabProps> = ({
           name="stok"
           value={selectedItem?.stok || ''}
           onChange={handleChange}
-          disabled={modalMode === 'view'}
+          readOnly={Boolean(selectedItem.bahan_id)}
+          // disabled={modalMode === 'view'}
+          onClick={() => {
+            if (selectedItem.bahan_id) {
+              window.alert(
+                'Stok produk ini mengikuti stok Bahan yang dipilih.\n' +
+                'Jika ingin mengubah stok, silakan ke menu Bahan.'
+              );
+            }
+          }}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
         />
       </div>
