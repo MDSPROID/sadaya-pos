@@ -30,6 +30,7 @@ import Sales from '../pages/Sales';
 import StatusOrder from '../pages/StatusOrder';
 import HistoryPendingSales from '../pages/HistoryPendingSales';
 import Pembelian from '../pages/Pembelian';
+import HistoryPendingPurchases from '../pages/HistoryPendingPurchases';
 
 // Import halaman Laporan
 import LaporanPenjualan from '../pages/laporan/LaporanPenjualan';
@@ -98,6 +99,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           
           {/* Rute untuk History Pending (sekarang top-level) */}
           <Route path="history-pending" element={<ProtectedRoute require="Main.history-pending"><HistoryPendingSales /></ProtectedRoute>} />
+          <Route path="history-pending-purchase" element={<ProtectedRoute require="Main.history-pending"><HistoryPendingPurchases /></ProtectedRoute>} />
 
           {/* Rute untuk Master Data */}
           <Route path="master-data/pelanggan" element={<ProtectedRoute require="Master.pelanggan"><Pelanggan /></ProtectedRoute>} />

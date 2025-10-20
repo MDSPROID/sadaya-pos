@@ -6,7 +6,7 @@ interface Product {
   nama_produk: string;
   kategori: { nama: string } | null;
   satuan: { nama: string } | null;
-  bahan: { id: string; nama: string; stok: string; ukuran_panjang: number | null; ukuran_lebar: number | null } | null; // Added 'id' to bahan
+  bahan: { id: string; nama: string; stok: number; ukuran_panjang: number | null; ukuran_lebar: number | null } | null; // Added 'id' to bahan
   quantity_bahan: number;
   use_mesin: boolean;
   mesin: { nama: string } | null;

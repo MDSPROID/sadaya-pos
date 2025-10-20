@@ -86,7 +86,7 @@ export const useSalesData = () => {
 
       const { data: products, error: prodError } = await supabase
         .from('produk')
-        .select('*, kategori(nama), satuan(nama), bahan(id, nama, ukuran_panjang, ukuran_lebar, stok), mesin(nama)'); // Select 'id' from bahan
+        .select('*, kategori(nama), satuan(nama), bahan(id, nama, stok, ukuran_panjang, ukuran_lebar, stok), mesin(nama)'); // Select 'id' from bahan
       if (prodError) throw prodError;
       setProductOptions(products || []);
 

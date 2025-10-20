@@ -59,18 +59,34 @@ const PurchasePaymentModal: React.FC<PurchasePaymentModalProps> = ({
 
   const handlePaymentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (paidAmountRaw > finalAmount) {
+      alert('nominal bayar melebihi jumlah yang dibayar');
+      return;
+    }
+    
     if (!bayarTempo && paidAmountRaw  < finalAmount) {
       alert('Jumlah pembayaran belum cukup!');
       return;
     }
 
+    if (paidAmountRaw > finalAmount) {
+      alert('nominal bayar melebihi jumlah yang dibayar');
+      return;
+    }
+
     const selectedBank = bankOptions.find(bank => bank.id === selectedBankId);
+
+    const combinedBankName =
+      paymentMethod === 'bank_transfer' && selectedBank
+        ? `${selectedBank.nama_bank} - ${selectedBank.nama_akun}`
+        : undefined;
 
     onProcessPayment({
       paid_amount: paidAmountRaw ,
       payment_method: paymentMethod,
       bank_id: selectedBankId || undefined,
-      bank_name: selectedBank?.nama_bank || undefined,
+      bank_name: combinedBankName,
       due_amount: dueAmount,
       due_date: bayarTempo ? dueDate : undefined, // Changed null to undefined
     });

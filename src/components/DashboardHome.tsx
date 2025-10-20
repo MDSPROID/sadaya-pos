@@ -97,7 +97,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
       <div className="bg-white rounded-lg shadow-sm p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Aksi Cepat</h3>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Penjualan Baru */}
           <button
             onClick={() => navigate("/dashboard/sales")}
@@ -108,6 +108,20 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
               <div className="font-medium text-gray-900">Penjualan Baru</div>
               <div className="text-sm text-gray-500">
                 Tambahkan penjualan baru
+              </div>
+            </div>
+          </button>
+
+          {/* History Pending Penjualan */}
+          <button
+            onClick={() => navigate("/dashboard/history-pending")}
+            className="flex flex-col items-center justify-center gap-2 w-full p-6 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors text-center"
+          >
+            <History className="w-8 h-8 text-orange-600" />
+            <div>
+              <div className="font-medium text-gray-900">History Pending Penjualan</div>
+              <div className="text-sm text-gray-500">
+                Informasi transaksi pending penjualan
               </div>
             </div>
           </button>
@@ -126,16 +140,16 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
             </div>
           </button>
 
-          {/* History Pending */}
+          {/* History Pending Pembelian */}
           <button
-            onClick={() => navigate("/dashboard/history-pending")}
+            onClick={() => navigate("/dashboard/history-pending-purchase")}
             className="flex flex-col items-center justify-center gap-2 w-full p-6 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors text-center"
           >
             <History className="w-8 h-8 text-orange-600" />
             <div>
-              <div className="font-medium text-gray-900">History Pending</div>
+              <div className="font-medium text-gray-900">History Pending Pembelian</div>
               <div className="text-sm text-gray-500">
-                Informasi transaksi pending
+                Informasi transaksi pending pembelian
               </div>
             </div>
           </button>

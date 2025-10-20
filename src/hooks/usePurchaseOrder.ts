@@ -10,6 +10,7 @@ import {
   PurchaseOrderDataToSave,
   ItemToInsert
 } from '../types/purchaseOrderTypes';
+import { supabase } from '../integrations/supabase/client';
 import { useSession } from '../components/SessionContextProvider';
 import { useNotaSettings } from './useNotaSettings';
 import { generateInvoiceNumber } from '../utils/invoiceGenerator';
@@ -216,31 +217,80 @@ export const usePurchaseOrder = (
     const toastId = showLoading('Menyimpan pesanan pembelian...');
 
     try {
-      // Determine payment status based on due_amount
+      // 1) derive status
       const paymentStatus = paymentDetails.due_amount > 0 ? 'due' : 'paid';
-
+    
+      // 2) siapkan payload untuk save PO
       const { purchaseOrderDataToSave, itemsToInsert } = await preparePurchaseOrderDataForSave(
         purchaseFormData,
         currentUserId,
         notaSettings,
-        paymentStatus, // Pass derived status
+        paymentStatus,
         paymentDetails
       );
-
-      await savePurchaseOrder(
+    
+      // 3) simpan PO & item (savePurchaseOrder mengembalikan ID PO baru)
+      const newPurchaseOrderId = await savePurchaseOrder(
         purchaseOrderDataToSave,
         itemsToInsert,
         currentUserId,
-        paymentStatus, // Pass derived status
-        paymentDetails,
+        paymentStatus,
+        paymentDetails
       );
+    
+      // 4) INSERT ke purchase_payments bila user isi nominal > 0
+      const mustInsertPayment =
+        (paymentDetails.due_amount && paymentDetails.due_amount > 0) ||
+        (paymentDetails.paid_amount && paymentDetails.paid_amount > 0);
 
+      if (mustInsertPayment) {
+        // ⬇️ CEK DULU: apakah sudah ada payment untuk PO ini?
+        const { data: existingPayments, error: existErr } = await supabase
+          .from('purchase_payments')
+          .select('id')
+          .eq('purchase_order_id', newPurchaseOrderId)
+          .limit(1);
+
+        if (existErr) throw existErr;
+
+        // Kalau sudah ada (mis. disisipkan oleh savePurchaseOrder atau trigger), kita SKIP supaya tidak dobel
+        if (!existingPayments || existingPayments.length === 0) {
+          const payDate =
+            purchaseOrderDataToSave.order_date ||
+            new Date().toISOString().slice(0, 10);
+
+          // Gabungan "Metode - Nama Akun" untuk non tunai.
+          const combinedBankName =
+            paymentDetails.payment_method === 'bank_transfer'
+              ? (paymentDetails.bank_name?.trim()?.length
+                  ? paymentDetails.bank_name!.trim()
+                  : `${paymentDetails.payment_method} - ${(paymentDetails.bank_name || '').trim()}` // fallback
+                )
+              : null;
+
+          const paymentRow: any = {
+            purchase_order_id: newPurchaseOrderId, // tetap pakai kolom yang sudah kamu gunakan
+            pay_date: payDate,
+            amount: paymentDetails.paid_amount ?? 0, // boleh 0 saat tempo
+            method: paymentDetails.payment_method,   // 'cash' | 'bank_transfer'
+            bank_name: combinedBankName,             // simpan gabungan di kolom bank_name SAJA
+            note: null,
+          };
+
+          const { error: payErr } = await supabase
+            .from('purchase_payments')
+            .insert(paymentRow);
+
+          if (payErr) throw payErr;
+        }
+      }
+    
       showSuccess(`Pesanan pembelian berhasil disimpan sebagai ${paymentStatus === 'due' ? 'Tempo' : 'Lunas'}!`);
-      
+    
       setPurchaseFormData(initialPurchaseOrderFormData);
       resetCurrentItemForm();
       clearPurchaseFormData();
-
+    
     } catch (error: any) {
       showError('Gagal menyimpan pesanan pembelian: ' + error.message);
       console.error('Error saving purchase order:', error);
