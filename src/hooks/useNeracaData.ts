@@ -181,8 +181,10 @@ export function useNeracaData({
 
         const { data: purchaseDueData, error: purchaseDueError } = await supabase
           .from('purchase_orders')
-          .select('final_amount, total_amount, payment_status')
-          .eq('payment_status', 'due');
+          .select('final_amount, total_amount, paid_amount, payment_status')
+          .eq('payment_status', 'due')
+          .gte('order_date', sDate)
+          .lte('order_date', eDate);
         if (purchaseDueError) throw purchaseDueError;
 
         const { data: hutangPeriodData, error: hutangPeriodError } = await supabase
@@ -262,8 +264,8 @@ export function useNeracaData({
         );
 
         const jumlahHutang = (purchaseDueData || []).reduce(
-          (s: number, po: any) => s + (po.final_amount ?? po.total_amount ?? 0),
-          0
+          (s: number, po: any) => s + ((po.final_amount || 0) - (po.paid_amount || 0)),0
+          // (s: number, po: any) => s + (po.final_amount - po.paid_amount ?? po.total_amount ?? 0),0
         );
 
         const jumlahSaldoTunai = orderPaidCash + kasMasukTunai;

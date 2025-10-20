@@ -6,7 +6,7 @@ interface Product {
   nama_produk: string;
   kategori: { nama: string } | null;
   satuan: { nama: string } | null;
-  bahan: { id: string; nama: string; ukuran_panjang: number | null; ukuran_lebar: number | null } | null; // Added 'id' to bahan
+  bahan: { id: string; nama: string; stok: string; ukuran_panjang: number | null; ukuran_lebar: number | null } | null; // Added 'id' to bahan
   quantity_bahan: number;
   use_mesin: boolean;
   mesin: { nama: string } | null;
@@ -71,19 +71,52 @@ const SelectProductModal: React.FC<SelectProductModalProps> = ({ onClose, onSele
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredProducts.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-2 text-center text-sm text-gray-500">Tidak ada produk ditemukan.</td></tr>
+                <tr>
+                  <td colSpan={5} className="px-4 py-2 text-center text-sm text-gray-500">
+                    Tidak ada produk ditemukan.
+                  </td>
+                </tr>
               ) : (
-                filteredProducts.map(p => (
-                  <tr key={p.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{p.id}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{p.nama_produk}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">Rp {p.harga_jual_umum.toLocaleString('id-ID')}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{p.stok}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-right text-sm font-medium">
-                      <button onClick={() => handleSelect(p)} className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-xs">Pilih</button>
-                    </td>
-                  </tr>
-                ))
+                filteredProducts.map((p) => {
+                  // Pakai stok bahan jika produk punya bahan_id (p.bahan?.id ada). Jika tidak, pakai stok produk.
+                  const displayedStock =
+                    p.bahan?.id ? Number(p.bahan?.stok ?? 0) : Number(p.stok ?? 0);
+
+                  const stockNote = p.bahan?.id
+                    ? `(Stok mengikuti bahan: ${p.bahan?.nama || '-'})`
+                    : ''; // kosong kalau tidak pakai bahan
+
+                  return (
+                    <tr key={p.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {p.id}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                        <div className="flex flex-col">
+                          <span>{p.nama_produk}</span>
+                          {/* onSavePending} */}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                        Rp {Number(p.harga_jual_umum || 0).toLocaleString('id-ID')}
+                      </td>
+                      <td
+                        className="px-4 py-2 whitespace-nowrap text-sm text-gray-900"
+                        title={p.bahan?.id ? 'Pakai stok bahan' : 'Pakai stok produk'}
+                      >
+                        {displayedStock}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-right text-sm font-medium">
+                        <button
+                          onClick={() => handleSelect(p)}
+                          className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-xs"
+                        >
+                          Pilih
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

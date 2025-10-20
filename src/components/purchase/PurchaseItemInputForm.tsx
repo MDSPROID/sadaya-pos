@@ -25,9 +25,33 @@ const PurchaseItemInputForm: React.FC<PurchaseItemInputFormProps> = ({
   onSelectPurchaseItemClick,
   onAddItemToOrder,
 }) => {
-  const itemName = selectedPurchaseItem ? ('nama_produk' in selectedPurchaseItem ? selectedPurchaseItem.nama_produk : selectedPurchaseItem.nama) : '';
-  const itemType = selectedPurchaseItem ? ('nama_produk' in selectedPurchaseItem ? 'Produk' : 'Bahan') : '';
-  const itemSatuan = selectedPurchaseItem?.satuan?.nama || '';
+  const itemName = selectedPurchaseItem
+    ? ('nama_produk' in selectedPurchaseItem ? selectedPurchaseItem.nama_produk : selectedPurchaseItem.nama)
+    : '';
+  const itemType = selectedPurchaseItem
+    ? ('nama_produk' in selectedPurchaseItem ? 'Produk' : 'Bahan')
+    : '';
+  const itemSatuan = (selectedPurchaseItem as any)?.satuan?.nama || '';
+
+  // === util format angka seperti di input penjualan ===
+  const formatNumber = (value: number | undefined): string => {
+    if (value === undefined || value === null || isNaN(value)) return '';
+    return value.toLocaleString('id-ID');
+  };
+
+  // QTY: hanya digit → simpan number, tampil formatted
+  const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (value === '') {
+      setItemQuantity(0);
+      return;
+    }
+    const cleanValue = value.replace(/[^\d]/g, '');
+    const numericValue = parseFloat(cleanValue);
+    if (!isNaN(numericValue)) {
+      setItemQuantity(numericValue);
+    }
+  };
 
   return (
     <div className="bg-white rounded-lg shadow-sm p-6 flex-shrink-0">
@@ -55,6 +79,7 @@ const PurchaseItemInputForm: React.FC<PurchaseItemInputFormProps> = ({
             </button>
           </div>
         </div>
+
         <div>
           <label htmlFor="item_name_display" className="block text-sm font-medium text-gray-700 mb-1">
             Nama Item
@@ -67,6 +92,7 @@ const PurchaseItemInputForm: React.FC<PurchaseItemInputFormProps> = ({
             className="w-full px-3 py-2 border border-gray-300 rounded-lg disabled:bg-gray-50"
           />
         </div>
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label htmlFor="item_type_display" className="block text-sm font-medium text-gray-700 mb-1">
@@ -93,6 +119,7 @@ const PurchaseItemInputForm: React.FC<PurchaseItemInputFormProps> = ({
             />
           </div>
         </div>
+
         <div>
           <label htmlFor="item_notes" className="block text-sm font-medium text-gray-700 mb-1">
             Keterangan Item
@@ -106,20 +133,23 @@ const PurchaseItemInputForm: React.FC<PurchaseItemInputFormProps> = ({
             placeholder="Catatan spesifik untuk item ini"
           />
         </div>
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label htmlFor="item_quantity" className="block text-sm font-medium text-gray-700 mb-1">
               QTY
             </label>
             <input
-              type="number"
+              type="text"                        // ✅ sama seperti penjualan
               id="item_quantity"
-              value={itemQuantity}
-              onChange={(e) => setItemQuantity(parseFloat(e.target.value) || 0)}
+              value={formatNumber(itemQuantity)}  // ✅ tampil format ribuan
+              onChange={handleQuantityChange}     // ✅ hanya digit → number
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              min="1"
+              placeholder="0"
+              inputMode="numeric"                 // ✅ mobile numeric keypad
             />
           </div>
+
           <div>
             <label htmlFor="item_unit_price" className="block text-sm font-medium text-gray-700 mb-1">
               Harga Satuan (Rp)
@@ -134,6 +164,7 @@ const PurchaseItemInputForm: React.FC<PurchaseItemInputFormProps> = ({
             />
           </div>
         </div>
+
         <button
           type="button"
           onClick={onAddItemToOrder}

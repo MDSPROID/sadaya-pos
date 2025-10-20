@@ -8,6 +8,48 @@ import {
   PaymentDetails,
 } from '../types/salesOrderTypes';
 
+/** Potong stok: bahan jika ada bahan_id; selain itu potong stok produk.
+ *  HANYA dipanggil ketika status === 'paid'
+ */
+async function adjustStockWhenPaid(items: OrderItemToSave[]) {
+  for (const item of items) {
+    const { data: product, error: fetchErr } = await supabase
+      .from('produk')
+      .select('id, stok, bahan_id, quantity_bahan, bahan(id, stok)')
+      .eq('id', item.product_id)
+      .maybeSingle();
+    if (fetchErr) throw fetchErr;
+    if (!product) continue;
+
+    const qty = Number(item.quantity || 0);
+    const qtyMultiplier = Math.max(1, Number(product.quantity_bahan || 1));
+    const totalForBahan = Math.floor(qty * qtyMultiplier);
+
+    // ✅ Normalisasi: bahan bisa array atau object
+    const bahanData = Array.isArray(product.bahan)
+      ? product.bahan[0]
+      : product.bahan;
+
+    // Jika produk pakai bahan → potong stok bahan
+    if (product.bahan_id && bahanData?.id) {
+      const newStock = Math.max(0, (Number(bahanData.stok) || 0) - totalForBahan);
+      const { error: bahanErr } = await supabase
+        .from('bahan')
+        .update({ stok: newStock })
+        .eq('id', bahanData.id);
+      if (bahanErr) throw bahanErr;
+    } else {
+      // Jika tidak pakai bahan → potong stok produk
+      const newStock = Math.max(0, (Number(product.stok) || 0) - qty);
+      const { error: prodErr } = await supabase
+        .from('produk')
+        .update({ stok: newStock })
+        .eq('id', product.id);
+      if (prodErr) throw prodErr;
+    }
+  }
+}
+
 /**
  * Menyimpan order + item, adjust stok (hanya saat paid), log, dan opsi print.
  */
@@ -19,7 +61,7 @@ export const saveSalesOrder = async (
   paymentDetails?: PaymentDetails,
   options?: { skipPrint?: boolean }
 ) => {
-  // Insert main order (pakai spread agar kolom flat & termasuk ready_status)
+  // 1) Insert main order (pakai spread agar kolom flat & termasuk ready_status)
   const { data: newOrder, error: orderError } = await supabase
     .from('orders')
     .insert([{ ...orderData }])
@@ -28,7 +70,7 @@ export const saveSalesOrder = async (
 
   if (orderError) throw orderError;
 
-  // Insert items
+  // 2) Insert items
   const itemsWithOrderId = itemsToInsert.map((item) => ({
     product_id: item.product_id,
     product_name: item.product_name,
@@ -49,26 +91,32 @@ export const saveSalesOrder = async (
     if (itemsError) throw itemsError;
   }
 
-  // Adjust stok hanya saat paid
+  // 3) ✅ Potong stok HANYA kalau status = 'paid'
+  console.log(status);
   if (status === 'paid') {
-    for (const item of itemsToInsert) {
-      const { data: productData, error: productFetchError } = await supabase
-        .from('produk')
-        .select('stok')
-        .eq('id', item.product_id)
-        .single();
-      if (productFetchError) throw productFetchError;
-
-      const newStock = (productData?.stok || 0) - item.quantity;
-      const { error: stockUpdateError } = await supabase
-        .from('produk')
-        .update({ stok: newStock })
-        .eq('id', item.product_id);
-      if (stockUpdateError) throw stockUpdateError;
-    }
+    await adjustStockWhenPaid(itemsToInsert);
   }
 
-  // Log activity
+  // Adjust stok hanya saat paid
+  // if (status === 'paid') {
+  //   for (const item of itemsToInsert) {
+  //     const { data: productData, error: productFetchError } = await supabase
+  //       .from('produk')
+  //       .select('stok')
+  //       .eq('id', item.product_id)
+  //       .single();
+  //     if (productFetchError) throw productFetchError;
+
+  //     const newStock = (productData?.stok || 0) - item.quantity;
+  //     const { error: stockUpdateError } = await supabase
+  //       .from('produk')
+  //       .update({ stok: newStock })
+  //       .eq('id', item.product_id);
+  //     if (stockUpdateError) throw stockUpdateError;
+  //   }
+  // }
+
+  // 4) Log activity
   await supabase.from('activity_logs').insert([
     {
       user_id: currentUserId,
@@ -82,7 +130,7 @@ export const saveSalesOrder = async (
     },
   ]);
 
-  // Print nota (jika paid & tidak skip)
+  // 5) Print nota (jika paid & tidak skip)
   if (status === 'paid' && paymentDetails && !options?.skipPrint) {
     const notaPrintData = {
       tanggal: newOrder.created_at,
@@ -131,6 +179,7 @@ export const updateSalesOrder = async (
   // Jaga invoice_number tetap (kalau memang kebijakanmu begitu)
   const { invoice_number: _ignoreInvoice, ...updatePayload } = orderData as any;
 
+  // 1) update order
   const { data: updatedOrder, error: orderUpdateError } = await supabase
     .from('orders')
     .update({ ...updatePayload })
@@ -140,7 +189,7 @@ export const updateSalesOrder = async (
 
   if (orderUpdateError) throw orderUpdateError;
 
-  // Replace items
+  // 2) Replace items
   const { error: deleteItemsError } = await supabase
     .from('order_items')
     .delete()
@@ -167,24 +216,30 @@ export const updateSalesOrder = async (
     if (itemsError) throw itemsError;
   }
 
-  // Adjust stok hanya saat paid
+  // 3) ✅ Potong stok HANYA kalau status = 'paid'
+  console.log(status);
   if (status === 'paid') {
-    for (const item of itemsToUpsert) {
-      const { data: productData, error: productFetchError } = await supabase
-        .from('produk')
-        .select('stok')
-        .eq('id', item.product_id)
-        .single();
-      if (productFetchError) throw productFetchError;
-
-      const newStock = (productData?.stok || 0) - item.quantity;
-      const { error: stockUpdateError } = await supabase
-        .from('produk')
-        .update({ stok: newStock })
-        .eq('id', item.product_id);
-      if (stockUpdateError) throw stockUpdateError;
-    }
+    await adjustStockWhenPaid(itemsToUpsert);
   }
+
+  // Adjust stok hanya saat paid
+  // if (status === 'paid') {
+  //   for (const item of itemsToUpsert) {
+  //     const { data: productData, error: productFetchError } = await supabase
+  //       .from('produk')
+  //       .select('stok')
+  //       .eq('id', item.product_id)
+  //       .single();
+  //     if (productFetchError) throw productFetchError;
+
+  //     const newStock = (productData?.stok || 0) - item.quantity;
+  //     const { error: stockUpdateError } = await supabase
+  //       .from('produk')
+  //       .update({ stok: newStock })
+  //       .eq('id', item.product_id);
+  //     if (stockUpdateError) throw stockUpdateError;
+  //   }
+  // }
 
   // Log activity
   await supabase.from('activity_logs').insert([
