@@ -276,113 +276,152 @@ const LaporanNeraca: React.FC = () => {
           </button>
         </div>
 
-        {/* Summary + tooltips */}
-        <div className="space-y-3 mb-6">
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700 inline-flex items-center">
-              Omset <InfoTip text="Total penjualan fix yang sudah lunas maupun belum lunas" />
-            </span>
-            <ValueOrSkeleton>Rp {summary.omset.toLocaleString('id-ID')}</ValueOrSkeleton>
-          </div>
+        {/* Summary + tooltips (table with lines) */}
+        <div className="overflow-hidden border border-gray-300 mb-6">
+        <table className="w-full border border-gray-300 border-collapse">
+            <colgroup>
+              <col className="w-2/3" />
+              <col className="w-1/3" />
+            </colgroup>
+            <tbody>
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top">
+                  Omset <InfoTip text="Total penjualan fix yang sudah lunas maupun belum lunas" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right font-medium">
+                  <ValueOrSkeleton>Rp {summary.omset.toLocaleString('id-ID')}</ValueOrSkeleton>
+                </td>
+              </tr>
 
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700 inline-flex items-center">
-              Realisasi Tunai <InfoTip text="Jumlah uang masuk yang sudah fix order dengan metode pembayaran tunai" />
-            </span>
-            <ValueOrSkeleton>Rp {summary.order_paid_cash.toLocaleString('id-ID')}</ValueOrSkeleton>
-          </div>
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top">
+                  Realisasi Tunai <InfoTip text="Jumlah uang masuk yang sudah fix order dengan metode pembayaran tunai" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right">
+                  <ValueOrSkeleton>Rp {summary.order_paid_cash.toLocaleString('id-ID')}</ValueOrSkeleton>
+                </td>
+              </tr>
 
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700 inline-flex items-center">
-              Realisasi Transfer <InfoTip text="Jumlah uang masuk yang sudah fix order dengan metode pembayaran transfer" />
-            </span>
-            <ValueOrSkeleton>Rp {summary.order_paid_transfer.toLocaleString('id-ID')}</ValueOrSkeleton>
-          </div>
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top">
+                  Realisasi Transfer <InfoTip text="Jumlah uang masuk yang sudah fix order dengan metode pembayaran transfer" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right">
+                  <ValueOrSkeleton>Rp {summary.order_paid_transfer.toLocaleString('id-ID')}</ValueOrSkeleton>
+                </td>
+              </tr>
 
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700 inline-flex items-center">
-              Non Realisasi <InfoTip text="Jumlah fix order yang belum bayar" />
-            </span>
-            <ValueOrSkeleton>Rp {summary.order_not_paid.toLocaleString('id-ID')}</ValueOrSkeleton>
-          </div>
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top">
+                  Non Realisasi <InfoTip text="Jumlah fix order yang belum bayar" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right">
+                  <ValueOrSkeleton>Rp {summary.order_not_paid.toLocaleString('id-ID')}</ValueOrSkeleton>
+                </td>
+              </tr>
 
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700 inline-flex items-center">
-              Kas Masuk Tunai <InfoTip text="Total dari pemasukan menu 'Kas masuk' tunai" />
-            </span>
-            <ValueOrSkeleton>Rp {summary.kas_masuk_tunai.toLocaleString('id-ID')}</ValueOrSkeleton>
-          </div>
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top">
+                  Kas Masuk Tunai <InfoTip text="Total dari pemasukan menu 'Kas masuk' tunai" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right">
+                  <ValueOrSkeleton>Rp {summary.kas_masuk_tunai.toLocaleString('id-ID')}</ValueOrSkeleton>
+                </td>
+              </tr>
 
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700 inline-flex items-center">
-              Kas Masuk Transfer <InfoTip text="Total dari pemasukan menu 'Kas masuk' transfer" />
-            </span>
-            <ValueOrSkeleton>Rp {summary.kas_masuk_transfer.toLocaleString('id-ID')}</ValueOrSkeleton>
-          </div>
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top">
+                  Kas Masuk Transfer <InfoTip text="Total dari pemasukan menu 'Kas masuk' transfer" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right">
+                  <ValueOrSkeleton>Rp {summary.kas_masuk_transfer.toLocaleString('id-ID')}</ValueOrSkeleton>
+                </td>
+              </tr>
 
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700 inline-flex items-center">
-              Kas Keluar Tunai <InfoTip text="Total dari pengeluaran menu 'Kas keluar' tunai" />
-            </span>
-            <ValueOrSkeleton>Rp {summary.kas_keluar_tunai.toLocaleString('id-ID')}</ValueOrSkeleton>
-          </div>
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top">
+                  Kas Keluar Tunai <InfoTip text="Total dari pengeluaran menu 'Kas keluar' tunai" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right">
+                  <ValueOrSkeleton>Rp {summary.kas_keluar_tunai.toLocaleString('id-ID')}</ValueOrSkeleton>
+                </td>
+              </tr>
 
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700 inline-flex items-center">
-              Kas Keluar Transfer <InfoTip text="Total dari pengeluaran menu 'Kas keluar' transfer" />
-            </span>
-            <ValueOrSkeleton>Rp {summary.kas_keluar_transfer.toLocaleString('id-ID')}</ValueOrSkeleton>
-          </div>
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top">
+                  Kas Keluar Transfer <InfoTip text="Total dari pengeluaran menu 'Kas keluar' transfer" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right">
+                  <ValueOrSkeleton>Rp {summary.kas_keluar_transfer.toLocaleString('id-ID')}</ValueOrSkeleton>
+                </td>
+              </tr>
 
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700 inline-flex items-center">
-              Jumlah Saldo Tunai / Cash <InfoTip text="Total jumlah realisasi tunai + kas masuk tunai" />
-            </span>
-            <ValueOrSkeleton>Rp {summary.jumlah_saldo_tunai.toLocaleString('id-ID')}</ValueOrSkeleton>
-          </div>
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top">
+                  Jumlah Saldo Tunai / Cash <InfoTip text="Total jumlah realisasi tunai + kas masuk tunai" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right">
+                  <ValueOrSkeleton>Rp {summary.jumlah_saldo_tunai.toLocaleString('id-ID')}</ValueOrSkeleton>
+                </td>
+              </tr>
 
-          <div className="flex justify-between items-center text-base">
-            <span className="text-gray-700 inline-flex items-center">
-              Jumlah Saldo Transfer <InfoTip text="Total jumlah realisasi transfer + kas masuk transfer" />
-            </span>
-            <ValueOrSkeleton>Rp {summary.jumlah_saldo_non_tunai.toLocaleString('id-ID')}</ValueOrSkeleton>
-          </div>
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top">
+                  Jumlah Saldo Transfer <InfoTip text="Total jumlah realisasi transfer + kas masuk transfer" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right">
+                  <ValueOrSkeleton>Rp {summary.jumlah_saldo_non_tunai.toLocaleString('id-ID')}</ValueOrSkeleton>
+                </td>
+              </tr>
 
-          <div className="flex justify-between items-center text-base font-semibold">
-            <span className="text-gray-700 inline-flex items-center">
-              Total Jumlah Saldo <InfoTip text="Jumlah saldo tunai + non tunai" />
-            </span>
-            <ValueOrSkeleton>Rp {summary.total_jumlah_saldo.toLocaleString('id-ID')}</ValueOrSkeleton>
-          </div>
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top font-semibold">
+                  Total Jumlah Saldo <InfoTip text="Jumlah saldo tunai + non tunai" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right font-semibold">
+                  <ValueOrSkeleton>Rp {summary.total_jumlah_saldo.toLocaleString('id-ID')}</ValueOrSkeleton>
+                </td>
+              </tr>
 
-          <div className="flex justify-between items-center text-base font-semibold">
-            <span className="text-gray-700 inline-flex items-center">
-              Total Pengeluaran <InfoTip text="Penjumlahan dari kas keluar" />
-            </span>
-            <ValueOrSkeleton>Rp {summary.total_pengeluaran.toLocaleString('id-ID')}</ValueOrSkeleton>
-          </div>
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top font-semibold">
+                  Total Pengeluaran <InfoTip text="Penjumlahan dari kas keluar" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right font-semibold">
+                  <ValueOrSkeleton>Rp {summary.total_pengeluaran.toLocaleString('id-ID')}</ValueOrSkeleton>
+                </td>
+              </tr>
 
-          <div className="flex justify-between items-center text-base font-semibold">
-            <span className="text-gray-700 inline-flex items-center">
-              Jumlah Hutang <InfoTip text="Jumlah hutang ke supplier" />
-            </span>
-            <ValueOrSkeleton>Rp {summary.jumlah_hutang.toLocaleString('id-ID')}</ValueOrSkeleton>
-          </div>
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top font-semibold">
+                  Jumlah Hutang <InfoTip text="Jumlah hutang ke supplier" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right font-semibold">
+                  <ValueOrSkeleton>Rp {summary.jumlah_hutang.toLocaleString('id-ID')}</ValueOrSkeleton>
+                </td>
+              </tr>
 
-          <div className="flex justify-between items-center text-base font-semibold">
-            <span className="text-gray-700 inline-flex items-center">
-              Jumlah Piutang <InfoTip text="Jumlah fix order yang belum bayar" />
-            </span>
-            <ValueOrSkeleton>Rp {summary.jumlah_piutang.toLocaleString('id-ID')}</ValueOrSkeleton>
-          </div>
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top font-semibold">
+                  Jumlah Piutang <InfoTip text="Jumlah fix order yang belum bayar" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right font-semibold">
+                  <ValueOrSkeleton>Rp {summary.jumlah_piutang.toLocaleString('id-ID')}</ValueOrSkeleton>
+                </td>
+              </tr>
 
-          <div className="flex justify-between items-center text-base font-bold">
-            <span className="text-gray-700 inline-flex items-center">
-              Saldo Seharusnya <InfoTip text="Jumlah saldo + jumlah piutang - jumlah hutang" />
-            </span>
-            <ValueOrSkeleton>Rp {summary.saldo_seharusnya.toLocaleString('id-ID')}</ValueOrSkeleton>
-          </div>
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top font-bold">
+                  Saldo Seharusnya <InfoTip text="Jumlah saldo + jumlah piutang - jumlah hutang" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right font-bold">
+                  <ValueOrSkeleton>Rp {summary.saldo_seharusnya.toLocaleString('id-ID')}</ValueOrSkeleton>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
+
 
         {error && (
           <div className="text-sm text-red-600 mt-2">
@@ -429,6 +468,17 @@ const LaporanNeraca: React.FC = () => {
       <style>
         {`
           @media print {
+
+            #print-neraca-section table,
+            #print-neraca-section td,
+            #print-neraca-section tr {
+              border-color: #000 !important;   /* hitam saat print */
+            }
+
+            /* Hindari garis ganda di print */
+            #print-neraca-section table {
+              border-collapse: collapse !important;
+            }
             /* Sembunyikan semua di luar section */
             body * { visibility: hidden !important; }
 
@@ -460,8 +510,16 @@ const LaporanNeraca: React.FC = () => {
               // -webkit-print-color-adjust: exact !important;
               // print-color-adjust: exact !important;
             }
+            // landscape
+            // @page { margin: 16mm; }
+            // potrait
+            @page {
+              size: A4 portrait;   /* paksa orientasi potrait (Chrome/Edge/Firefox) */
+              margin: 12mm;        /* bebas ubah */
+            }
 
-            @page { margin: 16mm; }
+            /* jika tidak kenal A4, set minimal orientasi-nya */
+            @page { size: portrait; }
           }
         `}
       </style>
