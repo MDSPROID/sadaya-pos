@@ -6,6 +6,7 @@ import { showError, showSuccess, showLoading, dismissToast } from '../../utils/t
 interface Props {
   purchaseId: string;
   onClose: () => void;
+  onUpdate?: () => void;
 }
 
 const formatRp = (n: any) => `Rp ${(Number(n) || 0).toLocaleString('id-ID')}`;
@@ -27,7 +28,7 @@ type BankOption = {
   nama_akun?: string | null;
 };
 
-const PurchasePaymentsViewModalPending: React.FC<Props> = ({ purchaseId, onClose }) => {
+const PurchasePaymentsViewModalPending: React.FC<Props> = ({ purchaseId, onClose, onUpdate }) => {
   const [loading, setLoading] = useState(false);
   const [po, setPo] = useState<any>(null);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
@@ -160,24 +161,48 @@ const PurchasePaymentsViewModalPending: React.FC<Props> = ({ purchaseId, onClose
 
   const deleteRow = async (id: string) => {
     if (!confirm('Hapus pembayaran ini? Tindakan ini tidak dapat dibatalkan.')) return;
-
+  
     const toastId = showLoading('Menghapus pembayaran...');
     try {
+      // 1) Hapus baris pembayaran
       const { error } = await supabase
         .from('purchase_payments')
         .delete()
         .eq('id', id);
       if (error) throw error;
-
+  
+      // 2) Ambil ulang semua pembayaran utk PO ini
+      const { data: paysAfter, error: sumErr } = await supabase
+        .from('purchase_payments')
+        .select('amount')
+        .eq('purchase_order_id', purchaseId);
+      if (sumErr) throw sumErr;
+  
+      const totalPaid = (paysAfter || []).reduce((acc, r) => acc + Number(r.amount || 0), 0);
+      // pakai final_amount kalau ada, fallback ke total_amount
+      const totalBill =
+        po ? Number(po.final_amount ?? po.total_amount ?? 0) : 0;
+  
+      // 3) Tentukan status baru
+      const newStatus = totalPaid >= totalBill ? 'paid' : 'due';
+  
+      // 4) Update purchase_orders (sekalian simpan paid_amount agar konsisten)
+      const { error: updErr } = await supabase
+        .from('purchase_orders')
+        .update({ payment_status: newStatus, paid_amount: totalPaid })
+        .eq('id', purchaseId);
+      if (updErr) throw updErr;
+  
       showSuccess('Pembayaran berhasil dihapus.');
-      await load(); // trigger akan otomatis hitung ulang paid_amount & status
+      await load(); // refresh PO & tabel agar header ikut update
+      if (onUpdate) onUpdate();
     } catch (e: any) {
       console.error(e);
       showError(e?.message || 'Gagal menghapus pembayaran.');
     } finally {
       dismissToast(toastId);
     }
-  };
+  };  
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>

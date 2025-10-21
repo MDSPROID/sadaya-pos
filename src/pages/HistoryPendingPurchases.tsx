@@ -7,6 +7,8 @@ import { useSession } from '../components/SessionContextProvider';
 import PurchasePaymentModalPending from '../components/purchase/PurchasePaymentModalPending';
 import PurchasePaymentsViewModalPending from '../components/purchase/PurchasePaymentsViewModalPending';
 
+type PaymentStatusFilter = 'all' | 'paid' | 'due';
+
 const todayStr = () => {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -23,6 +25,7 @@ const HistoryPendingPurchases: React.FC = () => {
   const typingTimer = useRef<number | null>(null);
   const [viewPurchaseId, setViewPurchaseId] = useState<string | null>(null);
   const isSuperAdmin = profile?.role === 'Super Admin';
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatusFilter>('due');
 
   const {
     data,
@@ -41,7 +44,7 @@ const HistoryPendingPurchases: React.FC = () => {
 
     if (typingTimer.current) window.clearTimeout(typingTimer.current);
     typingTimer.current = window.setTimeout(() => {
-      fetchPendingPurchases({ searchTerm: newValue, startDate, endDate });
+      fetchPendingPurchases({ searchTerm: newValue, startDate, endDate, paymentStatus  });
     }, 300);
   };
 
@@ -49,14 +52,19 @@ const HistoryPendingPurchases: React.FC = () => {
     const fixedEnd = endDate && endDate < value ? value : endDate;
     setStartDate(value);
     if (fixedEnd !== endDate) setEndDate(fixedEnd);
-    await fetchPendingPurchases({ searchTerm, startDate: value, endDate: fixedEnd });
+    await fetchPendingPurchases({ searchTerm, startDate: value, endDate: fixedEnd, paymentStatus  });
   };
 
   const handleEndDateChange = async (value: string) => {
     const fixedStart = startDate && value < startDate ? value : startDate;
     if (fixedStart !== startDate) setStartDate(fixedStart);
     setEndDate(value);
-    await fetchPendingPurchases({ searchTerm, startDate: fixedStart, endDate: value });
+    await fetchPendingPurchases({ searchTerm, startDate: fixedStart, endDate: value, paymentStatus  });
+  };
+
+  const handlePaymentStatusChange = async (value: PaymentStatusFilter) => {
+    setPaymentStatus(value);
+    await fetchPendingPurchases({ searchTerm, startDate, endDate, paymentStatus: value });
   };
 
   const handleOpenPayment = (purchaseId: string) => {
@@ -91,7 +99,7 @@ const HistoryPendingPurchases: React.FC = () => {
     }
   };
 
-  const handleRefresh = () => fetchPendingPurchases({ searchTerm, startDate, endDate });
+  const handleRefresh = () => fetchPendingPurchases({ searchTerm, startDate, endDate, paymentStatus });
 
   return (
     <div className="space-y-6">
@@ -117,6 +125,8 @@ const HistoryPendingPurchases: React.FC = () => {
         onViewPayments={(id) => setViewPurchaseId(id)}
         error={error}
         showDelete={isSuperAdmin}
+        paymentStatus={paymentStatus}
+        onPaymentStatusChange={handlePaymentStatusChange}
       />
 
       {/* Modal Pembayaran */}
@@ -135,6 +145,7 @@ const HistoryPendingPurchases: React.FC = () => {
       {viewPurchaseId && (
         <PurchasePaymentsViewModalPending
           purchaseId={viewPurchaseId}
+          onUpdate={handleRefresh}
           onClose={() => setViewPurchaseId(null)}
         />
       )}

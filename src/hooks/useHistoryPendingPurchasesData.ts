@@ -14,19 +14,21 @@ interface PendingPurchaseItem {
   tax_amount?: number;
   final_amount?: number;
   paid_amount?: number;
-  payment_status?: 'paid' | 'due' | string;
+  payment_status?: 'paid' | 'due' | string | null;
 }
 
 type FetchArgs = {
   startDate?: string;
   endDate?: string;
   searchTerm?: string;
+  paymentStatus?: 'all' | 'paid' | 'due';
 };
 
 export const useHistoryPendingPurchasesData = ({
   startDate = '',
   endDate = '',
   searchTerm = '',
+  paymentStatus = 'due', 
 }: FetchArgs) => {
   const [data, setData] = useState<PendingPurchaseItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -36,6 +38,7 @@ export const useHistoryPendingPurchasesData = ({
     const s = args?.startDate ?? startDate;
     const e = args?.endDate ?? endDate;
     const q = (args?.searchTerm ?? searchTerm).trim();
+    const ps = args?.paymentStatus ?? paymentStatus;
 
     setLoading(true);
     setError(null);
@@ -48,7 +51,6 @@ export const useHistoryPendingPurchasesData = ({
           total_amount, discount_amount, final_amount, paid_amount, due_amount, due_date, payment_status
           suppliers: supplier_id ( nama, telepon )
         `)
-        // .eq('payment_status', 'due') // hanya hutang yang belum lunas
         .order('created_at', { ascending: false });
 
       if (s) query = query.gte('order_date', s);
@@ -62,6 +64,11 @@ export const useHistoryPendingPurchasesData = ({
             `suppliers.phone.ilike.%${q}%`,
           ].join(',')
         );
+      }
+
+      if (ps && ps !== 'all') {
+        // Filter murni by kolom payment_status
+        query = query.eq('payment_status', ps);
       }
 
       const { data: rows, error: err } = await query;
@@ -90,7 +97,7 @@ export const useHistoryPendingPurchasesData = ({
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, searchTerm]);
+  }, [startDate, endDate, searchTerm, paymentStatus]);
 
   useEffect(() => {
     fetchPendingPurchases();

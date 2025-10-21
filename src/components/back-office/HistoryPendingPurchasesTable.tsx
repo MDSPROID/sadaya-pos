@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Search, RefreshCcw, CreditCard, Trash2, Eye } from 'lucide-react';
 
 interface PendingPurchaseItem {
@@ -14,8 +14,10 @@ interface PendingPurchaseItem {
   tax_amount?: number;
   final_amount?: number;       // nilai tagihan
   paid_amount?: number;        // total dibayar sampai saat ini
-  payment_status?: 'paid' | 'due' | string;
+  payment_status?: 'paid' | 'due' | string | null;
 }
+
+type PaymentStatusFilter = 'all' | 'paid' | 'due';
 
 interface Props {
   data: PendingPurchaseItem[];
@@ -34,19 +36,31 @@ interface Props {
   error?: string | null;
   onViewPayments: (purchaseId: string) => void;
   showDelete?: boolean;
+  paymentStatus: PaymentStatusFilter;
+  onPaymentStatusChange: (v: PaymentStatusFilter) => void;
 }
 
 const formatRp = (n: any) => `Rp ${(Number(n) || 0).toLocaleString('id-ID')}`;
 
-const StatusBadge: React.FC<{ status?: string; sisa: number }> = ({ status, sisa }) => {
-    const isPaid = status === 'paid' || sisa <= 0;
-    const label = isPaid ? 'Lunas' : 'Belum Lunas';
-    const cls = isPaid
-      ? 'bg-green-100 text-green-800 border-green-200'
-      : 'bg-yellow-100 text-yellow-800 border-yellow-200';
-    return (
-      <span className={`px-2 py-1 text-xs rounded border ${cls}`}>{label}</span>
-    );
+const isRowPaid = (item: PendingPurchaseItem) => {
+  // Jika backend sudah mengisi payment_status, gunakan itu
+  if (item.payment_status === 'paid') return true;
+  if (item.payment_status === 'due') return false;
+
+  // Fallback hitung dari sisa
+  const tagihan = Number(item.final_amount || item.total_amount || 0);
+  const terbayar = Number(item.paid_amount || 0);
+  const sisa = Math.max(tagihan - terbayar, 0);
+  return sisa <= 0;
+};
+
+const StatusBadge: React.FC<{ status?: string | null; sisa: number }> = ({ status, sisa }) => {
+  const isPaid = (status ?? '') === 'paid' || sisa <= 0;
+  const label = isPaid ? 'Lunas' : 'Belum Lunas';
+  const cls = isPaid
+    ? 'bg-green-100 text-green-800 border-green-200'
+    : 'bg-yellow-100 text-yellow-800 border-yellow-200';
+  return <span className={`px-2 py-1 text-xs rounded border ${cls}`}>{label}</span>;
 };
 
 const HistoryPendingPurchasesTable: React.FC<Props> = ({
@@ -64,7 +78,18 @@ const HistoryPendingPurchasesTable: React.FC<Props> = ({
   onViewPayments,
   error,
   showDelete = false,
+  paymentStatus,
+  onPaymentStatusChange,
 }) => {
+
+  // const filteredData = useMemo(() => {
+  //   if (paymentStatus === 'all') return data;
+  //   const wantPaid = paymentStatus === 'paid';
+  //   return data.filter((item) => isRowPaid(item) === wantPaid);
+  // }, [data, paymentStatus]);
+
+  const filteredData = data;
+
   return (
     <div className="space-y-6">
       {error && (
@@ -90,6 +115,19 @@ const HistoryPendingPurchasesTable: React.FC<Props> = ({
             onChange={(e) => onEndDateChange(e.target.value)}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
+        </div>
+
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <label className="text-sm font-medium text-gray-700">Status:</label>
+          <select
+            value={paymentStatus}
+            onChange={(e) => onPaymentStatusChange(e.target.value as PaymentStatusFilter)}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="all">Semua</option>
+            <option value="paid">Lunas</option>
+            <option value="due">Belum Lunas</option>
+          </select>
         </div>
 
         <div className="relative flex-1 w-full md:w-auto">
@@ -137,14 +175,16 @@ const HistoryPendingPurchasesTable: React.FC<Props> = ({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {data.length === 0 ? (
+              {filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
-                    Tidak ada data pembelian tertunda.
+                  <td colSpan={10} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                    {paymentStatus === 'all'
+                      ? 'Tidak ada data pembelian tertunda.'
+                      : `Tidak ada data untuk status "${paymentStatus === 'paid' ? 'Paid (Lunas)' : 'Due (Belum Lunas)'}".`}
                   </td>
                 </tr>
               ) : (
-                data.map((item, idx) => {
+                filteredData.map((item, idx) => {
                   const tagihan = Number(item.final_amount || item.total_amount || 0);
                   const terbayar = Number(item.paid_amount || 0);
                   const sisa = Math.max(tagihan - terbayar, 0);

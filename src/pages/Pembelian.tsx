@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { usePurchaseData } from '../hooks/usePurchaseData';
 import { usePurchaseOrder } from '../hooks/usePurchaseOrder';
 import { showError } from '../utils/toast';
+import { useParams } from 'react-router-dom';
+import { supabase } from '../integrations/supabase/client';
 
 // Import modular components
 import SupplierForm from '../components/purchase/SupplierForm';
@@ -13,6 +15,8 @@ import SelectPurchaseItemModal from '../components/purchase/SelectPurchaseItemMo
 import PurchasePaymentModal from '../components/purchase/PurchasePaymentModal';
 
 const Pembelian: React.FC = () => {
+  const { id: editId } = useParams<{ id: string }>();
+  const isEditMode = Boolean(editId);
   const {
     supplierOptions,
     productOptions,
@@ -25,6 +29,7 @@ const Pembelian: React.FC = () => {
 
   const {
     purchaseFormData,
+    setPurchaseFormData,
     selectedPurchaseItem,
     itemQuantity,
     setItemQuantity,
@@ -83,6 +88,7 @@ const Pembelian: React.FC = () => {
       </div>
     );
   }
+  
 
   return (
     <div className="h-full w-full space-y-6 p-6 bg-gray-100 flex flex-col">

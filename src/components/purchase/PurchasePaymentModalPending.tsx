@@ -138,7 +138,28 @@ const PurchasePaymentModalPending: React.FC<Props> = ({ purchaseId, onClose, onP
       }
   
       if (insertErr) throw insertErr;
-  
+
+      // === Recalculate total paid & update order status ===
+      const { data: paysAfter, error: sumErr } = await supabase
+        .from('purchase_payments')
+        .select('amount')
+        .eq('purchase_order_id', purchaseId);
+
+      if (sumErr) throw sumErr;
+
+      const totalPaid = (paysAfter || []).reduce((acc, r) => acc + Number(r.amount || 0), 0);
+      const totalBill = Number(po?.final_amount ?? po?.total_amount ?? 0);
+      const newStatus = totalPaid >= totalBill ? 'paid' : 'due';
+
+      // (opsional tapi sangat disarankan) simpan juga paid_amount agar tampilan lain konsisten
+      const { error: updErr } = await supabase
+        .from('purchase_orders')
+        .update({ payment_status: newStatus, paid_amount: totalPaid })
+        .eq('id', purchaseId);
+
+      if (updErr) throw updErr;
+      // ===============================================
+
       showSuccess('Pembayaran berhasil disimpan.');
       onPaid(); // refresh/close sesuai props kamu
     } catch (e: any) {

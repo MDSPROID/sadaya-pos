@@ -86,6 +86,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           
           {/* Rute untuk Pembelian */}
           <Route path="purchases" element={<ProtectedRoute require="Main.purchases"><Pembelian /></ProtectedRoute>} />
+          {/* Rute untuk edit Pembelian */}
+          {/* <Route path="purchases/:id/edit" element={<ProtectedRoute require="Main.purchases"><Pembelian /></ProtectedRoute>} /> */}
 
           {/* Rute untuk Back Office */}
           <Route path="back-office/kas_masuk" element={<ProtectedRoute require="Back Office.kas_masuk"><KasMasuk /></ProtectedRoute>} />
