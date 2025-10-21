@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Printer, ArrowUp, ArrowDown, Loader2 } from 'lucide-react';
 import { SalesItem, PendingOrderItem } from '../../types/orderTypes';
 import { formatCurrency } from '../../utils/formatters';
@@ -73,6 +73,13 @@ interface SalesTableProps {
   onFinishingChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
 
   isRefreshing?: boolean;
+
+  /* === tambahan untuk checkbox selection (opsional agar backward compatible) === */
+  selectedIds?: string[];
+  onToggleRow?: (id: string) => void;
+  onToggleAllPage?: (checked: boolean) => void;
+  allSelectedOnPage?: boolean;
+  someSelectedOnPage?: boolean;
 }
 
 type ProfileRow = { id: string; first_name: string | null; last_name: string | null; role_id: string };
@@ -128,6 +135,13 @@ const SalesTable: React.FC<SalesTableProps> = ({
   onFinishingChange,
 
   isRefreshing = false,
+
+  /* selection (opsional) */
+  selectedIds,
+  onToggleRow,
+  onToggleAllPage,
+  allSelectedOnPage,
+  someSelectedOnPage,
 }) => {
 
   const renderSortIcon = (column: string) => {
@@ -431,11 +445,9 @@ const SalesTable: React.FC<SalesTableProps> = ({
     const isUuidLike = (s?: string) =>
       !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 
-    // 1) roleOptions (fallback param) — prioritas utama
     const fromRole = fallback?.find(x => x.id === id)?.label?.trim();
     if (fromRole && !isUuidLike(fromRole)) return fromRole;
 
-    // 2) profileCache — nama lengkap
     const rec = profileCacheMap?.[id];
     if (rec) {
       const fn = String(rec.first_name ?? '').trim();
@@ -444,21 +456,17 @@ const SalesTable: React.FC<SalesTableProps> = ({
       if (nm && !isUuidLike(nm)) return nm;
     }
 
-    // 3) sumber parent — hanya jika bukan UUID/ID mentah
     const fromParent = source?.find(x => x.id === id)?.name?.trim();
     if (fromParent && !isUuidLike(fromParent) && fromParent !== id) return fromParent;
 
-    // 4) terakhir: jangan tampilkan UUID
     return '-';
   };
 
   const activeFilter = useMemo(() => {
     const items: { k: string; v: string }[] = [];
 
-    // Periode
     items.push({ k: 'Periode', v: `${startDate || '-'} s/d ${endDate || '-'}` });
 
-    // Status
     items.push({
       k: 'Status',
       v: (paymentStatusFilter === 'all')
@@ -466,7 +474,6 @@ const SalesTable: React.FC<SalesTableProps> = ({
         : (paymentStatusFilter === 'paid' ? 'Lunas' : 'Belum Lunas')
     });
 
-    // Metode
     items.push({
       k: 'Metode',
       v: (selectedPaymentMethod === 'all')
@@ -474,19 +481,17 @@ const SalesTable: React.FC<SalesTableProps> = ({
         : selectedPaymentMethod.replace(/_/g, ' ')
     });
 
-    // Customer — selalu tampil
     {
       let v = 'Semua Customer';
       if (selectedCustomerId) {
         v =
           dynamicCustomerOptions.find(c => c.id === selectedCustomerId)?.name
           || customerOptions.find(c => c.id === selectedCustomerId)?.name
-          || '-'; // jangan pernah tampilkan UUID
+          || '-';
       }
       items.push({ k: 'Customer', v });
     }
 
-    // Kasir — selalu tampil
     {
       let v = 'Semua Kasir';
       if (selectedKasirId) {
@@ -500,7 +505,6 @@ const SalesTable: React.FC<SalesTableProps> = ({
       items.push({ k: 'Kasir', v });
     }
 
-    // Designer — selalu tampil
     {
       let v = 'Semua Designer';
       if (selectedDesignerId) {
@@ -514,7 +518,6 @@ const SalesTable: React.FC<SalesTableProps> = ({
       items.push({ k: 'Designer', v });
     }
 
-    // Operator — selalu tampil
     {
       let v = 'Semua Operator';
       if (selectedOperatorId) {
@@ -528,7 +531,6 @@ const SalesTable: React.FC<SalesTableProps> = ({
       items.push({ k: 'Operator', v });
     }
 
-    // Finishing — selalu tampil
     {
       let v = 'Semua Finishing';
       if (selectedFinishingId) {
@@ -542,7 +544,6 @@ const SalesTable: React.FC<SalesTableProps> = ({
       items.push({ k: 'Finishing', v });
     }
 
-    // Pencarian — selalu tampil
     items.push({
       k: 'Pencarian',
       v: (searchTerm?.trim() ? `"${searchTerm.trim()}"` : '-')
@@ -558,18 +559,12 @@ const SalesTable: React.FC<SalesTableProps> = ({
     roleOptions, profileCache, searchTerm
   ]);
 
-  const resolveLabel = (
-    id: string,
-    provided?: { id: string; name?: string }[],
-    fallback?: { id: string; label: string }[]
-  ) => {
-    if (!id) return '';
-    const fromProvided = provided?.find(x => x.id === id)?.name?.trim();
-    if (fromProvided) return fromProvided;
-    const fromFallback = fallback?.find(x => x.id === id)?.label?.trim();
-    if (fromFallback) return fromFallback;
-    return id; // terakhir banget, kalau dua-duanya tidak ada
-  };
+  // ====== Checkbox master indeterminate (kalau selection props ada) ======
+  const masterRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (!masterRef.current) return;
+    masterRef.current.indeterminate = !!someSelectedOnPage && !allSelectedOnPage;
+  }, [someSelectedOnPage, allSelectedOnPage]);
 
   // ===== UI =====
   return (
@@ -680,7 +675,6 @@ const SalesTable: React.FC<SalesTableProps> = ({
             id="designerFilter"
             value={selectedDesignerId || ''}
             onChange={onDesignerChange}
-            // disabled={loadingRoles && !(designerOptionsFromParent?.length)}
             disabled={loadingRoles}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
           >
@@ -697,7 +691,6 @@ const SalesTable: React.FC<SalesTableProps> = ({
             id="operatorFilter"
             value={selectedOperatorId || ''}
             onChange={onOperatorChange}
-            // disabled={loadingRoles && !(operatorOptionsFromParent?.length)}
             disabled={loadingRoles}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
           >
@@ -714,7 +707,6 @@ const SalesTable: React.FC<SalesTableProps> = ({
             id="finishingFilter"
             value={selectedFinishingId || ''}
             onChange={onFinishingChange}
-            // disabled={loadingRoles && !(finishingOptionsFromParent?.length)}
             disabled={loadingRoles}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
           >
@@ -757,10 +749,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
         {/* Header & Ringkasan filter (print only) */}
         <div className="print-only print-header">
           <div className="print-title">Laporan Penjualan</div>
-          {/* garis pemisah tipis */}
           <div className="print-divider" />
-
-          {/* grid filter */}
           <div className="print-filter-grid">
             {activeFilter.map((it, idx) => (
               <div className="print-filter-row" key={idx}>
@@ -771,11 +760,24 @@ const SalesTable: React.FC<SalesTableProps> = ({
           </div>
         </div>
 
-        {/* TABLE (no scroll saat print) */}
+        {/* TABLE */}
         <div className="bg-white rounded-lg shadow-sm overflow-x-auto print-table-wrap">
           <table className="min-w-full divide-y divide-gray-200 print-w-full">
             <thead className="bg-gray-50">
               <tr>
+                {/* Checkbox kolom — hanya tampil di layar (bukan print) */}
+                {typeof selectedIds !== 'undefined' && (
+                  <th className="no-print px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <input
+                      ref={masterRef}
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={!!allSelectedOnPage}
+                      onChange={(e) => onToggleAllPage?.(e.target.checked)}
+                      aria-checked={someSelectedOnPage ? 'mixed' : allSelectedOnPage ? 'true' : 'false'}
+                    />
+                  </th>
+                )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No.</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => onSort('order_date')}>
                   <div className="flex items-center">Tanggal {renderSortIcon('order_date')}</div>
@@ -803,7 +805,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                  <td colSpan={typeof selectedIds !== 'undefined' ? 11 : 10} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
                     Tidak ada data penjualan.
                   </td>
                 </tr>
@@ -812,11 +814,29 @@ const SalesTable: React.FC<SalesTableProps> = ({
                   const finalAmount = Number(item.final_amount || 0);
                   const { paid, remaining } = computePaidAndRemaining(item as any);
 
+                  const isChecked = selectedIds?.includes(item.id) ?? false;
+
                   return (
                     <tr
                       key={item.id}
                       className={`cursor-pointer hover:bg-gray-50 avoid-break ${selectedItemId === item.id ? 'bg-blue-50' : ''}`}
                       onClick={() => onRowClick(item)}>
+
+                      {/* Checkbox per baris — hanya di layar */}
+                      {typeof selectedIds !== 'undefined' && (
+                        <td className="no-print px-4 py-4 whitespace-nowrap">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              onToggleRow?.(item.id);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </td>
+                      )}
 
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{index + 1}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">

@@ -214,13 +214,56 @@ const LaporanPembelian: React.FC = () => {
     const totalPurchaseAmount = filteredAndSortedData.reduce((sum, i) => sum + (i.final_amount || 0), 0);
     const totalPaidAmount     = filteredAndSortedData.reduce((sum, i) => sum + (i.paid_amount  || 0), 0);
     const totalDueAmount      = filteredAndSortedData.reduce((sum, i) => sum + (i.due_amount   || 0), 0);
-    
     let transactionsToday = filteredAndSortedData.length;
-    // const todayISO = new Date().toISOString().split('T')[0]; // yyyy-mm-dd
-    // const transactionsToday = filteredAndSortedData.filter(i => i.order_date?.slice(0,10) === todayISO).length;
-  
     return { totalPurchaseAmount, totalPaidAmount, totalDueAmount, transactionsToday };
   }, [filteredAndSortedData]);
+
+  /* ====== SELECTION (checkbox) ====== */
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [startDate, endDate, paymentStatusFilter, paymentMethodFilter, selectedSupplierId, selectedRecordedById, searchTerm, sortColumn, sortDirection, currentPage]);
+
+  const toggleRow = (id: string) => {
+    setSelectedIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+  };
+
+  const allPageIds = useMemo(() => paginatedData.map(d => d.id), [paginatedData]);
+  const allSelectedOnPage = allPageIds.length > 0 && allPageIds.every(id => selectedIds.includes(id));
+  const someSelectedOnPage = allPageIds.some(id => selectedIds.includes(id)) && !allSelectedOnPage;
+
+  const onToggleAllPage = (checked: boolean) => {
+    if (!checked) {
+      setSelectedIds(prev => prev.filter(id => !allPageIds.includes(id)));
+    } else {
+      setSelectedIds(prev => Array.from(new Set([...prev, ...allPageIds])));
+    }
+  };
+
+  const handleDeleteSelectedIds = async () => {
+    if (!selectedIds.length) {
+      showError('Pilih data yang ingin dihapus.');
+      return;
+    }
+    if (!confirm(`Yakin ingin menghapus ${selectedIds.length} transaksi terpilih?`)) return;
+
+    const toastId = showLoading('Menghapus transaksi terpilih...');
+    try {
+      const { error: e1 } = await supabase.from('purchase_order_items').delete().in('purchase_order_id', selectedIds);
+      if (e1) throw e1;
+      const { error: e2 } = await supabase.from('purchase_orders').delete().in('id', selectedIds);
+      if (e2) throw e2;
+
+      showSuccess('Transaksi terpilih berhasil dihapus.');
+      setSelectedIds([]);
+      fetchPurchaseData();
+    } catch (err: any) {
+      console.error(err);
+      showError(err.message || 'Gagal menghapus transaksi.');
+    } finally {
+      dismissToast(toastId);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -280,7 +323,7 @@ const LaporanPembelian: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 flex flex-col space-y-6">
           <PurchaseReportTable
-            loading={loading} // <<<<<<<<<<<<<< Tambahkan ini
+            loading={loading}
             data={paginatedData}
             searchTerm={searchTerm}
             onSearchChange={(e) => setSearchTerm(e.target.value)}
@@ -307,6 +350,14 @@ const LaporanPembelian: React.FC = () => {
             onRecordedByChange={(e) => setSelectedRecordedById(e.target.value)}
             onDeleteSelected={handleDeleteSelected}
             onDeleteAllFiltered={handleDeleteAllFiltered}
+
+            /* selection props */
+            selectedIds={selectedIds}
+            onToggleRow={toggleRow}
+            onToggleAllPage={onToggleAllPage}
+            allSelectedOnPage={allSelectedOnPage}
+            someSelectedOnPage={someSelectedOnPage}
+            onDeleteSelectedIds={handleDeleteSelectedIds}
           />
           <Pagination
             currentPage={currentPage}

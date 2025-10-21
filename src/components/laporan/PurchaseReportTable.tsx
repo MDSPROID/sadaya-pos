@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Search, Printer, ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
 import { PurchaseReportItem } from '../../types/purchaseOrderTypes';
 import { formatCurrency, formatPaymentMethod } from '../../utils/formatters';
@@ -7,7 +7,7 @@ interface SupplierOption { id: string; name: string; }
 interface RecordedByOption { id: string; name: string; }
 
 interface PurchaseReportTableProps {
-  loading?: boolean; // <<<<<< baru
+  loading?: boolean;
   data: PurchaseReportItem[];
   searchTerm: string;
   onSearchChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -34,6 +34,14 @@ interface PurchaseReportTableProps {
   onRecordedByChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   onDeleteSelected: () => void;
   onDeleteAllFiltered: () => void;
+
+  /* === selection (baru) === */
+  selectedIds?: string[];
+  onToggleRow?: (id: string) => void;
+  onToggleAllPage?: (checked: boolean) => void;
+  allSelectedOnPage?: boolean;
+  someSelectedOnPage?: boolean;
+  onDeleteSelectedIds?: () => void;
 }
 
 const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
@@ -64,6 +72,14 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
   onRecordedByChange,
   onDeleteSelected,
   onDeleteAllFiltered,
+
+  /* selection */
+  selectedIds,
+  onToggleRow,
+  onToggleAllPage,
+  allSelectedOnPage,
+  someSelectedOnPage,
+  onDeleteSelectedIds,
 }) => {
   const renderSortIcon = (column: string) => {
     if (sortColumn === column) return sortDirection === 'asc' ? <ArrowUp className="ml-1 h-4 w-4" /> : <ArrowDown className="ml-1 h-4 w-4" />;
@@ -73,6 +89,8 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
   // Skeleton row component
   const RowSkeleton = ({ idx }: { idx: number }) => (
     <tr key={`s-${idx}`}>
+      {/* checkbox skeleton hanya di layar */}
+      {typeof selectedIds !== 'undefined' && <td className="no-print px-6 py-4"><div className="h-4 w-4 bg-gray-200 rounded" /></td>}
       <td className="px-6 py-4"><div className="h-4 w-6 bg-gray-200 rounded animate-pulse" /></td>
       <td className="px-6 py-4"><div className="h-4 w-24 bg-gray-200 rounded animate-pulse" /></td>
       <td className="px-6 py-4"><div className="h-4 w-28 bg-gray-200 rounded animate-pulse" /></td>
@@ -89,6 +107,13 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
   );
 
   const showEmpty = !loading && data.length === 0;
+
+  // master checkbox indeterminate
+  const masterRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (!masterRef.current) return;
+    masterRef.current.indeterminate = !!someSelectedOnPage && !allSelectedOnPage;
+  }, [someSelectedOnPage, allSelectedOnPage]);
 
   return (
     <div className="space-y-6">
@@ -200,6 +225,19 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                {/* checkbox master hanya di layar */}
+                {typeof selectedIds !== 'undefined' && (
+                  <th className="no-print px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <input
+                      ref={masterRef}
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={!!allSelectedOnPage}
+                      onChange={(e) => onToggleAllPage?.(e.target.checked)}
+                      aria-checked={someSelectedOnPage ? 'mixed' : allSelectedOnPage ? 'true' : 'false'}
+                    />
+                  </th>
+                )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No.</th>
                 <th onClick={() => onSort('order_date')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
                   <div className="flex items-center">Tanggal {renderSortIcon('order_date')}</div>
@@ -233,67 +271,98 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
                 ? Array.from({ length: 8 }).map((_, i) => <RowSkeleton key={i} idx={i} />)
                 : showEmpty ? (
                   <tr>
-                    <td colSpan={9} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                    <td colSpan={typeof selectedIds !== 'undefined' ? 10 : 9} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
                       Tidak ada data pembelian.
                     </td>
                   </tr>
                 ) : (
-                  data.map((item, index) => (
-                    <tr
-                      key={item.id}
-                      className={`cursor-pointer hover:bg-gray-50 ${selectedItemId === item.id ? 'bg-blue-50' : ''}`}
-                      onClick={() => onRowClick(item)}
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {index + 1}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {new Date(item.order_date).toLocaleDateString('id-ID')}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {item.invoice_number || 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {item.supplier_display_name || item.supplier?.nama || 'N/A'}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {item.supplier_display_phone || item.supplier?.telepon || 'N/A'}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatCurrency(item.final_amount)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {item.due_date ? new Date(item.due_date).toLocaleDateString('id-ID') : 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatCurrency(item.due_amount)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatPaymentMethod(item.payment_method)}
-                        {item.bank_name && ` (${item.bank_name})`}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {item.profiles ? `${item.profiles.first_name} ${item.profiles.last_name || ''}` : 'N/A'}
-                      </td>
-                    </tr>
-                  ))
+                  data.map((item, index) => {
+                    const checked = selectedIds?.includes(item.id) ?? false;
+                    return (
+                      <tr
+                        key={item.id}
+                        className={`cursor-pointer hover:bg-gray-50 ${selectedItemId === item.id ? 'bg-blue-50' : ''}`}
+                        onClick={() => onRowClick(item)}
+                      >
+                        {/* checkbox per baris (hanya layar) */}
+                        {typeof selectedIds !== 'undefined' && (
+                          <td className="no-print px-6 py-4 whitespace-nowrap">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4"
+                              checked={checked}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                onToggleRow?.(item.id);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </td>
+                        )}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {index + 1}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {new Date(item.order_date).toLocaleDateString('id-ID')}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {item.invoice_number || 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">
+                            {item.supplier_display_name || item.supplier?.nama || 'N/A'}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {item.supplier_display_phone || item.supplier?.telepon || 'N/A'}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {formatCurrency(item.final_amount)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {item.due_date ? new Date(item.due_date).toLocaleDateString('id-ID') : 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {formatCurrency(item.due_amount)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {formatPaymentMethod(item.payment_method)}
+                          {item.bank_name && ` (${item.bank_name})`}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {item.profiles ? `${item.profiles.first_name} ${item.profiles.last_name || ''}` : 'N/A'}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
             </tbody>
           </table>
         </div>
       </div>
 
-      <div className="flex justify-end space-x-3 mt-6">
-        <button
+      <div className="flex flex-wrap justify-end gap-3 mt-6">
+        {/* baru: hapus terpilih */}
+        {typeof selectedIds !== 'undefined' && (
+          <button
+            onClick={onDeleteSelectedIds}
+            className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+            disabled={loading || (selectedIds?.length ?? 0) === 0}
+          >
+            <Trash2 className="h-5 w-5 mr-2" />
+            Hapus Terpilih ({selectedIds?.length ?? 0})
+          </button>
+        )}
+
+        {/* yang lama tetap ada */}
+        {/* <button
           onClick={onDeleteSelected}
           className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
           disabled={loading}
         >
           <Trash2 className="h-5 w-5 mr-2" />
           Hapus Transaksi
-        </button>
+        </button> */}
         <button
           onClick={onDeleteAllFiltered}
           className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"

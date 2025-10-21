@@ -42,7 +42,7 @@ const LaporanPenjualan: React.FC = () => {
 
   // === Loader awareness: bedakan initial vs refetch ===
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  const [snapshotData, setSnapshotData] = useState<CombinedSalesItem[]>([] as any);
+  const [snapshotData, setSnapshotData] = useState<CombinedSalesItem[]>([]);
 
   useEffect(() => {
     if (!loadingSales) {
@@ -226,7 +226,10 @@ const LaporanPenjualan: React.FC = () => {
       if (sortColumn === 'order_date') {
         const dateA = new Date(a.order_date).getTime();
         const dateB = new Date(b.order_date).getTime();
-        compareValue = dateA !== dateB ? dateA - dateB : (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        compareValue =
+          dateA !== dateB
+            ? dateA - dateB
+            : new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       } else if (sortColumn === 'customer') {
         const nameA = (a.customer_display_name || a.pelanggan?.[0]?.nama_pelanggan || '').toLowerCase();
         const nameB = (b.customer_display_name || b.pelanggan?.[0]?.nama_pelanggan || '').toLowerCase();
@@ -271,20 +274,28 @@ const LaporanPenjualan: React.FC = () => {
     const uniqueKasirs = new Map<string, string>();
     filteredAndSortedData.forEach(order => {
       if (order.kasir_id && order.profiles?.first_name) {
-        uniqueKasirs.set(order.kasir_id, `${order.profiles.first_name} ${order.profiles.last_name || ''}`.trim());
+        uniqueKasirs.set(
+          order.kasir_id,
+          `${order.profiles.first_name} ${order.profiles.last_name || ''}`.trim()
+        );
       }
     });
-    return Array.from(uniqueKasirs, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(uniqueKasirs, ([id, name]) => ({ id, name })).sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
   }, [filteredAndSortedData]);
 
   const customerOptions = useMemo(() => {
     const uniqueCustomers = new Map<string, string>();
     filteredAndSortedData.forEach(order => {
       const customerId = order.customer_id;
-      const customerName = order.customer_display_name || order.pelanggan?.[0]?.nama_pelanggan;
+      const customerName =
+        order.customer_display_name || order.pelanggan?.[0]?.nama_pelanggan;
       if (customerId && customerName) uniqueCustomers.set(customerId, customerName);
     });
-    return Array.from(uniqueCustomers, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(uniqueCustomers, ([id, name]) => ({ id, name })).sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
   }, [filteredAndSortedData]);
 
   const designerOptions = useMemo(() => {
@@ -294,7 +305,9 @@ const LaporanPenjualan: React.FC = () => {
         if (id) map.set(id, name || id);
       });
     });
-    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
   }, [filteredAndSortedData]);
 
   const operatorOptions = useMemo(() => {
@@ -304,7 +317,9 @@ const LaporanPenjualan: React.FC = () => {
         if (id) map.set(id, name || id);
       });
     });
-    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
   }, [filteredAndSortedData]);
 
   const finishingOptions = useMemo(() => {
@@ -314,10 +329,12 @@ const LaporanPenjualan: React.FC = () => {
         if (id) map.set(id, name || id);
       });
     });
-    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
   }, [filteredAndSortedData]);
 
-  // --- Pagination (client-side) ---
+  // --- Pagination (client-side) ---  (HANYA SEKALI)
   const paginatedCombinedData = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
     const endIndex = startIndex + pageSize;
@@ -327,78 +344,49 @@ const LaporanPenjualan: React.FC = () => {
   const totalCombinedCount = filteredAndSortedData.length;
   const totalPages = Math.ceil(totalCombinedCount / pageSize);
 
-  // --- Total penjualan (terfilter) ---
+  // --- Total penjualan (terfilter) --- (HANYA SEKALI)
   const totalSalesAmountForFilteredData = useMemo(() => {
     return filteredAndSortedData.reduce((sum, item) => sum + item.final_amount, 0);
   }, [filteredAndSortedData]);
-
-  // --- Ringkasan (terfilter, client-side) ---
-  const dateOnly = (d: string | Date) => {
-    const dt = new Date(d);
-    const y = dt.getFullYear();
-    const m = String(dt.getMonth() + 1).padStart(2, '0');
-    const da = String(dt.getDate()).padStart(2, '0');
-    return `${y}-${m}-${da}`;
-  };
 
   // --- helper parse dp_amount dari kolom notes ---
   const getDpFromNotes = (notes: any): number => {
     try {
       if (!notes) return 0;
-
-      // Jika notes berbentuk object & punya dp_amount
       if (typeof notes === 'object' && notes !== null) {
         if (typeof notes.dp_amount === 'number') return notes.dp_amount || 0;
-        if (typeof (notes as any).PaymentDetails?.dp_amount === 'number') return (notes as any).PaymentDetails.dp_amount || 0;
+        if (typeof (notes as any).PaymentDetails?.dp_amount === 'number')
+          return (notes as any).PaymentDetails.dp_amount || 0;
       }
-
-      // Jika string diawali "Payment Details: { ... }"
       const str = String(notes).trim();
       const prefix = 'Payment Details:';
       let jsonPart = str.startsWith(prefix) ? str.slice(prefix.length).trim() : str;
-
-      // Coba parse JSON langsung
       const parsed = JSON.parse(jsonPart);
-
-      // Bentuk yang umum: { dp_amount: 1000000, ... }
       if (typeof parsed?.dp_amount === 'number') return parsed.dp_amount || 0;
-
-      // Antisipasi variasi kunci (jaga-jaga)
-      if (typeof parsed?.PaymentDetails?.dp_amount === 'number') return parsed.PaymentDetails.dp_amount || 0;
-
+      if (typeof parsed?.PaymentDetails?.dp_amount === 'number')
+        return parsed.PaymentDetails.dp_amount || 0;
       return 0;
     } catch {
       return 0;
     }
   };
 
+  // --- Ringkasan (terfilter, client-side) ---
   const filteredSummary = useMemo(() => {
     let omset = 0;
     let piutang = 0;
     let transactionsToday = filteredAndSortedData.length;
-    // let transactionsToday = 0;
-    // const today = dateOnly(new Date());
 
     filteredAndSortedData.forEach((it: any) => {
-      // if (dateOnly(it.order_date) === today) transactionsToday += 1;
-
       if (it.payment_status === 'paid') {
         omset += Number(it.final_amount || 0);
-      }if (it.payment_status === 'pending' && it.payment_method !== null && it.payment_method !== '') {
-        // const due =
-        //   Number(it.due_amount ?? 0) ||
-        //   Math.max(0, Number(it.final_amount || 0) - Number(it.paid_amount ?? 0)) ||
-        //   Number(it.final_amount || 0);
-        // piutang += due;
-        // ⬇️ perubahan di sini: piutang = final_amount - dp_amount (dari notes)
+      }
+      if (it.payment_status === 'pending' && it.payment_method !== null && it.payment_method !== '') {
         const finalAmount = Number(it.final_amount || 0);
         const dpAmount = getDpFromNotes(it.notes);
         const remaining = Math.max(0, finalAmount - Number(dpAmount || 0));
         piutang += remaining;
-
-        if (dpAmount > 0) {
-          omset += dpAmount; // DP ikut omzet
-        }
+        if (dpAmount > 0) omset += dpAmount;
       }
     });
 
@@ -416,67 +404,41 @@ const LaporanPenjualan: React.FC = () => {
   const handlePrint = () => window.print();
   const handleRowClick = (item: CombinedSalesItem) => setSelectedSalesItem(item);
 
-  // Delete ops
-  const handleDeleteSelected = async () => {
-    if (!selectedSalesItem) {
-      showError('Pilih transaksi yang ingin dihapus terlebih dahulu.');
-      return;
-    }
-    if (
-      !confirm(
-        `Yakin ingin menghapus transaksi dengan faktur ${
-          selectedSalesItem.invoice_number || selectedSalesItem.id.substring(0, 8)
-        }...?`
-      )
-    ) {
-      return;
-    }
+  // === SELECTION (checkbox) ===
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  useEffect(() => setSelectedIds([]), [startDate, endDate, paymentStatusFilter, selectedPaymentMethod]);
 
-    const toastId = showLoading('Menghapus transaksi...');
-    try {
-      // const { error: deleteItemsError } = await supabase.from('order_items').delete().eq('order_id', selectedSalesItem.id);
-      // if (deleteItemsError) throw deleteItemsError;
+  const toggleRow = (id: string) =>
+    setSelectedIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
 
-      // const { error: deleteOrderError } = await supabase.from('orders').delete().eq('id', selectedSalesItem.id);
-      // if (deleteOrderError) throw deleteOrderError;
-
-      // showSuccess('Transaksi berhasil dihapus!');
-      showSuccess('Transaksi tidak dapat dihapus!');
-      setSelectedSalesItem(null);
-      fetchSalesData();
-    } catch (err: any) {
-      showError('Gagal menghapus transaksi: ' + err.message);
-      console.error('Error deleting sales order:', err);
-    } finally {
-      dismissToast(toastId);
-    }
+  const allPageIds = useMemo(() => paginatedCombinedData.map(d => d.id), [paginatedCombinedData]);
+  const allSelectedOnPage = allPageIds.length > 0 && allPageIds.every(id => selectedIds.includes(id));
+  const someSelectedOnPage = allPageIds.some(id => selectedIds.includes(id)) && !allSelectedOnPage;
+  const toggleAllOnPage = (checked: boolean) => {
+    if (!checked) setSelectedIds(prev => prev.filter(id => !allPageIds.includes(id)));
+    else setSelectedIds(prev => Array.from(new Set([...prev, ...allPageIds])));
   };
 
-  const handleDeleteAllFiltered = async () => {
-    if (filteredAndSortedData.length === 0) {
-      showError('Tidak ada transaksi untuk dihapus berdasarkan filter saat ini.');
+  const handleDeleteSelectedIds = async () => {
+    if (!selectedIds.length) {
+      showError('Pilih data yang ingin dihapus.');
       return;
     }
-    if (!confirm(`Yakin ingin menghapus SEMUA ${filteredAndSortedData.length} transaksi yang ditampilkan? Tindakan ini tidak dapat dibatalkan.`)) {
-      return;
-    }
+    if (!confirm(`Yakin ingin menghapus ${selectedIds.length} transaksi terpilih?`)) return;
 
-    const toastId = showLoading('Menghapus semua transaksi yang difilter...');
+    const toastId = showLoading('Menghapus transaksi terpilih...');
     try {
-      // const orderIdsToDelete = filteredAndSortedData.map(item => item.id);
+      const { error: delItemsErr } = await supabase.from('order_items').delete().in('order_id', selectedIds);
+      if (delItemsErr) throw delItemsErr;
+      const { error: delOrdersErr } = await supabase.from('orders').delete().in('id', selectedIds);
+      if (delOrdersErr) throw delOrdersErr;
 
-      // const { error: deleteItemsError } = await supabase.from('order_items').delete().in('order_id', orderIdsToDelete);
-      // if (deleteItemsError) throw deleteItemsError;
-
-      // const { error: deleteOrdersError } = await supabase.from('orders').delete().in('id', orderIdsToDelete);
-      // if (deleteOrdersError) throw deleteOrdersError;
-      // showSuccess('Semua transaksi yang difiltered berhasil dihapus!');
-      showSuccess('Transaksi tidak dapat dihapus!');
-      setSelectedSalesItem(null);
+      showSuccess('Transaksi terpilih berhasil dihapus.');
+      setSelectedIds([]);
       fetchSalesData();
     } catch (err: any) {
-      showError('Gagal menghapus semua transaksi: ' + err.message);
-      console.error('Error deleting all filtered sales orders:', err);
+      console.error(err);
+      showError(err.message || 'Gagal menghapus transaksi.');
     } finally {
       dismissToast(toastId);
     }
@@ -534,38 +496,6 @@ const LaporanPenjualan: React.FC = () => {
         )}
       </div>
 
-      {/* KARTU RINGKASAN — berdasarkan filter (tanpa block halaman) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div className="bg-white rounded-lg shadow-sm p-6 flex items-center">
-          <div className="bg-blue-100 p-3 rounded-lg">
-            <DollarSign className="h-6 w-6 text-blue-600" />
-          </div>
-          <div className="ml-4">
-            <p className="text-sm font-medium text-gray-600">Omset (Periode Ini)</p>
-            <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalSalesAmountForFilteredData)}</p>
-            {/* filteredSummary.omset */}
-          </div>
-        </div>
-        <div className="bg-yellow-100 rounded-lg shadow-sm p-6 flex items-center">
-          <div className="bg-yellow-100 p-3 rounded-lg">
-            <Users className="h-6 w-6 text-yellow-600" />
-          </div>
-          <div className="ml-4">
-            <p className="text-sm font-medium text-gray-600">Piutang (Total)</p>
-            <p className="text-2xl font-bold text-gray-900">{formatCurrency(filteredSummary.piutang)}</p>
-          </div>
-        </div>
-        <div className="bg-purple-100 rounded-lg shadow-sm p-6 flex items-center">
-          <div className="bg-purple-100 p-3 rounded-lg">
-            <CalendarDays className="h-6 w-6 text-purple-600" />
-          </div>
-          <div className="ml-4">
-            <p className="text-sm font-medium text-gray-600">Total Transaksi</p>
-            <p className="text-2xl font-bold text-gray-900">{filteredSummary.transactionsToday}</p>
-          </div>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 flex flex-col space-y-6">
           <SalesTable
@@ -603,6 +533,13 @@ const LaporanPenjualan: React.FC = () => {
             selectedFinishingId={selectedFinishingId}
             onFinishingChange={(e) => setSelectedFinishingId(e.target.value)}
             isRefreshing={isRefreshing} // ⬅️ mini loader di dalam tabel
+
+            /* === NEW: props untuk checkbox selection === */
+            selectedIds={selectedIds}
+            onToggleRow={toggleRow}
+            onToggleAllPage={toggleAllOnPage}
+            allSelectedOnPage={allSelectedOnPage}
+            someSelectedOnPage={someSelectedOnPage}
           />
           <Pagination
             currentPage={currentPage}
@@ -613,15 +550,17 @@ const LaporanPenjualan: React.FC = () => {
           />
           <div className="flex justify-end space-x-3 mt-6">
             <button
-              onClick={handleDeleteSelected}
-              className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              onClick={handleDeleteSelectedIds}
+              disabled={!selectedIds.length}
+              className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
             >
               <Trash2 className="h-5 w-5 mr-2" />
-              Hapus Transaksi
+              Hapus Terpilih ({selectedIds.length})
             </button>
             <button
-              onClick={handleDeleteAllFiltered}
-              className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              onClick={handleDeleteSelectedIds}
+              disabled={!selectedIds.length}
+              className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
             >
               <Trash2 className="h-5 w-5 mr-2" />
               Hapus Semua (Filter)
