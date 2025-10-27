@@ -496,6 +496,46 @@ const LaporanPenjualan: React.FC = () => {
         )}
       </div>
 
+      {/* KARTU RINGKASAN — berdasarkan filter (tanpa block halaman) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="bg-white rounded-lg shadow-sm p-6 flex items-center">
+          <div className="bg-blue-100 p-3 rounded-lg">
+            <DollarSign className="h-6 w-6 text-blue-600" />
+          </div>
+          <div className="ml-4">
+            <p className="text-sm font-medium text-gray-600">Omset (Periode Ini)</p>
+            <p className="text-2xl font-bold text-gray-900">
+              {formatCurrency(totalSalesAmountForFilteredData)}
+              {/* Atau gunakan filteredSummary.omset kalau mau omset+DP saja */}
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-yellow-100 rounded-lg shadow-sm p-6 flex items-center">
+          <div className="bg-yellow-100 p-3 rounded-lg">
+            <Users className="h-6 w-6 text-yellow-600" />
+          </div>
+          <div className="ml-4">
+            <p className="text-sm font-medium text-gray-600">Piutang (Total)</p>
+            <p className="text-2xl font-bold text-gray-900">
+              {formatCurrency(filteredSummary.piutang)}
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-purple-100 rounded-lg shadow-sm p-6 flex items-center">
+          <div className="bg-purple-100 p-3 rounded-lg">
+            <CalendarDays className="h-6 w-6 text-purple-600" />
+          </div>
+          <div className="ml-4">
+            <p className="text-sm font-medium text-gray-600">Total Transaksi</p>
+            <p className="text-2xl font-bold text-gray-900">
+              {filteredSummary.transactionsToday}
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 flex flex-col space-y-6">
           <SalesTable
@@ -569,7 +609,7 @@ const LaporanPenjualan: React.FC = () => {
         </div>
         <div className="lg:col-span-1 flex flex-col space-y-6">
           <SalesDetailPanel selectedItem={selectedSalesItem} />
-          <div className="bg-white rounded-lg shadow-sm p-6 space-y-3">
+          {/* <div className="bg-white rounded-lg shadow-sm p-6 space-y-3">
             <h3 className="text-lg font-semibold text-gray-900">Cetak Format Lain</h3>
             <button className="w-full px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors">
               Cetak Format B
@@ -577,7 +617,7 @@ const LaporanPenjualan: React.FC = () => {
             <button className="w-full px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors">
               Cetak Format C
             </button>
-          </div>
+          </div> */}
         </div>
       </div>
     </div>
