@@ -147,7 +147,7 @@ const PurchasePaymentModal: React.FC<PurchasePaymentModalProps> = ({
               type="text"
               id="paid_amount"
               // tampilkan "0" kalau 0, bukan string kosong
-              value={paidAmountRaw === 0 ? '0' : formatRupiah(paidAmountRaw)}
+              value={paidAmountRaw === 0 ? '' : formatRupiah(paidAmountRaw)}
               onChange={handlePaidChange}
               inputMode="numeric"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"

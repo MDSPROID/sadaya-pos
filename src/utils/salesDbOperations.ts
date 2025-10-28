@@ -84,6 +84,10 @@ export const saveSalesOrder = async (
     order_id: newOrder.id,
   }));
 
+  // Potong stok jika: sudah lunas, atau ada DP, atau naik status ready
+  const hasDp = paymentDetails?.dp_amount && paymentDetails.dp_amount > 0;
+  const isReady = orderData?.ready_status === 'ready'
+
   if (itemsWithOrderId.length > 0) {
     const { error: itemsError } = await supabase
       .from('order_items')
@@ -91,9 +95,9 @@ export const saveSalesOrder = async (
     if (itemsError) throw itemsError;
   }
 
-  // 3) ✅ Potong stok HANYA kalau status = 'paid'
-  console.log(status);
-  if (status === 'paid') {
+  // 3) ✅ Potong stok jika: sudah lunas, atau ada DP, atau naik status ready
+  // console.log(status);
+  if (status === 'paid' || hasDp || isReady) {
     await adjustStockWhenPaid(itemsToInsert);
   }
 
@@ -209,6 +213,10 @@ export const updateSalesOrder = async (
     order_id: orderId,
   }));
 
+  // Potong stok jika: sudah lunas, atau ada DP, atau naik status ready
+  const hasDp = paymentDetails?.dp_amount && paymentDetails.dp_amount > 0;
+  const isReady = orderData?.ready_status === 'ready'
+
   if (itemsWithOrderId.length > 0) {
     const { error: itemsError } = await supabase
       .from('order_items')
@@ -216,9 +224,8 @@ export const updateSalesOrder = async (
     if (itemsError) throw itemsError;
   }
 
-  // 3) ✅ Potong stok HANYA kalau status = 'paid'
-  console.log(status);
-  if (status === 'paid') {
+  // 3) ✅ Potong stok jika: sudah lunas, atau ada DP, atau naik status ready
+  if (status === 'paid' || hasDp || isReady) {
     await adjustStockWhenPaid(itemsToUpsert);
   }
 

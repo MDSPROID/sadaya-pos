@@ -369,7 +369,7 @@ const LaporanPembelian: React.FC = () => {
         </div>
         <div className="lg:col-span-1 flex flex-col space-y-6">
           <PurchaseReportDetailPanel selectedItem={selectedPurchaseItem} />
-          <div className="bg-white rounded-lg shadow-sm p-6 space-y-3">
+          {/* <div className="bg-white rounded-lg shadow-sm p-6 space-y-3">
             <h3 className="text-lg font-semibold text-gray-900">Cetak Format Lain</h3>
             <button className="w-full px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors">
               Cetak Format B
@@ -377,7 +377,7 @@ const LaporanPembelian: React.FC = () => {
             <button className="w-full px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors">
               Cetak Format C
             </button>
-          </div>
+          </div> */}
         </div>
       </div>
     </div>

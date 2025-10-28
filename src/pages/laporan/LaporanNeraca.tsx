@@ -277,7 +277,7 @@ const LaporanNeraca: React.FC = () => {
         </div>
 
         {/* Summary + tooltips (table with lines) */}
-        <div className="overflow-hidden border border-gray-300 mb-6">
+        <div className="overflow-visible border border-gray-300 mb-6">
         <table className="w-full border border-gray-300 border-collapse">
             <colgroup>
               <col className="w-2/3" />

@@ -173,7 +173,7 @@ export function useNeracaData({
 
         const { data: pendingOrdersPeriodData, error: pendingOrdersPeriodError } = await supabase
           .from('orders')
-          .select('order_date, final_amount')
+          .select('order_date, final_amount, notes, payment_method')
           .eq('payment_status', 'pending')
           .gte('order_date', sDate)
           .lte('order_date', eDate);
@@ -236,11 +236,6 @@ export function useNeracaData({
           }
         });
 
-        const orderNotPaid = (allOrdersForOmsetPeriod || [])
-          .filter((o: any) => o.payment_status !== 'paid')
-          .filter((o: any) => o.ready_status === 'ready')
-          .reduce((s: number, o: any) => s + (o.final_amount || 0), 0);
-
         const kasMasukTunai = (kasMasukPeriodData || []).reduce(
           (s: number, x: any) => s + (x.payment_method === 'cash' ? (x.jumlah || 0) : 0),
           0
@@ -258,16 +253,23 @@ export function useNeracaData({
           0
         );
 
-        const jumlahPiutangPeriod = (pendingOrdersPeriodData || []).reduce(
-          (s: number, o: any) => s + (o.final_amount || 0),
-          0
-        );
+        const jumlahPiutangPeriod = (pendingOrdersPeriodData || []).reduce((s: number, o: any) => {
+          // Sama seperti Laporan Penjualan: hanya hitung pending yang punya payment_method tidak null/kosong
+          const method = (o?.payment_method ?? '').toString().trim();
+          if (!method) return s;
+
+          const finalAmount = Number(o?.final_amount || 0);
+          const dpAmount = getDpFromNotes(o?.notes) || 0;
+          const remaining = Math.max(0, finalAmount - Number(dpAmount || 0));
+          return s + remaining;
+        }, 0);
 
         const jumlahHutang = (purchaseDueData || []).reduce(
           (s: number, po: any) => s + ((po.final_amount || 0) - (po.paid_amount || 0)),0
           // (s: number, po: any) => s + (po.final_amount - po.paid_amount ?? po.total_amount ?? 0),0
         );
 
+        const orderNotPaid = jumlahPiutangPeriod;
         const jumlahSaldoTunai = orderPaidCash + kasMasukTunai;
         const jumlahSaldoNonTunai = orderPaidTransfer + kasMasukTransfer;
         const totalJumlahSaldo = jumlahSaldoTunai + jumlahSaldoNonTunai;
@@ -348,7 +350,15 @@ export function useNeracaData({
         });
         (pendingOrdersPeriodData || []).forEach((o: any) => {
           const d = new Date(o.order_date);
-          if (d >= startObj && d <= endObj) grouped[getKey(d)]['Jumlah Piutang'] += o.final_amount || 0;
+          if (d < startObj || d > endObj) return;
+
+          const method = (o?.payment_method ?? '').toString().trim();
+          if (!method) return;
+
+          const finalAmount = Number(o?.final_amount || 0);
+          const dpAmount = getDpFromNotes(o?.notes) || 0;
+          const remaining = Math.max(0, finalAmount - Number(dpAmount || 0));
+          grouped[getKey(d)]['Jumlah Piutang'] += remaining;
         });
         (hutangPeriodData || []).forEach((po: any) => {
           const d = new Date(po.order_date);

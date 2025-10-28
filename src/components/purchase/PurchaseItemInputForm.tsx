@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Plus, Search } from 'lucide-react';
 import { Product, Bahan } from '../../types/purchaseOrderTypes';
 
@@ -52,6 +52,19 @@ const PurchaseItemInputForm: React.FC<PurchaseItemInputFormProps> = ({
       setItemQuantity(numericValue);
     }
   };
+
+  const onlyDigits = (s: string) => s.replace(/[^\d]/g, '');
+  const toNumber = (s: string) => {
+    const n = parseInt(onlyDigits(s) || '0', 10);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const formatRupiahStr = (n: number) => n.toLocaleString('id-ID');
+  
+  const [unitPriceInput, setUnitPriceInput] = useState<string>('');
+  useEffect(() => {
+    // sinkronkan tampilan saat itemUnitPrice dari parent berubah
+    setUnitPriceInput(itemUnitPrice > 0 ? formatRupiahStr(itemUnitPrice) : '');
+  }, [itemUnitPrice]);
 
   return (
     <div className="bg-white rounded-lg shadow-sm p-6 flex-shrink-0">
@@ -155,12 +168,27 @@ const PurchaseItemInputForm: React.FC<PurchaseItemInputFormProps> = ({
               Harga Satuan (Rp)
             </label>
             <input
-              type="number"
+              type="text"
               id="item_unit_price"
-              value={itemUnitPrice}
-              onChange={(e) => setItemUnitPrice(parseFloat(e.target.value) || 0)}
+              value={unitPriceInput}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw.trim() === '') {
+                  setUnitPriceInput('');
+                  setItemUnitPrice(0);            // nilai ke parent = 0 saat kosong
+                  return;
+                }
+                const digits = onlyDigits(raw);
+                setUnitPriceInput(digits);        // tampil tanpa pemisah saat ketik
+                setItemUnitPrice(toNumber(digits));
+              }}
+              onBlur={() => {
+                if (unitPriceInput.trim() === '') return;             // biarkan kosong
+                setUnitPriceInput(formatRupiahStr(toNumber(unitPriceInput))); // format saat blur
+              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              min="0"
+              inputMode="numeric"                  // keypad numerik di mobile
+              placeholder="0"
             />
           </div>
         </div>

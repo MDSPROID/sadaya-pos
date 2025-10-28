@@ -58,6 +58,15 @@ interface PaymentModalProps {
   }, options?: { skipPrint?: boolean }) => void;
 }
 
+/* ---------- Helpers (tanpa hooks) ---------- */
+const onlyDigits = (s: string) => s.replace(/\D/g, '');
+const toNumber = (s: string) => {
+  const n = parseInt(onlyDigits(s) || '0', 10);
+  return Number.isFinite(n) ? n : 0;
+};
+const formatRupiahStr = (n: number) =>
+  n.toLocaleString('id-ID', { minimumFractionDigits: 0 });
+
 const PaymentModal: React.FC<PaymentModalProps> = ({
   isOpen,
   onClose,
@@ -67,13 +76,13 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   existingPayments = [],
   noteDetails = null,
 }) => {
+  /* ---------- State top-level (aman dari invalid hook call) ---------- */
   const [bayarTempo, setBayarTempo] = useState(false);
   const [tempoDate, setTempoDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // DP input (akan diprefill dari notes atau histori; DP = TOTAL DP TERKINI)
-  const [dpAmountRaw, setDpAmountRaw] = useState(0);
-  // Pembayaran saat ini (non-DP)
-  const [paidAmountRaw, setPaidAmountRaw] = useState(0);
+  // Input string supaya bisa dikosongkan
+  const [dpInput, setDpInput] = useState<string>('');
+  const [paidInput, setPaidInput] = useState<string>('');
 
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank_transfer'>('cash');
   const [selectedBankId, setSelectedBankId] = useState<string>('');
@@ -81,63 +90,71 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const [showPrintFallback, setShowPrintFallback] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const formatRupiah = (value: number) =>
-    value.toLocaleString('id-ID', { minimumFractionDigits: 0 });
-
-  // ====== Ringkasan histori ======
-
-  // Jumlah "Bayar" (non-DP) dari histori
+  /* ---------- Ringkasan histori ---------- */
   const historyPaidSum = useMemo(() => {
-    return (existingPayments ?? []).reduce((acc, p) => acc + Number(p?.paid_amount ?? 0), 0);
+    return (existingPayments ?? []).reduce(
+      (acc, p) => acc + Number(p?.paid_amount ?? 0),
+      0
+    );
   }, [existingPayments]);
 
-  // Rekaman DP terakhir (yang punya dp_amount > 0)
   const lastDpRecord = useMemo(() => {
     const list = (existingPayments ?? []).filter(p => Number(p?.dp_amount ?? 0) > 0);
     if (!list.length) return null;
     return list
       .slice()
-      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
+      .sort(
+        (a, b) =>
+          new Date(b.created_at || 0).getTime() -
+          new Date(a.created_at || 0).getTime()
+      )[0];
   }, [existingPayments]);
 
-  // Rekaman tempo terakhir (apa pun DP-nya)
   const lastTempoAny = useMemo(() => {
     const list = (existingPayments ?? []).filter(p => p?.tempo_active && p?.tempo_date);
     if (!list.length) return null;
     return list
       .slice()
-      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
+      .sort(
+        (a, b) =>
+          new Date(b.created_at || 0).getTime() -
+          new Date(a.created_at || 0).getTime()
+      )[0];
   }, [existingPayments]);
 
-  // Nilai DP histori terkini dari notes (prioritas utama)
   const noteDp = useMemo(() => Number(noteDetails?.dp_amount ?? 0), [noteDetails]);
 
-  // Nilai DP histori terkini dari baris histori (fallback)
   const lastDp = useMemo(
     () => Number(lastDpRecord?.dp_amount ?? 0),
     [lastDpRecord]
   );
 
-  // Prefill tempo dari notes (prioritas), kalau kosong pakai histori tempo terakhir
   const noteTempoActive = !!noteDetails?.tempo_active;
-  const noteTempoDate   = noteDetails?.tempo_date || null;
+  const noteTempoDate = noteDetails?.tempo_date || null;
 
-  // ====== Prefill saat modal dibuka ======
+  /* ---------- Prefill saat modal dibuka ---------- */
   useEffect(() => {
     if (!isOpen) return;
 
-    // DP input = TOTAL DP TERKINI (prioritas dari notes; jika tidak ada, fallback ke histori)
     const seedDp = Number.isFinite(noteDp) && noteDp > 0 ? noteDp : lastDp;
-    setDpAmountRaw(seedDp);
+    setDpInput(seedDp > 0 ? formatRupiahStr(seedDp) : '');
+    setPaidInput('');
 
-    // Tempo: prioritas dari notes; jika tidak ada, fallback ke histori
-    const seedTempoActive = noteTempoActive || !!lastTempoAny?.tempo_active || !!lastDpRecord?.tempo_active;
-    const seedTempoDate   = noteTempoDate || lastTempoAny?.tempo_date || lastDpRecord?.tempo_date || new Date().toISOString().split('T')[0];
+    const seedTempoActive =
+      noteTempoActive ||
+      !!lastTempoAny?.tempo_active ||
+      !!lastDpRecord?.tempo_active;
+
+    const seedTempoDate =
+      noteTempoDate ||
+      lastTempoAny?.tempo_date ||
+      lastDpRecord?.tempo_date ||
+      new Date().toISOString().split('T')[0];
+
     setBayarTempo(seedTempoActive);
     setTempoDate(seedTempoDate);
 
     // Reset field lain
-    setPaidAmountRaw(0);
     setPaymentMethod('cash');
     setSelectedBankId('');
     setPrinterWarning(null);
@@ -145,10 +162,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     setIsProcessing(false);
   }, [
     isOpen,
-    // DP seeds
     noteDp,
     lastDp,
-    // Tempo seeds
     noteTempoActive,
     noteTempoDate,
     lastTempoAny?.tempo_active,
@@ -157,35 +172,24 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     lastDpRecord?.tempo_date,
   ]);
 
-  // ❌ JANGAN nolkan DP saat bayarTempo=false — biarkan terlihat nilainya
-  // useEffect(() => { if (!bayarTempo) setDpAmountRaw(0); }, [bayarTempo]);
-
   if (!isOpen) return null;
 
-  // ====== Perhitungan total/kurang/kembali ======
-  // DP diperlakukan SEBAGAI TOTAL DP TERKINI (overwrite), bukan tambahan.
-  const grandTotalPaid = dpAmountRaw + historyPaidSum + paidAmountRaw;
-  const isEnough       = grandTotalPaid >= finalAmount;
-  const change         = isEnough ? (grandTotalPaid - finalAmount) : 0;
-  const shortage       = Math.max(finalAmount - grandTotalPaid, 0);
+  /* ---------- Perhitungan total/kembali/kekurangan ---------- */
+  const dpAmount = toNumber(dpInput);
+  const paidAmount = toNumber(paidInput);
+  const grandTotalPaid = dpAmount + historyPaidSum + paidAmount;
+  const isEnough = grandTotalPaid >= finalAmount;
+  const change = isEnough ? grandTotalPaid - finalAmount : 0;
+  const shortage = Math.max(finalAmount - grandTotalPaid, 0);
 
-  const handleCurrencyInput = (
-    e: React.ChangeEvent<HTMLInputElement>,
-    setter: React.Dispatch<React.SetStateAction<number>>
-  ) => {
-    const raw = e.target.value.replace(/\D/g, '');
-    const numeric = parseInt(raw || '0', 10);
-    setter(numeric);
-  };
-
-  // Payload: DP = total DP terbaru (overwrite), "paid_amount" = bayar saat ini (non-DP)
+  /* ---------- Payload & Submit ---------- */
   const buildPaymentPayload = () => {
     const selectedBank = bankOptions.find(b => b.id === selectedBankId);
     const status: 'paid' | 'pending' = grandTotalPaid >= finalAmount ? 'paid' : 'pending';
     return {
-      dp_amount: dpAmountRaw,           // TOTAL DP TERKINI
-      paid_amount: paidAmountRaw,       // bayar sekarang (non-DP)
-      total_paid: grandTotalPaid,       // DP total + bayar histori + bayar input
+      dp_amount: dpAmount,            // TOTAL DP TERKINI (overwrite)
+      paid_amount: paidAmount,        // bayar sekarang (non-DP)
+      total_paid: grandTotalPaid,     // DP total + bayar histori + bayar input
       final_amount: finalAmount,
       payment_status: status,
       payment_method: paymentMethod,
@@ -219,7 +223,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
     const available = await isPrinterAvailable();
     if (!available) {
-      setPrinterWarning('Printer bermasalah atau offline. Anda bisa lanjut bayar tanpa cetak nota atau batalkan transaksi.');
+      setPrinterWarning(
+        'Printer bermasalah atau offline. Anda bisa lanjut bayar tanpa cetak nota atau batalkan transaksi.'
+      );
       setShowPrintFallback(true);
       return;
     }
@@ -228,9 +234,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     sendPayment(false);
   };
 
-  const disableSubmit = (paymentMethod === 'bank_transfer' && !selectedBankId) || isProcessing;
+  const disableSubmit =
+    (paymentMethod === 'bank_transfer' && !selectedBankId) || isProcessing;
 
-  // Hitung total histori (untuk ringkasan)
   const existingTotalPaid = (existingPayments ?? []).reduce(
     (acc, p) => acc + Number(p?.dp_amount ?? 0) + Number(p?.paid_amount ?? 0),
     0
@@ -252,8 +258,10 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               <ul className="space-y-2 max-h-44 overflow-auto pr-1">
                 {existingPayments
                   .slice()
-                  .sort((a, b) =>
-                    new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+                  .sort(
+                    (a, b) =>
+                      new Date(b.created_at || 0).getTime() -
+                      new Date(a.created_at || 0).getTime()
                   )
                   .map((p) => (
                     <li key={p.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
@@ -264,8 +272,12 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                         </div>
                       </div>
                       <div className="text-right">
-                        <div>DP: <b>Rp {(Number(p.dp_amount || 0)).toLocaleString('id-ID')}</b></div>
-                        <div>Bayar: <b>Rp {(Number(p.paid_amount || 0)).toLocaleString('id-ID')}</b></div>
+                        <div>
+                          DP: <b>Rp {(Number(p.dp_amount || 0)).toLocaleString('id-ID')}</b>
+                        </div>
+                        <div>
+                          Bayar: <b>Rp {(Number(p.paid_amount || 0)).toLocaleString('id-ID')}</b>
+                        </div>
                         {p.tempo_active && p.tempo_date && (
                           <div className="text-orange-700">
                             Tempo: <b>{new Date(p.tempo_date).toLocaleDateString('id-ID')}</b>
@@ -325,6 +337,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             )}
           </div>
 
+          {/* DP (total terkini) */}
           <div>
             <label htmlFor="dp_amount" className="block text-sm font-medium text-gray-700 mb-1">
               DP (total terkini)
@@ -332,14 +345,24 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             <input
               type="text"
               id="dp_amount"
-              value={formatRupiah(dpAmountRaw)}
-              onChange={(e) => handleCurrencyInput(e, setDpAmountRaw)}
+              value={dpInput}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw.trim() === '') return setDpInput(''); // boleh kosong
+                const digits = onlyDigits(raw);
+                setDpInput(digits); // tampil apa adanya (tanpa pemisah) saat mengetik
+              }}
+              onBlur={() => {
+                if (dpInput.trim() === '') return; // tetap kosong
+                setDpInput(formatRupiahStr(toNumber(dpInput))); // format saat blur
+              }}
               disabled={!bayarTempo || isProcessing}
               inputMode="numeric"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
             />
           </div>
 
+          {/* Bayar (non-DP) */}
           <div>
             <label htmlFor="paid_amount" className="block text-sm font-medium text-gray-700 mb-1">
               Bayar
@@ -347,11 +370,20 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             <input
               type="text"
               id="paid_amount"
-              value={formatRupiah(paidAmountRaw)}
-              onChange={(e) => handleCurrencyInput(e, setPaidAmountRaw)}
+              value={paidInput}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw.trim() === '') return setPaidInput('');
+                const digits = onlyDigits(raw);
+                setPaidInput(digits);
+              }}
+              onBlur={() => {
+                if (paidInput.trim() === '') return;
+                setPaidInput(formatRupiahStr(toNumber(paidInput)));
+              }}
               inputMode="numeric"
-              disabled={isProcessing}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              disabled={bayarTempo || isProcessing}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
             />
           </div>
 
