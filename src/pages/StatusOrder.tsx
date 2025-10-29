@@ -60,7 +60,7 @@ const todayStr = () => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-// === Web AudioContext global ===
+/* ====== Web AudioContext global (boleh di luar komponen) ====== */
 let globalAudioCtx: AudioContext | null = null;
 let globalAudioBuffer: AudioBuffer | null = null;
 let globalKeepAliveSrc: OscillatorNode | null = null;
@@ -76,21 +76,19 @@ async function loadAudioBuffer(url: string) {
 
 function startKeepAlive() {
   if (!globalAudioCtx) return;
-  // jika sudah ada, skip
   if (globalKeepAliveSrc && globalKeepAliveGain) return;
 
   const ctx = globalAudioCtx;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
-  gain.gain.value = 0.000001; // ~silence (bukan nol absolut agar tidak dianggap idle)
-  osc.frequency.value = 20;   // sub-bass sangat rendah
+  gain.gain.value = 0.000001; // hampir senyap
+  osc.frequency.value = 20;
   osc.connect(gain).connect(ctx.destination);
   osc.start();
 
   globalKeepAliveSrc = osc;
   globalKeepAliveGain = gain;
 
-  // jaga2 beberapa browser tetap suspend kalau benar2 idle → ping resume tiap 25s
   if (globalKeepAliveTimer) window.clearInterval(globalKeepAliveTimer);
   globalKeepAliveTimer = window.setInterval(async () => {
     try { if (ctx.state !== 'running') await ctx.resume(); } catch {}
@@ -121,6 +119,7 @@ async function playGlobalBuffer() {
   src.start(0);
 }
 
+/* ========================= Komponen ========================= */
 const StatusOrder: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState<string>(todayStr());
@@ -140,9 +139,7 @@ const StatusOrder: React.FC = () => {
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  /* =======================
-   *  SUARA NOTIFIKASI
-   * ======================= */
+  /* ===================== Suara Notifikasi ===================== */
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const [soundReady, setSoundReady] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -151,23 +148,29 @@ const StatusOrder: React.FC = () => {
   const [newLabel, setNewLabel] = useState('');
   const [newUrl, setNewUrl] = useState('');
 
+  // guard agar listener visibility tidak didaftarkan berulang
+  const visListenerAddedRef = useRef(false);
+  // penahan bunyi dari efek [data] (pakai timestamp, tidak tergantung setTimeout)
+  const suppressUntilRef = useRef<number>(0);
+  // throttle sederhana
+  const lastSoundAtRef = useRef<number>(0);
+
   const getSoundUrl = () => getSavedSoundUrl() || DEFAULT_SOUNDS[0].url;
 
   const initSound = async () => {
     try {
       const url = getSoundUrl();
       if (!globalAudioCtx) globalAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      // load buffer & nyalakan context
       globalAudioBuffer = await loadAudioBuffer(url);
       await globalAudioCtx.resume();
 
-      // mulai keep-alive supaya context tidak auto-suspend saat tab idle/background
       startKeepAlive();
 
-      // pastikan auto-resume kalau tab berubah visibility
       const onVis = async () => { await ensureAudioRunning(); };
-      document.removeEventListener('visibilitychange', onVis as any);
-      document.addEventListener('visibilitychange', onVis, { passive: true });
+      if (!visListenerAddedRef.current) {
+        document.addEventListener('visibilitychange', onVis, { passive: true });
+        visListenerAddedRef.current = true;
+      }
 
       setSoundReady(true);
       showSuccess('Tes notifikasi suara aktif. Akan bunyi meski tab tidak aktif.');
@@ -177,19 +180,27 @@ const StatusOrder: React.FC = () => {
     }
   };
 
-
-  const lastSoundAtRef = useRef<number>(0);
-  const safePlayNotify = () => {
-    const now = Date.now();
-    if (now - lastSoundAtRef.current < 1200) return; // throttle 1.2s
-    lastSoundAtRef.current = now;
-    if (soundReady) playNotifySound();
+  const safePlayNotify = async () => {
+    try {
+      const now = Date.now();
+      if (now - lastSoundAtRef.current < 500) return; // throttle 0.5s
+      if (!soundReady) {
+        // setelah unlock pertama, init ulang aman dipanggil
+        await initSound();
+      }
+      await ensureAudioRunning();
+      await playGlobalBuffer();
+      lastSoundAtRef.current = now;
+    } catch (e) {
+      console.warn('safePlayNotify failed', e);
+    }
   };
 
   const playNotifySound = async () => {
     try {
-      await ensureAudioRunning();     // wake context if needed
-      await playGlobalBuffer();       // play buffer
+      await ensureAudioRunning();
+      await playGlobalBuffer();
+      lastSoundAtRef.current = Date.now();
     } catch (e) {
       console.warn('Play sound blocked:', e);
     }
@@ -197,7 +208,7 @@ const StatusOrder: React.FC = () => {
 
   const applySoundUrl = async (url: string | null) => {
     setSavedSoundUrl(url);
-    await initSound(); // ini reload buffer + resume + keepAlive
+    await initSound(); // reload buffer + resume + keepAlive
   };
 
   useEffect(() => {
@@ -281,9 +292,7 @@ const StatusOrder: React.FC = () => {
     showSuccess(`Suara dipilih: ${label}`);
   };
 
-  /* =======================
-   *  FILTER STATE utk realtime/polling
-   * ======================= */
+  /* ============== FILTER STATE utk realtime/polling ============== */
   const filtersRef = useRef({
     searchTerm: '',
     startDate: todayStr(),
@@ -294,9 +303,7 @@ const StatusOrder: React.FC = () => {
     filtersRef.current = { searchTerm, startDate, endDate, statusFilter };
   }, [searchTerm, startDate, endDate, statusFilter]);
 
-  /* =======================
-   *  Pencarian & Filter
-   * ======================= */
+  /* ======================= Pencarian & Filter ======================= */
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchTerm(value);
@@ -325,9 +332,7 @@ const StatusOrder: React.FC = () => {
     fetchStatusOrders({ searchTerm, startDate, endDate, statusFilter: value });
   };
 
-  /* =======================
-   *  Aksi baris
-   * ======================= */
+  /* ============================ Aksi baris ============================ */
   const handleContinue = (orderId: string) => {
     navigate(`/dashboard/status-order/process/${orderId}`);
   };
@@ -362,9 +367,7 @@ const StatusOrder: React.FC = () => {
     }
   };
 
-  /* =======================
-   *  BULK
-   * ======================= */
+  /* ============================== BULK ============================== */
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
@@ -400,21 +403,14 @@ const StatusOrder: React.FC = () => {
     }
   };
 
-  /* =======================
-   *  DETEKSI ID BARU SAAT DATA BERUBAH
-   *  (Main trigger bunyi)
-   * ======================= */
+  /* ============ DETEKSI ID BARU SAAT DATA BERUBAH (fallback beep) ============ */
   const prevIdsRef = useRef<Set<string>>(new Set());
   const hasInitializedRef = useRef(false);
 
-  // Auto-unlock audio pada gesture pertama (klik/tap/keydown)
+  // auto-unlock audio via gesture pertama (kalau user belum klik "Tes Notifikasi")
   useEffect(() => {
     if (soundReady) return;
-    const handler = () => {
-      // panggil initSound sekali, diamkan error kalau masih diblok
-      initSound().catch(() => {});
-    };
-    // gunakan pointerdown agar cepat (sebelum click)
+    const handler = () => { initSound().catch(() => {}); };
     window.addEventListener('pointerdown', handler, { once: true });
     window.addEventListener('keydown', handler, { once: true });
     return () => {
@@ -423,35 +419,41 @@ const StatusOrder: React.FC = () => {
     };
   }, [soundReady]);
 
+  // watchdog resume AudioContext tiap 15 detik (ringan)
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (globalAudioCtx && globalAudioCtx.state !== 'running') {
+        globalAudioCtx.resume().catch(() => {});
+      }
+    }, 15000);
+    return () => window.clearInterval(id);
+  }, []);
+
   useEffect(() => {
     const currIds = new Set((data || []).map(d => d.id));
     const prevIds = prevIdsRef.current;
 
-    // kalau ini render pertama data, jangan bunyi
     if (!hasInitializedRef.current) {
       hasInitializedRef.current = true;
       prevIdsRef.current = currIds;
       return;
     }
 
-    // cari apakah ada id baru yang belum ada sebelumnya
     let hasNew = false;
     for (const id of currIds) {
       if (!prevIds.has(id)) { hasNew = true; break; }
     }
 
-    // update snapshot untuk next comparison
     prevIdsRef.current = currIds;
 
-    if (hasNew && soundReady) {
+    // hormati suppress berbasis waktu (agar tidak double-beep setelah refresh dari Realtime)
+    const nowPerf = performance.now();
+    if (hasNew && soundReady && nowPerf >= suppressUntilRef.current) {
       playNotifySound();
     }
   }, [data, soundReady]);
 
-  /* =====================================
-   *  REALTIME + POLLING
-   *  (cukup refresh, deteksinya dikerjakan oleh efek [data] di atas)
-   * ===================================== */
+  /* =========================== REALTIME + POLLING =========================== */
   useEffect(() => {
     const refresh = async () => {
       const { searchTerm: s, startDate: sd, endDate: ed, statusFilter: st } = filtersRef.current;
@@ -459,25 +461,28 @@ const StatusOrder: React.FC = () => {
     };
 
     const channel = supabase
-    .channel('realtime-status-order')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, async (payload) => {
-      await ensureAudioRunning();
-      safePlayNotify(); // bunyi cepat
-      refresh();        // sinkronkan data table
-    })
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, async () => {
-      await ensureAudioRunning();
-      refresh();
-    })
-    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'orders' }, async () => {
-      await ensureAudioRunning();
-      refresh();
-    })
-    .subscribe();
+      .channel('realtime-status-order')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, async () => {
+        // set suppress selama 2 detik (pakai timestamp, tidak bergantung setTimeout)
+        suppressUntilRef.current = performance.now() + 2000;
+        await ensureAudioRunning();
+        await safePlayNotify(); // bunyi cepat
+        await refresh();        // sinkronkan data table
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, async () => {
+        await ensureAudioRunning();
+        await refresh();
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'orders' }, async () => {
+        await ensureAudioRunning();
+        await refresh();
+      })
+      .subscribe();
 
+    // polling sebagai jaring pengaman
     const pollId = window.setInterval(() => {
       refresh();
-    }, 20000);
+    }, 30000);
 
     return () => {
       supabase.removeChannel(channel);
@@ -485,7 +490,7 @@ const StatusOrder: React.FC = () => {
     };
   }, [fetchStatusOrders]);
 
-  /* ============ RENDER ============ */
+  /* ================================ RENDER ================================ */
   return (
     <div className="space-y-6">
       {/* Audio element */}
