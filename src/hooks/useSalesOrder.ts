@@ -40,6 +40,21 @@ const upsertPaymentDetailsInNotes = (
   return (notes ? notes + '\n' : '') + line;
 };
 
+// --- helper: hitung area dalam meter (m²) dari dimensi & satuan
+const areaFromDimsM2 = (dims?: { panjang?: number; lebar?: number; satuan?: string }) => {
+  if (!dims) return 0;
+  let p = Number(dims.panjang) || 0;
+  let l = Number(dims.lebar) || 0;
+  const satuan = (dims.satuan || 'M').toUpperCase();
+
+  if (satuan === 'CM') {
+    p = p / 100;
+    l = l / 100;
+  }
+  const area = p * l;
+  return Number.isFinite(area) && area > 0 ? area : 0;
+};
+
 /**
  * Menyiapkan payload order & items untuk disimpan.
  */
@@ -379,6 +394,7 @@ export const useSalesOrder = (
             discount_per_item: item.discount_per_item,
             subtotal_per_item: item.subtotal_per_item,
             dimensions: item.dimensions,
+            ...(item.stock_deducted !== undefined ? { stock_deducted: Number(item.stock_deducted) || 0 } : {}),
             notes_per_item: item.notes_per_item,
             designer_id: item.designer_id,
             designer_name: designerDetail?.name || null,
@@ -481,7 +497,7 @@ export const useSalesOrder = (
       return;
     }
 
-    // === gunakan fallback harga yang sama dengan currentItemSubtotal ===
+    // Fallback harga sama seperti sebelumnya
     const unitPrice =
       Number((selectedProduct as any).harga_jual_khusus) ||
       Number(selectedProduct.harga_jual_umum) ||
@@ -493,10 +509,15 @@ export const useSalesOrder = (
       return;
     }
 
+    // --- hitung area dalam meter persegi dari dimensi saat ini
+    const areaM2 = areaFromDimsM2(itemDimensions); // 0 jika belum valid
+    // stock yang akan dikurangkan = area per item × qty
+    const stockDeducted = Number((areaM2 * itemQuantity).toFixed(3)); // simpan 3 desimal biar rapi
+
+    // --- subtotal (tetap seperti logika sebelumnya)
     const satuan = (itemDimensions.satuan || 'M').toUpperCase();
     let calculatedPanjang = Number(itemDimensions.panjang) || 0;
     let calculatedLebar   = Number(itemDimensions.lebar)   || 0;
-
     if (satuan === 'CM') {
       calculatedPanjang /= 100;
       calculatedLebar   /= 100;
@@ -504,7 +525,7 @@ export const useSalesOrder = (
 
     let subtotal = unitPrice * itemQuantity;
 
-    // === NEW: robust area-pricing detection (works even if kategori hidden for designer)
+    // robust area-pricing detection
     const areaPricing = (() => {
       const kat = (selectedProduct.kategori?.nama || '').toLowerCase();
       const sat = (selectedProduct.satuan?.nama || '').toUpperCase();
@@ -530,20 +551,24 @@ export const useSalesOrder = (
       product_id: selectedProduct.id,
       product_name: selectedProduct.nama_produk || 'Nama Produk Tidak Tersedia',
       unit_price: unitPrice,
-      quantity: itemQuantity,
+      quantity: itemQuantity,                 // tetap untuk keperluan invoice
       discount_per_item: itemDiscount,
       subtotal_per_item: subtotal,
+      // ➕ simpan info dimensi & Opsi tambahan
       dimensions: {
         ...itemDimensions,
-        additional_options: itemAdditionalOptions.filter((opt: AdditionalOption) => opt.selected && opt.quantity > 0),
+        additional_options: itemAdditionalOptions.filter((opt: any) => opt.selected && opt.quantity > 0),
       },
+      // ➕ FIELD BARU: stok yang akan dikurangi (m² × qty)
+      //   backend tinggal pakai kolom ini untuk update inventory
+      ...(stockDeducted > 0 ? { stock_deducted: stockDeducted } : {}),
       notes_per_item: itemNotes,
       designer_id: null,
       designer_name: null,
       satuan_nama: selectedProduct.satuan?.nama || null,
       bahan_nama: selectedProduct.bahan?.nama || null,
       mesin_nama: selectedProduct.mesin?.nama || null,
-    };
+    } as any;
 
     setOrderFormData((prev: OrderFormData) => ({
       ...prev,
@@ -551,7 +576,16 @@ export const useSalesOrder = (
     }));
 
     resetCurrentItemForm();
-  }, [selectedProduct, itemQuantity, itemNotes, itemDimensions, itemDiscount, itemAdditionalOptions, resetCurrentItemForm, setOrderFormData]);
+  }, [
+    selectedProduct,
+    itemQuantity,
+    itemNotes,
+    itemDimensions,
+    itemDiscount,
+    itemAdditionalOptions,
+    resetCurrentItemForm,
+    setOrderFormData
+  ]);
 
   const handleRemoveItem = useCallback((tempId: string) => {
     setOrderFormData((prev: OrderFormData) => ({

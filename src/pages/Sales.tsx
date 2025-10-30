@@ -66,6 +66,22 @@ const Sales: React.FC = () => {
   const { profile } = useSession();
   const canPay = isKasirOrSuperAdmin(profile?.role);
 
+  const [reloadingProducts, setReloadingProducts] = useState(false);
+
+  // 2) Handler baru untuk tombol "Pilih Produk"
+  const handleOpenSelectProductWithReload = async () => {
+    setReloadingProducts(true);
+    try {
+      // reload semua master (termasuk productOptions)
+      await fetchAllSalesData();
+    } catch (e) {
+      console.warn('Gagal reload data produk:', e);
+    } finally {
+      setReloadingProducts(false);
+      setShowSelectProductModal(true); // buka modal setelah refresh selesai
+    }
+  };
+
   const {
     customerOptions,
     productOptions,
@@ -449,7 +465,8 @@ const Sales: React.FC = () => {
             setItemDimensions={setItemDimensions}
             itemDiscount={itemDiscount}
             setItemDiscount={setItemDiscount}
-            onSelectProductClick={() => setShowSelectProductModal(true)}
+            onSelectProductClick={handleOpenSelectProductWithReload}
+            // onSelectProductClick={() => setShowSelectProductModal(true)}
             onAddItemToOrder={handleAddItemToOrder}
             onOpenProductDetailModal={handleOpenProductDetailModal}
           />

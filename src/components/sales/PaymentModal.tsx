@@ -42,12 +42,9 @@ interface PaymentModalProps {
   existingPayments?: ExistingPayment[];     // histori baris (jika ada)
   noteDetails?: NotePaymentDetails | null;  // hasil parse dari notes (terbaru)
   onProcessPayment: (paymentDetails: {
-    // DP = TOTAL DP TERKINI (overwrite), bukan tambahan
-    dp_amount: number;
-    // Pembayaran saat ini (non-DP)
-    paid_amount: number;
-    // Total dibayar keseluruhan = DP total + "Bayar" histori + "Bayar" input
-    total_paid: number;
+    dp_amount: number;              // TOTAL DP TERKINI (overwrite)
+    paid_amount: number;            // bayar sekarang (non-DP)
+    total_paid: number;             // DP total + bayar histori + bayar input
     final_amount: number;
     payment_status: 'paid' | 'pending';
     payment_method: 'cash' | 'bank_transfer';
@@ -64,8 +61,7 @@ const toNumber = (s: string) => {
   const n = parseInt(onlyDigits(s) || '0', 10);
   return Number.isFinite(n) ? n : 0;
 };
-const formatRupiahStr = (n: number) =>
-  n.toLocaleString('id-ID', { minimumFractionDigits: 0 });
+const formatRibuan = (n: number) => n.toLocaleString('id-ID', { minimumFractionDigits: 0 });
 
 const PaymentModal: React.FC<PaymentModalProps> = ({
   isOpen,
@@ -137,7 +133,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     if (!isOpen) return;
 
     const seedDp = Number.isFinite(noteDp) && noteDp > 0 ? noteDp : lastDp;
-    setDpInput(seedDp > 0 ? formatRupiahStr(seedDp) : '');
+    setDpInput(seedDp > 0 ? formatRibuan(seedDp) : '');
     setPaidInput('');
 
     const seedTempoActive =
@@ -313,7 +309,18 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               <input
                 type="checkbox"
                 checked={bayarTempo}
-                onChange={(e) => setBayarTempo(e.target.checked)}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setBayarTempo(checked);
+                  // sesuai permintaan:
+                  // - jika checked (tempo aktif): kosongkan kolom Bayar
+                  // - jika unchecked (tempo non-aktif): kosongkan kolom DP
+                  if (checked) {
+                    setPaidInput('');
+                  } else {
+                    setDpInput('');
+                  }
+                }}
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 disabled={isProcessing}
               />
@@ -347,17 +354,14 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               id="dp_amount"
               value={dpInput}
               onChange={(e) => {
-                const raw = e.target.value;
-                if (raw.trim() === '') return setDpInput(''); // boleh kosong
-                const digits = onlyDigits(raw);
-                setDpInput(digits); // tampil apa adanya (tanpa pemisah) saat mengetik
+                const digits = onlyDigits(e.target.value);
+                if (digits === '') return setDpInput('');
+                // live format ribuan tanpa "Rp"
+                setDpInput(formatRibuan(parseInt(digits, 10)));
               }}
-              onBlur={() => {
-                if (dpInput.trim() === '') return; // tetap kosong
-                setDpInput(formatRupiahStr(toNumber(dpInput))); // format saat blur
-              }}
-              disabled={!bayarTempo || isProcessing}
               inputMode="numeric"
+              autoComplete="off"
+              disabled={!bayarTempo || isProcessing}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
             />
           </div>
@@ -372,16 +376,13 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               id="paid_amount"
               value={paidInput}
               onChange={(e) => {
-                const raw = e.target.value;
-                if (raw.trim() === '') return setPaidInput('');
-                const digits = onlyDigits(raw);
-                setPaidInput(digits);
-              }}
-              onBlur={() => {
-                if (paidInput.trim() === '') return;
-                setPaidInput(formatRupiahStr(toNumber(paidInput)));
+                const digits = onlyDigits(e.target.value);
+                if (digits === '') return setPaidInput('');
+                // live format ribuan tanpa "Rp"
+                setPaidInput(formatRibuan(parseInt(digits, 10)));
               }}
               inputMode="numeric"
+              autoComplete="off"
               disabled={bayarTempo || isProcessing}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
             />
