@@ -15,6 +15,7 @@ interface PendingPurchaseItem {
   final_amount?: number;       // nilai tagihan
   paid_amount?: number;        // total dibayar sampai saat ini
   payment_status?: 'paid' | 'due' | string | null;
+  keterangan?: string;
 }
 
 type PaymentStatusFilter = 'all' | 'paid' | 'due';
@@ -167,7 +168,7 @@ const HistoryPendingPurchasesTable: React.FC<Props> = ({
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                {['No.', 'Faktur', 'Supplier', 'HP', 'Tagihan', 'Terbayar', 'Sisa', 'Status', 'Tanggal', 'Aksi'].map((h) => (
+                {['No.', 'Faktur', 'Supplier', 'HP', 'Tagihan', 'Terbayar', 'Sisa', 'Status', 'Keterangan', 'Tanggal', 'Aksi'].map((h) => (
                   <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     {h}
                   </th>
@@ -205,6 +206,10 @@ const HistoryPendingPurchasesTable: React.FC<Props> = ({
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         <StatusBadge status={item.payment_status} sisa={sisa} />
                       </td>
+                      <td
+                        className="px-6 py-4 whitespace-pre-line text-sm text-gray-900"
+                        dangerouslySetInnerHTML={{ __html: item.keterangan || '' }}
+                      ></td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {new Date(item.order_date).toLocaleDateString('id-ID')}
                       </td>
