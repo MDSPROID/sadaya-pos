@@ -8,9 +8,9 @@ import {
   PaymentDetails,
 } from '../types/salesOrderTypes';
 
-/* =========================================
-   Helpers dimensi & perhitungan area (m²)
-   ========================================= */
+/* =========================
+   Helpers normalisasi dimensi
+   ========================= */
 type DimInput =
   | { panjang?: number | string; lebar?: number | string; satuan?: string }
   | string
@@ -38,19 +38,28 @@ const areaFromDimsM2 = (dims?: { panjang?: number; lebar?: number; satuan?: stri
   if (!dims) return 0;
   let p = Number(dims.panjang) || 0;
   let l = Number(dims.lebar) || 0;
-  const satuan = String(dims.satuan || 'M').toUpperCase();
+  const satuan = String(dims.satuan || 'M').toUpperCase(); // "M" / "CM"
   if (satuan === 'CM') { p /= 100; l /= 100; }
   const a = p * l;
   return Number.isFinite(a) && a > 0 ? a : 0;
 };
 
+const shouldUseArea = (dims?: { panjang?: number; lebar?: number; satuan?: string }) => {
+  if (!dims) return false;
+  const p = Number(dims.panjang) || 0;
+  const l = Number(dims.lebar) || 0;
+  const satuan = String(dims.satuan || '').toUpperCase();
+  // Hanya gunakan luas jika satuan dimensi M/CM dan P & L > 0
+  if ((satuan === 'M' || satuan === 'CM') && p > 0 && l > 0) return true;
+  return false;
+};
+
 /* ======================================================
-   Ambil metadata produk → bahan → master_satuan (hitung)
+   Ambil metadata produk → bahan_id
    ====================================================== */
 type ProdukMeta = {
   product_id: string;
   bahan_id: string | null;
-  hitung_satuan: boolean; // true = stok pakai QTY; false = stok pakai m² (stock_deducted)
 };
 
 async function getProdukBahanMeta(productIds: string[]): Promise<Map<string, ProdukMeta>> {
@@ -59,27 +68,16 @@ async function getProdukBahanMeta(productIds: string[]): Promise<Map<string, Pro
 
   const { data, error } = await supabase
     .from('produk')
-    .select(`
-      id,
-      bahan_id,
-      bahan:bahan_id(
-        id,
-        satuan_id,
-        master_satuan:satuan_id(id, hitung_satuan)
-      )
-    `)
+    .select(`id, bahan_id`)
     .in('id', uniq);
 
   if (error) throw error;
 
   const map = new Map<string, ProdukMeta>();
   for (const row of (data as any[]) || []) {
-    const bahan = row?.bahan || null;
-    const hitung = !!(bahan?.master_satuan?.hitung_satuan === true);
     map.set(row.id, {
       product_id: row.id,
-      bahan_id: bahan?.id ?? row?.bahan_id ?? null,
-      hitung_satuan: hitung,
+      bahan_id: row?.bahan_id ?? null,
     });
   }
   return map;
@@ -87,15 +85,15 @@ async function getProdukBahanMeta(productIds: string[]): Promise<Map<string, Pro
 
 /* ======================================================
    Hitung total pemakaian stok per-bahan untuk kumpulan item
-   - items: array item { product_id, quantity, stock_deducted, dimensions }
-   - meta: Map product_id -> {bahan_id, hitung_satuan}
-   Return: Map<bahan_id, totalToDeduct>
+   ATURAN TERBARU:
+   - Jika dims kosong/tidak valid → pakai QTY
+   - Jika dims ada & satuan M/CM → pakai area(P×L)×QTY
    ====================================================== */
 type LiteItem = {
   product_id: string;
   quantity: number;
-  stock_deducted?: number | null;
-  dimensions?: any;
+  stock_deducted?: number | null; // tersimpan m² (optional)
+  dimensions?: any;               // sumber kebenaran unit dimensi (M/CM)
 };
 
 function calcTotalsPerBahan(items: LiteItem[], meta: Map<string, ProdukMeta>): Map<string, number> {
@@ -107,18 +105,24 @@ function calcTotalsPerBahan(items: LiteItem[], meta: Map<string, ProdukMeta>): M
     const qty = Number(it.quantity || 0);
     if (!qty) continue;
 
+    const dims = normalizeDims(it.dimensions);
     let toDeduct = 0;
-    if (m.hitung_satuan) {
-      // Hitung per unit (QTY)
-      toDeduct = qty;
-    } else {
-      // Hitung per m²
+
+    if (shouldUseArea(dims)) {
+      // Gunakan luas m² × QTY (pakai stock_deducted kalau ada/valid; kalau tidak, hitung ulang)
       let sd = Number(it.stock_deducted || 0);
       if (!sd || sd <= 0) {
-        const area = areaFromDimsM2(normalizeDims(it.dimensions));
+        const area = areaFromDimsM2(dims);
         sd = area > 0 ? area * qty : 0;
+      } else {
+        // sd di DB adalah luas m² per-item × qty? kita treat sd sudah termasuk QTY.
+        // Bila sd ternyata tersimpan per-item (bukan total), uncomment:
+        // sd = sd * qty;
       }
       toDeduct = sd;
+    } else {
+      // Dimensi tidak ada → pakai QTY
+      toDeduct = qty;
     }
 
     if (!toDeduct) continue;
@@ -129,13 +133,14 @@ function calcTotalsPerBahan(items: LiteItem[], meta: Map<string, ProdukMeta>): M
 
 /* =========================================
    Terapkan delta stok per-bahan (bisa ±)
+   delta > 0 → stok berkurang
+   delta < 0 → stok bertambah kembali
    ========================================= */
 async function applyDeltaPerBahan(perBahanDelta: Map<string, number>) {
   if (!perBahanDelta.size) return;
   for (const [bahanId, delta] of perBahanDelta) {
     if (!delta) continue;
 
-    // Ambil stok sekarang
     const { data: row, error: gerr } = await supabase
       .from('bahan')
       .select('stok')
@@ -144,10 +149,11 @@ async function applyDeltaPerBahan(perBahanDelta: Map<string, number>) {
     if (gerr) throw gerr;
 
     const curr = Number(row?.stok || 0);
-    // delta > 0 => konsumsi (stok berkurang)
-    // delta < 0 => rollback/penambahan kembali
     const next = Math.max(0, curr - delta);
-    const { error: uerr } = await supabase.from('bahan').update({ stok: next }).eq('id', bahanId);
+    const { error: uerr } = await supabase
+      .from('bahan')
+      .update({ stok: next })
+      .eq('id', bahanId);
     if (uerr) throw uerr;
   }
 }
@@ -171,12 +177,17 @@ export const saveSalesOrder = async (
     .single();
   if (orderError) throw orderError;
 
-  // 2) Insert items (isi stock_deducted)
+  // 2) Insert items (isi stock_deducted mengikuti aturan baru)
   const itemsWithOrderId = itemsToInsert.map((item) => {
     const dimsObj = normalizeDims(item.dimensions as any);
-    const fallbackArea = areaFromDimsM2(dimsObj);
-    const sd = (item as any).stock_deducted ?? (fallbackArea * Number(item.quantity || 1));
-    const stock_deducted = Number.isFinite(sd) && sd > 0 ? Number(sd.toFixed(3)) : 0;
+
+    // kalau dims valid & satuan M/CM → simpan luas m² × QTY
+    // kalau dims tidak valid → simpan 0 (karena pemotongan akan pakai QTY)
+    let stock_deducted = 0;
+    if (shouldUseArea(dimsObj)) {
+      const area = areaFromDimsM2(dimsObj);
+      if (area > 0) stock_deducted = Number((area * Number(item.quantity || 1)).toFixed(3));
+    }
 
     return {
       product_id: item.product_id,
@@ -189,20 +200,21 @@ export const saveSalesOrder = async (
       notes_per_item: item.notes_per_item,
       designer_id: item.designer_id,
       order_id: newOrder.id,
-      stock_deducted, // m² (untuk kasus hitung_satuan = Tidak)
+      stock_deducted, // m² total untuk item ini (0 jika pakai QTY)
     };
   });
 
   if (itemsWithOrderId.length > 0) {
-    const { error: itemsError } = await supabase.from('order_items').insert(itemsWithOrderId);
+    const { error: itemsError } = await supabase
+      .from('order_items')
+      .insert(itemsWithOrderId);
     if (itemsError) throw itemsError;
   }
 
-  // 3) Potong stok total hanya untuk transaksi baru jika memenuhi kondisi
+  // 3) Potong stok total untuk transaksi baru jika paid / ada DP / ready
   const hasDp = (paymentDetails?.dp_amount ?? 0) > 0;
   const isReady = orderData?.ready_status === 'ready';
   if (status === 'paid' || hasDp || isReady) {
-    // Ambil meta & kalkulasi total per-bahan untuk items baru
     const productIds = itemsWithOrderId.map((x) => x.product_id);
     const meta = await getProdukBahanMeta(productIds);
     const totalsBaru = calcTotalsPerBahan(
@@ -214,22 +226,20 @@ export const saveSalesOrder = async (
       })),
       meta
     );
-    await applyDeltaPerBahan(totalsBaru); // delta = +baru (karena sebelumnya 0)
+    await applyDeltaPerBahan(totalsBaru); // delta = +baru (sebelumnya 0)
   }
 
   // 4) Log
-  await supabase.from('activity_logs').insert([
-    {
-      user_id: currentUserId,
-      action: `Membuat pesanan baru (${newOrder.id})`,
-      details: {
-        order_id: newOrder.id,
-        customer_name: orderData.customer_display_name,
-        final_amount: orderData.final_amount,
-        status,
-      },
+  await supabase.from('activity_logs').insert([{
+    user_id: currentUserId,
+    action: `Membuat pesanan baru (${newOrder.id})`,
+    details: {
+      order_id: newOrder.id,
+      customer_name: orderData.customer_display_name,
+      final_amount: orderData.final_amount,
+      status,
     },
-  ]);
+  }]);
 
   // 5) Print
   if (status === 'paid' && paymentDetails && !options?.skipPrint) {
@@ -277,7 +287,7 @@ export const updateSalesOrder = async (
 ) => {
   const { invoice_number: _ignoreInvoice, ...updatePayload } = orderData as any;
 
-  // 0) Ambil items lama dulu (SEBELUM delete)
+  // 0) Ambil items lama dulu (SEBELUM replace)
   const { data: oldItems, error: oldErr } = await supabase
     .from('order_items')
     .select('product_id, quantity, stock_deducted, dimensions')
@@ -293,15 +303,21 @@ export const updateSalesOrder = async (
     .single();
   if (orderUpdateError) throw orderUpdateError;
 
-  // 2) Replace items
-  const { error: deleteItemsError } = await supabase.from('order_items').delete().eq('order_id', orderId);
+  // 2) Replace items (recompute stock_deducted sesuai aturan baru)
+  const { error: deleteItemsError } = await supabase
+    .from('order_items')
+    .delete()
+    .eq('order_id', orderId);
   if (deleteItemsError) throw deleteItemsError;
 
   const itemsWithOrderId = itemsToUpsert.map((item) => {
     const dimsObj = normalizeDims(item.dimensions as any);
-    const fallbackArea = areaFromDimsM2(dimsObj);
-    const sd = (item as any).stock_deducted ?? (fallbackArea * Number(item.quantity || 1));
-    const stock_deducted = Number.isFinite(sd) && sd > 0 ? Number(sd.toFixed(3)) : 0;
+
+    let stock_deducted = 0;
+    if (shouldUseArea(dimsObj)) {
+      const area = areaFromDimsM2(dimsObj);
+      if (area > 0) stock_deducted = Number((area * Number(item.quantity || 1)).toFixed(3));
+    }
 
     return {
       product_id: item.product_id,
@@ -314,27 +330,29 @@ export const updateSalesOrder = async (
       notes_per_item: item.notes_per_item,
       designer_id: item.designer_id,
       order_id: orderId,
-      stock_deducted,
+      stock_deducted, // 0 jika pakai QTY
     };
   });
 
   if (itemsWithOrderId.length > 0) {
-    const { error: itemsError } = await supabase.from('order_items').insert(itemsWithOrderId);
+    const { error: itemsError } = await supabase
+      .from('order_items')
+      .insert(itemsWithOrderId);
     if (itemsError) throw itemsError;
   }
 
-  // 3) Hanya ubah stok jika status memenuhi dan ADA PERUBAHAN relevan
+  // 3) Ubah stok hanya jika paid / ada DP / ready
   const hasDp = (paymentDetails?.dp_amount ?? 0) > 0;
   const isReady = orderData?.ready_status === 'ready';
   if (status === 'paid' || hasDp || isReady) {
-    // Produk terkait (lama + baru) untuk fetch meta sekali jalan
+    // Ambil meta produk sekali jalan
     const productIds = [
       ...(oldItems || []).map((x: any) => x.product_id),
       ...itemsWithOrderId.map((x) => x.product_id),
     ];
     const meta = await getProdukBahanMeta(productIds);
 
-    // Totals lama
+    // Totals lama (pakai aturan baru)
     const totalsLama = calcTotalsPerBahan(
       (oldItems || []).map((x: any) => ({
         product_id: x.product_id,
@@ -372,25 +390,22 @@ export const updateSalesOrder = async (
       }
     }
 
-    // Jika tidak ada delta → tidak ada mutasi stok
     if (deltaMap.size > 0) {
       await applyDeltaPerBahan(deltaMap);
     }
   }
 
   // 4) Log
-  await supabase.from('activity_logs').insert([
-    {
-      user_id: currentUserId,
-      action: `Melanjutkan pesanan (${orderId})`,
-      details: {
-        order_id: orderId,
-        customer_name: orderData.customer_display_name,
-        final_amount: orderData.final_amount,
-        status,
-      },
+  await supabase.from('activity_logs').insert([{
+    user_id: currentUserId,
+    action: `Melanjutkan pesanan (${orderId})`,
+    details: {
+      order_id: orderId,
+      customer_name: orderData.customer_display_name,
+      final_amount: orderData.final_amount,
+      status,
     },
-  ]);
+  }]);
 
   // 5) Print
   if (status === 'paid' && paymentDetails && !options?.skipPrint) {
