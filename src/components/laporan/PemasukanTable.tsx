@@ -12,6 +12,8 @@ interface PemasukanTableProps {
   setEndDate: (date: string) => void;
   totalJumlah: number;
   onPrint: () => void;
+  // ⬇️ baru: indikator loading khusus tabel
+  loading?: boolean;
 }
 
 const PemasukanTable: React.FC<PemasukanTableProps> = ({
@@ -24,6 +26,7 @@ const PemasukanTable: React.FC<PemasukanTableProps> = ({
   setEndDate,
   totalJumlah,
   onPrint,
+  loading = false,
 }) => {
   return (
     <div className="space-y-6">
@@ -81,31 +84,23 @@ const PemasukanTable: React.FC<PemasukanTableProps> = ({
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  No.
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Tanggal
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Jam
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Nama Pemasukan
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Keterangan
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Petugas
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Jumlah
-                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No.</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tanggal</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Jam</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Pemasukan</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Keterangan</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Petugas</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Jumlah</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {data.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-6 whitespace-nowrap text-sm text-gray-500 text-center">
+                    Memuat laporan pemasukan...
+                  </td>
+                </tr>
+              ) : data.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
                     Tidak ada data pemasukan.
@@ -114,9 +109,7 @@ const PemasukanTable: React.FC<PemasukanTableProps> = ({
               ) : (
                 data.map((item, index) => (
                   <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {index + 1}
-                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{index + 1}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {new Date(item.tanggal).toLocaleDateString('id-ID')}
                     </td>

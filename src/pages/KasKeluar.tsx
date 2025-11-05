@@ -97,6 +97,12 @@ const KasKeluar: React.FC = () => {
     fetchJenisOptions();
   }, []);
 
+  // 🔁 Hanya tabel yang refresh saat tanggal berubah
+  useEffect(() => {
+    fetchKasKeluar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate]);
+
   const filteredData = data.filter(item =>
     item.nama_pengeluaran.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.keterangan?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -274,25 +280,6 @@ const KasKeluar: React.FC = () => {
     return method.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <p className="text-gray-600">Memuat data kas keluar...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-center p-4 text-red-600">
-        <p>Error: {error}</p>
-        <button onClick={fetchKasKeluar} className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-          Coba Lagi
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -309,6 +296,14 @@ const KasKeluar: React.FC = () => {
           Tambah Pengeluaran
         </button>
       </div>
+
+      {/* Error banner (tanpa full reload halaman) */}
+      {error && (
+        <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-700">
+          Error: {error}{' '}
+          <button onClick={fetchKasKeluar} className="ml-2 underline">Coba lagi</button>
+        </div>
+      )}
 
       {/* Search and Date Filter */}
       <div className="bg-white rounded-lg shadow-sm p-6 flex flex-col md:flex-row gap-4 items-center">
@@ -380,7 +375,13 @@ const KasKeluar: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredData.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={9} className="px-6 py-6 whitespace-nowrap text-sm text-gray-500 text-center">
+                    Memuat data kas keluar...
+                  </td>
+                </tr>
+              ) : filteredData.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
                     Tidak ada data kas keluar.

@@ -1,18 +1,20 @@
-import React, { useState, useMemo } from 'react';
-import { usePinjamanKaryawanData } from '../../hooks/usePinjamanKaryawanData'; // Import hook
-import PinjamanTable from '../../components/laporan/PinjamanTable'; // Import komponen tabel
+import React, { useState, useMemo, useEffect } from 'react';
+import { usePinjamanKaryawanData } from '../../hooks/usePinjamanKaryawanData';
+import PinjamanTable from '../../components/laporan/PinjamanTable';
 
 const LaporanPinjaman: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
-  const {
-    data,
-    loading,
-    error,
-    fetchPinjamanKaryawan,
-  } = usePinjamanKaryawanData({ startDate, endDate }); // Menggunakan hook untuk mengambil data
+  const { data, loading, error, fetchPinjamanKaryawan } =
+    usePinjamanKaryawanData({ startDate, endDate });
+
+  // 🔁 Refresh data tabel saat tanggal berubah (tanpa refresh 1 halaman)
+  useEffect(() => {
+    fetchPinjamanKaryawan();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate]);
 
   const filteredData = useMemo(() => {
     return data.filter(item =>
@@ -23,34 +25,12 @@ const LaporanPinjaman: React.FC = () => {
   }, [data, searchTerm]);
 
   const totalPiutang = useMemo(() => {
-    // Menghitung total sisa pinjaman dari data yang difilter
     return filteredData.reduce((sum, item) => sum + (item.sisa_pinjaman || 0), 0);
   }, [filteredData]);
 
   const handlePrint = () => {
-    // Implementasi fungsi cetak di sini
-    // Untuk saat ini, kita bisa menampilkan pesan atau membuka jendela cetak browser
     window.print();
   };
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <p className="text-gray-600">Memuat laporan pinjaman...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-center p-4 text-red-600">
-        <p>Error: {error}</p>
-        <button onClick={fetchPinjamanKaryawan} className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-          Coba Lagi
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -60,6 +40,16 @@ const LaporanPinjaman: React.FC = () => {
           <p className="text-gray-600">Lihat dan cetak laporan pinjaman karyawan.</p>
         </div>
       </div>
+
+      {/* Error banner (tanpa full-page return) */}
+      {error && (
+        <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-700">
+          Error: {error}{' '}
+          <button onClick={fetchPinjamanKaryawan} className="ml-2 underline">
+            Coba Lagi
+          </button>
+        </div>
+      )}
 
       <PinjamanTable
         data={filteredData}
@@ -71,6 +61,7 @@ const LaporanPinjaman: React.FC = () => {
         setEndDate={setEndDate}
         totalPiutang={totalPiutang}
         onPrint={handlePrint}
+        loading={loading}   // ⬅️ hanya tabel yang loading
       />
     </div>
   );

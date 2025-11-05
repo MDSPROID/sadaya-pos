@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import { supabase } from '../integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '../utils/toast';
@@ -6,7 +6,7 @@ import { useSession } from '../components/SessionContextProvider';
 import { useBahanKeluarData } from '../hooks/useBahanKeluarData';
 import BahanKeluarFormModal from '../components/back-office/BahanKeluarFormModal';
 import BahanKeluarTable from '../components/back-office/BahanKeluarTable';
-import { useFormPersistence } from '../hooks/useFormPersistence'; // Import useFormPersistence
+import { useFormPersistence } from '../hooks/useFormPersistence';
 
 interface BahanKeluarItem {
   id: string;
@@ -49,15 +49,8 @@ const BahanKeluar: React.FC = () => {
   const [selectedItem, setSelectedItem, clearSelectedItem] = useFormPersistence<Partial<BahanKeluarItem>>({
     key: 'bahanKeluarFormDraft',
     initialValue: initialBahanKeluarForm,
-    enabled: modalMode === 'add', // Only persist when in 'add' mode
+    enabled: modalMode === 'add',
   });
-
-  // Effect to show toast when draft is loaded
-  // useEffect(() => {
-  //   if (isDraftLoaded && modalMode === 'add') {
-  //     showSuccess('Draft formulir Bahan Keluar berhasil dimuat!');
-  //   }
-  // }, [isDraftLoaded, modalMode]);
 
   const {
     data,
@@ -67,6 +60,12 @@ const BahanKeluar: React.FC = () => {
     fetchBahanKeluar,
     setData,
   } = useBahanKeluarData({ startDate, endDate });
+
+  // 🔁 Refresh data tabel saat tanggal berubah
+  useEffect(() => {
+    fetchBahanKeluar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate]);
 
   const filteredData = data.filter(item =>
     item.bahan?.nama?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -86,8 +85,8 @@ const BahanKeluar: React.FC = () => {
 
   const closeModal = () => {
     setShowModal(false);
-    setSelectedItem({}); // Reset form state
-    clearSelectedItem(); // Clear persisted data
+    setSelectedItem({});
+    clearSelectedItem();
   };
 
   const handleSelectBahanFromModal = (bahan: any) => {
@@ -149,7 +148,7 @@ const BahanKeluar: React.FC = () => {
         .select(`
           *,
           profiles_operator:profiles!bahan_keluar_operator_id_fkey(first_name, last_name),
-          bahan:bahan(id, nama, satuan(nama), ukuran_pananjang, ukuran_lebar),
+          bahan:bahan(id, nama, satuan(nama), ukuran_panjang, ukuran_lebar),
           profiles_dicatat_oleh:profiles!bahan_keluar_dicatat_oleh_id_fkey(first_name, last_name)
         `)
         .single();
@@ -166,14 +165,10 @@ const BahanKeluar: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Yakin ingin menghapus data ini?')) {
-      return;
-    }
+    if (!confirm('Yakin ingin menghapus data ini?')) return;
+
     const toastId = showLoading('Menghapus bahan keluar...');
-    const { error } = await supabase
-      .from('bahan_keluar')
-      .delete()
-      .eq('id', id);
+    const { error } = await supabase.from('bahan_keluar').delete().eq('id', id);
 
     if (error) {
       showError('Gagal menghapus bahan keluar: ' + error.message);
@@ -197,10 +192,7 @@ const BahanKeluar: React.FC = () => {
       return;
     }
 
-    const { error } = await supabase
-      .from('bahan_keluar')
-      .delete()
-      .in('id', idsToDelete);
+    const { error } = await supabase.from('bahan_keluar').delete().in('id', idsToDelete);
 
     if (error) {
       showError('Gagal menghapus semua bahan keluar: ' + error.message);
@@ -210,25 +202,6 @@ const BahanKeluar: React.FC = () => {
     }
     dismissToast(toastId);
   };
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <p className="text-gray-600">Memuat data bahan keluar...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-center p-4 text-red-600">
-        <p>Error: {error}</p>
-        <button onClick={() => fetchBahanKeluar()} className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-          Coba Lagi
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -247,6 +220,14 @@ const BahanKeluar: React.FC = () => {
         </button>
       </div>
 
+      {/* Error banner (tanpa full reload) */}
+      {error && (
+        <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-700">
+          Error: {error}{' '}
+          <button onClick={() => fetchBahanKeluar()} className="ml-2 underline">Coba lagi</button>
+        </div>
+      )}
+
       <BahanKeluarTable
         data={filteredData}
         searchTerm={searchTerm}
@@ -258,6 +239,8 @@ const BahanKeluar: React.FC = () => {
         onOpenModal={openModal}
         onDelete={handleDelete}
         onDeleteAll={handleDeleteAll}
+        // ⬇️ hanya tabel yang menunjukkan loading
+        loading={loading}
       />
 
       <BahanKeluarFormModal

@@ -28,6 +28,8 @@ interface BahanKeluarTableProps {
   onOpenModal: (mode: 'add' | 'edit' | 'view', item?: BahanKeluarItem) => void;
   onDelete: (id: string) => void;
   onDeleteAll: () => void;
+  // ⬇️ baru: loading khusus tabel
+  loading?: boolean;
 }
 
 const BahanKeluarTable: React.FC<BahanKeluarTableProps> = ({
@@ -41,6 +43,7 @@ const BahanKeluarTable: React.FC<BahanKeluarTableProps> = ({
   onOpenModal,
   onDelete,
   onDeleteAll,
+  loading = false,
 }) => {
   return (
     <div className="space-y-6">
@@ -117,7 +120,13 @@ const BahanKeluarTable: React.FC<BahanKeluarTableProps> = ({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {data.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={10} className="px-6 py-6 whitespace-nowrap text-sm text-gray-500 text-center">
+                    Memuat data bahan keluar...
+                  </td>
+                </tr>
+              ) : data.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
                     Tidak ada data bahan keluar.

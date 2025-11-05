@@ -68,6 +68,12 @@ const KasMasuk: React.FC = () => {
     fetchBankOptions();
   }, []);
 
+  // 🔁 Refresh data hanya tabel saat tanggal berubah
+  useEffect(() => {
+    fetchKasMasuk();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate]);
+
   const filteredData = data.filter(item =>
     item.nama_pemasukan.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.keterangan?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -184,25 +190,6 @@ const KasMasuk: React.FC = () => {
     dismissToast(toastId);
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <p className="text-gray-600">Memuat data kas masuk...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-center p-4 text-red-600">
-        <p>Error: {error}</p>
-        <button onClick={fetchKasMasuk} className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-          Coba Lagi
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -220,6 +207,14 @@ const KasMasuk: React.FC = () => {
         </button>
       </div>
 
+      {/* Error banner (tanpa full reload) */}
+      {error && (
+        <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-700">
+          Error: {error}{' '}
+          <button onClick={fetchKasMasuk} className="ml-2 underline">Coba lagi</button>
+        </div>
+      )}
+
       <KasMasukTable
         data={filteredData}
         searchTerm={searchTerm}
@@ -231,6 +226,8 @@ const KasMasuk: React.FC = () => {
         onOpenModal={openModal}
         onDelete={handleDelete}
         onDeleteAll={handleDeleteAll}
+        // ⬇️ hanya tabel yang menunjukkan loading
+        loading={loading}
       />
 
       <KasMasukFormModal

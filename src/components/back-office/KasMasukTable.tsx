@@ -14,6 +14,8 @@ interface KasMasukTableProps {
   onOpenModal: (mode: 'add' | 'edit' | 'view', item?: KasMasukItem) => void;
   onDelete: (id: string) => void;
   onDeleteAll: () => void;
+  // ⬇️ baru: loading khusus tabel
+  loading?: boolean;
 }
 
 const KasMasukTable: React.FC<KasMasukTableProps> = ({
@@ -27,6 +29,7 @@ const KasMasukTable: React.FC<KasMasukTableProps> = ({
   onOpenModal,
   onDelete,
   onDeleteAll,
+  loading = false,
 }) => {
   return (
     <div className="space-y-6">
@@ -100,7 +103,13 @@ const KasMasukTable: React.FC<KasMasukTableProps> = ({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {data.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={9} className="px-6 py-6 whitespace-nowrap text-sm text-gray-500 text-center">
+                    Memuat data kas masuk...
+                  </td>
+                </tr>
+              ) : data.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
                     Tidak ada data kas masuk.

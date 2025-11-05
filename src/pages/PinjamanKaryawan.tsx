@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import { supabase } from '../integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '../utils/toast';
@@ -6,9 +6,9 @@ import { useSession } from '../components/SessionContextProvider';
 import { usePinjamanKaryawanData, PinjamanKaryawanItem } from '../hooks/usePinjamanKaryawanData';
 import PinjamanKaryawanFormModal from '../components/back-office/PinjamanKaryawanFormModal';
 import PinjamanKaryawanTable from '../components/back-office/PinjamanKaryawanTable';
-import PaymentLoanModal from '../components/back-office/PaymentLoanModal'; // Import PaymentLoanModal
+import PaymentLoanModal from '../components/back-office/PaymentLoanModal';
 import { useFormPersistence } from '../hooks/useFormPersistence';
-import { getSingleRelatedObject } from '../utils/dataHelpers'; // Import getSingleRelatedObject
+import { getSingleRelatedObject } from '../utils/dataHelpers';
 
 const PinjamanKaryawan: React.FC = () => {
   const { session } = useSession();
@@ -20,37 +20,43 @@ const PinjamanKaryawan: React.FC = () => {
   const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
-  const [showPaymentModal, setShowPaymentModal] = useState(false); // State for payment modal
-  const [selectedLoanForPayment, setSelectedLoanForPayment] = useState<PinjamanKaryawanItem | null>(null); // State for loan to pay
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedLoanForPayment, setSelectedLoanForPayment] = useState<PinjamanKaryawanItem | null>(null);
 
   const initialPinjamanKaryawanForm: Partial<PinjamanKaryawanItem> = {
     tanggal_pinjam: new Date().toISOString().split('T')[0],
     karyawan_id: '',
     jumlah_pinjaman: 0,
-    jatuh_tempo: new Date().toISOString().split('T')[0], // Default to today
+    jatuh_tempo: new Date().toISOString().split('T')[0],
     status: 'active',
     keterangan: '',
-    sisa_pinjaman: 0, // Initialize new fields
-    jumlah_pembayaran: 0, // Initialize new fields
-    payment_method: 'cash', // Default payment method
-    bank_id: null, // Default bank ID
+    sisa_pinjaman: 0,
+    jumlah_pembayaran: 0,
+    payment_method: 'cash',
+    bank_id: null,
   };
 
   const [selectedItem, setSelectedItem, clearSelectedItem] = useFormPersistence<Partial<PinjamanKaryawanItem>>({
     key: 'pinjamanKaryawanFormDraft',
     initialValue: initialPinjamanKaryawanForm,
-    enabled: modalMode === 'add', // Only persist when in 'add' mode
+    enabled: modalMode === 'add',
   });
 
   const {
     data,
     karyawanOptions,
-    bankOptions, // Get bank options from hook
+    bankOptions,
     loading,
     error,
     fetchPinjamanKaryawan,
     setData,
   } = usePinjamanKaryawanData({ startDate, endDate });
+
+  // 🔁 Refresh hanya tabel ketika tanggal berubah
+  useEffect(() => {
+    fetchPinjamanKaryawan();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate]);
 
   const filteredData = data.filter(item =>
     item.profiles_karyawan?.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -63,7 +69,11 @@ const PinjamanKaryawan: React.FC = () => {
   const openModal = (mode: 'add' | 'edit' | 'view', item?: PinjamanKaryawanItem) => {
     setModalMode(mode);
     if (mode === 'add') {
-      setSelectedItem(prev => ({ ...prev, tanggal_pinjam: new Date().toISOString().split('T')[0], jatuh_tempo: new Date().toISOString().split('T')[0] }));
+      setSelectedItem(prev => ({
+        ...prev,
+        tanggal_pinjam: new Date().toISOString().split('T')[0],
+        jatuh_tempo: new Date().toISOString().split('T')[0],
+      }));
     } else {
       setSelectedItem(item || {});
     }
@@ -72,8 +82,8 @@ const PinjamanKaryawan: React.FC = () => {
 
   const closeModal = () => {
     setShowModal(false);
-    setSelectedItem({}); // Reset form state
-    clearSelectedItem(); // Clear persisted data
+    setSelectedItem({});
+    clearSelectedItem();
   };
 
   const handleOpenPaymentModal = (item: PinjamanKaryawanItem) => {
@@ -99,8 +109,8 @@ const PinjamanKaryawan: React.FC = () => {
       dicatat_oleh_id: currentUserId,
       sisa_pinjaman: modalMode === 'add' ? parseFloat(formData.jumlah_pinjaman as any) : formData.sisa_pinjaman,
       jumlah_pembayaran: modalMode === 'add' ? 0 : formData.jumlah_pembayaran,
-      payment_method: formData.payment_method || 'cash', // Include payment method
-      bank_id: formData.payment_method === 'bank_transfer' ? formData.bank_id : null, // Include bank ID conditionally
+      payment_method: formData.payment_method || 'cash',
+      bank_id: formData.payment_method === 'bank_transfer' ? formData.bank_id : null,
     };
 
     try {
@@ -130,7 +140,7 @@ const PinjamanKaryawan: React.FC = () => {
 
         if (error) throw error;
 
-        // Automate recording as Kas Keluar
+        // Catat otomatis sebagai Kas Keluar
         const selectedKaryawan = karyawanOptions.find(k => k.id === newPinjaman.karyawan_id);
         await supabase.from('kas_keluar').insert([{
           tanggal: newPinjaman.tanggal_pinjam,
@@ -138,8 +148,8 @@ const PinjamanKaryawan: React.FC = () => {
           jumlah: newPinjaman.jumlah_pinjaman,
           keterangan: newPinjaman.keterangan || `Pinjaman untuk ${selectedKaryawan?.first_name} ${selectedKaryawan?.last_name || ''}`,
           petugas_id: currentUserId,
-          payment_method: newPinjaman.payment_method, // Use loan's payment method
-          bank_id: newPinjaman.bank_id, // Use loan's bank ID
+          payment_method: newPinjaman.payment_method,
+          bank_id: newPinjaman.bank_id,
         }]);
 
         const formattedNewPinjaman: PinjamanKaryawanItem = {
@@ -212,11 +222,9 @@ const PinjamanKaryawan: React.FC = () => {
       if (newSisaPinjaman <= 0) {
         newStatus = 'completed';
       } else if (newSisaPinjaman > 0 && selectedLoanForPayment.status === 'completed') {
-        // If it was completed but now has remaining balance (e.g., due to partial payment or error correction)
         newStatus = 'active';
       }
 
-      // 1. Update pinjaman_karyawan table
       const { error: updateLoanError } = await supabase
         .from('pinjaman_karyawan')
         .update({
@@ -225,10 +233,8 @@ const PinjamanKaryawan: React.FC = () => {
           status: newStatus,
         })
         .eq('id', loanId);
-
       if (updateLoanError) throw updateLoanError;
 
-      // 2. Insert into loan_payments table
       const { error: insertPaymentError } = await supabase
         .from('loan_payments')
         .insert([{
@@ -238,21 +244,18 @@ const PinjamanKaryawan: React.FC = () => {
           payment_method: paymentMethod,
           recorded_by_id: currentUserId,
         }]);
-
       if (insertPaymentError) throw insertPaymentError;
 
-      // 3. Automate recording as Kas Masuk
       await supabase.from('kas_masuk').insert([{
-        tanggal: new Date().toISOString().split('T')[0], // Tanggal pembayaran
+        tanggal: new Date().toISOString().split('T')[0],
         nama_pemasukan: `Pembayaran Pinjaman Karyawan: ${selectedLoanForPayment.profiles_karyawan?.first_name} ${selectedLoanForPayment.profiles_karyawan?.last_name || ''}`,
         jumlah: amountPaid,
         keterangan: `Pembayaran angsuran pinjaman oleh ${selectedLoanForPayment.profiles_karyawan?.first_name} ${selectedLoanForPayment.profiles_karyawan?.last_name || ''} (${paymentMethod})`,
         petugas_id: currentUserId,
-        payment_method: paymentMethod === 'Cash' ? 'cash' : 'bank_transfer', // Map to 'cash' or 'bank_transfer'
-        bank_id: paymentMethod === 'Bank Transfer' ? selectedLoanForPayment.bank_id : null, // Use loan's bank_id if bank transfer
+        payment_method: paymentMethod === 'Cash' ? 'cash' : 'bank_transfer',
+        bank_id: paymentMethod === 'Bank Transfer' ? selectedLoanForPayment.bank_id : null,
       }]);
 
-      // 4. Log activity
       await supabase.from('activity_logs').insert([{
         user_id: currentUserId,
         action: `Mencatat pembayaran pinjaman untuk ${selectedLoanForPayment.profiles_karyawan?.first_name} ${selectedLoanForPayment.profiles_karyawan?.last_name || ''}`,
@@ -261,7 +264,7 @@ const PinjamanKaryawan: React.FC = () => {
 
       showSuccess('Pembayaran berhasil dicatat dan masuk ke pemasukan!');
       handleClosePaymentModal();
-      fetchPinjamanKaryawan(); // Refresh data
+      fetchPinjamanKaryawan(); // refresh hanya data (bukan full page)
     } catch (err: any) {
       showError('Gagal memproses pembayaran: ' + err.message);
       console.error('Error processing loan payment:', err);
@@ -275,10 +278,7 @@ const PinjamanKaryawan: React.FC = () => {
       return;
     }
     const toastId = showLoading('Menghapus pinjaman karyawan...');
-    const { error } = await supabase
-      .from('pinjaman_karyawan')
-      .delete()
-      .eq('id', id);
+    const { error } = await supabase.from('pinjaman_karyawan').delete().eq('id', id);
 
     if (error) {
       showError('Gagal menghapus pinjaman karyawan: ' + error.message);
@@ -302,10 +302,7 @@ const PinjamanKaryawan: React.FC = () => {
       return;
     }
 
-    const { error } = await supabase
-      .from('pinjaman_karyawan')
-      .delete()
-      .in('id', idsToDelete);
+    const { error } = await supabase.from('pinjaman_karyawan').delete().in('id', idsToDelete);
 
     if (error) {
       showError('Gagal menghapus semua pinjaman karyawan: ' + error.message);
@@ -315,25 +312,6 @@ const PinjamanKaryawan: React.FC = () => {
     }
     dismissToast(toastId);
   };
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <p className="text-gray-600">Memuat data pinjaman karyawan...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-center p-4 text-red-600">
-        <p>Error: {error}</p>
-        <button onClick={() => fetchPinjamanKaryawan()} className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-          Coba Lagi
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -352,6 +330,14 @@ const PinjamanKaryawan: React.FC = () => {
         </button>
       </div>
 
+      {/* Error banner (tanpa full-page return) */}
+      {error && (
+        <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-700">
+          Error: {error}{' '}
+          <button onClick={() => fetchPinjamanKaryawan()} className="ml-2 underline">Coba lagi</button>
+        </div>
+      )}
+
       <PinjamanKaryawanTable
         data={filteredData}
         searchTerm={searchTerm}
@@ -363,7 +349,8 @@ const PinjamanKaryawan: React.FC = () => {
         onOpenModal={openModal}
         onDelete={handleDelete}
         onDeleteAll={handleDeleteAll}
-        onOpenPaymentModal={handleOpenPaymentModal} // Pass the new handler
+        onOpenPaymentModal={handleOpenPaymentModal}
+        loading={loading} // ⬅️ hanya tabel yang show loading
       />
 
       <PinjamanKaryawanFormModal
@@ -373,7 +360,7 @@ const PinjamanKaryawan: React.FC = () => {
         onClose={closeModal}
         onSubmit={handleSubmit}
         karyawanOptions={karyawanOptions}
-        bankOptions={bankOptions} // Pass bank options
+        bankOptions={bankOptions}
       />
 
       {showPaymentModal && (

@@ -1,7 +1,7 @@
 import React from 'react';
-import { Edit, Trash2, Search, Eye, DollarSign } from 'lucide-react'; // Import DollarSign
+import { Edit, Trash2, Search, Eye, DollarSign } from 'lucide-react';
 import { PinjamanKaryawanItem } from '../../hooks/usePinjamanKaryawanData';
-import { formatCurrency } from '../../utils/formatters'; // Import formatCurrency
+import { formatCurrency } from '../../utils/formatters';
 
 interface PinjamanKaryawanTableProps {
   data: PinjamanKaryawanItem[];
@@ -14,7 +14,9 @@ interface PinjamanKaryawanTableProps {
   onOpenModal: (mode: 'add' | 'edit' | 'view', item?: PinjamanKaryawanItem) => void;
   onDelete: (id: string) => void;
   onDeleteAll: () => void;
-  onOpenPaymentModal: (item: PinjamanKaryawanItem) => void; // New prop for payment modal
+  onOpenPaymentModal: (item: PinjamanKaryawanItem) => void;
+  // ⬇️ baru: loading khusus tabel
+  loading?: boolean;
 }
 
 const PinjamanKaryawanTable: React.FC<PinjamanKaryawanTableProps> = ({
@@ -28,9 +30,9 @@ const PinjamanKaryawanTable: React.FC<PinjamanKaryawanTableProps> = ({
   onOpenModal,
   onDelete,
   onDeleteAll,
-  onOpenPaymentModal, // Destructure new prop
+  onOpenPaymentModal,
+  loading = false,
 }) => {
-  // Helper function to format payment method string
   const formatPaymentMethod = (method: string | null | undefined) => {
     if (!method) return 'N/A';
     return method.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
@@ -78,40 +80,26 @@ const PinjamanKaryawanTable: React.FC<PinjamanKaryawanTableProps> = ({
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  No.
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Tanggal Pinjam
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Karyawan
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Jumlah Pinjaman
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Sisa Pinjaman
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Jatuh Tempo
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Metode Pembayaran
-                </th> {/* New column */}
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Dicatat Oleh
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Aksi
-                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No.</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tanggal Pinjam</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Karyawan</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Jumlah Pinjaman</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sisa Pinjaman</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Jatuh Tempo</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Metode Pembayaran</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dicatat Oleh</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {data.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={10} className="px-6 py-6 whitespace-nowrap text-sm text-gray-500 text-center">
+                    Memuat data pinjaman karyawan...
+                  </td>
+                </tr>
+              ) : data.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
                     Tidak ada data pinjaman karyawan.
@@ -120,9 +108,7 @@ const PinjamanKaryawanTable: React.FC<PinjamanKaryawanTableProps> = ({
               ) : (
                 data.map((item, index) => (
                   <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {index + 1}
-                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{index + 1}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {new Date(item.tanggal_pinjam).toLocaleDateString('id-ID')}
                     </td>
@@ -141,25 +127,30 @@ const PinjamanKaryawanTable: React.FC<PinjamanKaryawanTableProps> = ({
                       {item.jatuh_tempo ? new Date(item.jatuh_tempo).toLocaleDateString('id-ID') : 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        item.status === 'active' ? 'bg-yellow-100 text-yellow-800' :
-                        item.status === 'completed' ? 'bg-green-100 text-green-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {item.status === 'active' ? 'Aktif' :
-                         item.status === 'completed' ? 'Lunas' : 'Macet'}
+                      <span
+                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          item.status === 'active'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : item.status === 'completed'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}
+                      >
+                        {item.status === 'active' ? 'Aktif' : item.status === 'completed' ? 'Lunas' : 'Macet'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {formatPaymentMethod(item.payment_method)}
                       {item.bank?.nama_bank && ` (${item.bank.nama_bank})`}
-                    </td> {/* Display payment method */}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {item.profiles_dicatat_oleh ? `${item.profiles_dicatat_oleh.first_name} ${item.profiles_dicatat_oleh.last_name || ''}` : 'N/A'}
+                      {item.profiles_dicatat_oleh
+                        ? `${item.profiles_dicatat_oleh.first_name} ${item.profiles_dicatat_oleh.last_name || ''}`
+                        : 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex space-x-2">
-                        {item.status !== 'completed' && ( // Only show pay button if not completed
+                        {item.status !== 'completed' && (
                           <button
                             onClick={() => onOpenPaymentModal(item)}
                             className="text-green-600 hover:text-green-900"

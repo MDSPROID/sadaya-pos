@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
-import { useKasKeluarData } from '../../hooks/useKasKeluarData'; // Import hook
-import PengeluaranTable from '../../components/laporan/PengeluaranTable'; // Import komponen tabel
+import React, { useState, useMemo, useEffect } from 'react';
+import { useKasKeluarData } from '../../hooks/useKasKeluarData';
+import PengeluaranTable from '../../components/laporan/PengeluaranTable';
 
 const LaporanPengeluaran: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -12,7 +12,13 @@ const LaporanPengeluaran: React.FC = () => {
     loading,
     error,
     fetchKasKeluar,
-  } = useKasKeluarData({ startDate, endDate }); // Menggunakan hook untuk mengambil data
+  } = useKasKeluarData({ startDate, endDate });
+
+  // 🔁 refresh hanya data tabel saat tanggal berubah
+  useEffect(() => {
+    fetchKasKeluar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate]);
 
   const filteredData = useMemo(() => {
     return data.filter(item =>
@@ -28,29 +34,8 @@ const LaporanPengeluaran: React.FC = () => {
   }, [filteredData]);
 
   const handlePrint = () => {
-    // Implementasi fungsi cetak di sini
-    // Untuk saat ini, kita bisa menampilkan pesan atau membuka jendela cetak browser
     window.print();
   };
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <p className="text-gray-600">Memuat laporan pengeluaran...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-center p-4 text-red-600">
-        <p>Error: {error}</p>
-        <button onClick={fetchKasKeluar} className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-          Coba Lagi
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -60,6 +45,14 @@ const LaporanPengeluaran: React.FC = () => {
           <p className="text-gray-600">Lihat dan cetak laporan pengeluaran kas perusahaan.</p>
         </div>
       </div>
+
+      {/* Error banner (tanpa full-page return) */}
+      {error && (
+        <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-700">
+          Error: {error}{' '}
+          <button onClick={fetchKasKeluar} className="ml-2 underline">Coba Lagi</button>
+        </div>
+      )}
 
       <PengeluaranTable
         data={filteredData}
@@ -71,6 +64,7 @@ const LaporanPengeluaran: React.FC = () => {
         setEndDate={setEndDate}
         totalJumlah={totalJumlah}
         onPrint={handlePrint}
+        loading={loading}    
       />
     </div>
   );
