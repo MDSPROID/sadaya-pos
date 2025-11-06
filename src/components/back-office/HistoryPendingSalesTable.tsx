@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, RefreshCcw, Play, Trash2 } from 'lucide-react';
+import { Search, RefreshCcw, Play, Trash2, Send } from 'lucide-react';
 
 interface PendingOrderItem {
   id: string;
@@ -28,6 +28,7 @@ interface PendingOrderItem {
   discount_amount?: number;
   tax_amount?: number;
   final_amount?: number;
+  wa_notified?: boolean | null;
 
   // dipakai untuk sembunyikan tombol Hapus saat proses_cetak
   order_status?: 'siap_cetak' | 'proses_cetak' | 'siap_ambil' | 'new' | string | null;
@@ -50,6 +51,8 @@ interface HistoryPendingSalesTableProps {
   onDelete: (orderId: string) => void;
   onRekap: () => void;
   error?: string | null;
+  onSendWhatsApp: (orderId: string) => void;
+  waSendingId?: string | null;
 }
 
 /* ====== Helpers untuk memformat notes Payment Details ====== */
@@ -165,6 +168,8 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
   onContinue,
   onDelete,
   onRekap,
+  onSendWhatsApp,
+  waSendingId,
   error,
 }) => {
 
@@ -344,6 +349,21 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
                           title="Lanjutkan Transaksi"
                         >
                           <Play className="h-5 w-5" />
+                        </button>
+
+                        {/* Tombol Kirim WA */}
+                        <button
+                          type="button"
+                          onClick={() => onSendWhatsApp(item.id)}
+                          disabled={!!item.wa_notified || (waSendingId === item.id)}
+                          className={`${
+                            item.wa_notified
+                              ? 'text-gray-400 cursor-not-allowed'
+                              : 'text-emerald-600 hover:text-emerald-800'
+                          }`}
+                          title={item.wa_notified ? 'Sudah dikirim WA' : 'Kirim WhatsApp'}
+                        >
+                          <Send className={`h-5 w-5 ${waSendingId === item.id ? 'animate-pulse' : ''}`} />
                         </button>
 
                         {/* Sembunyikan tombol Hapus jika bukan 'new' */}

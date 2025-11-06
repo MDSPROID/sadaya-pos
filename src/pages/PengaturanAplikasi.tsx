@@ -233,6 +233,24 @@ const PengaturanAplikasi: React.FC = () => {
               max="100"
             />
           </div>
+
+          {/* ⬇️ Field BARU: Token WhatsApp (Fonnte) */}
+          <div>
+            <label htmlFor="token_wa" className="block text-sm font-medium text-gray-700 mb-1">
+              Token WhatsApp
+            </label>
+            <input
+              type="text"
+              id="token_wa"
+              name="token_wa"
+              value={settings.token_wa || ''}
+              placeholder="Masukkan token whatsapp Anda"
+              onChange={handleSettingsChange}
+              disabled={!isEditingSettings}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+            />
+          </div>
+
           <div className="col-span-full">
             <label htmlFor="auto_select_harga_member" className="flex items-center text-sm font-medium text-gray-700">
               <input

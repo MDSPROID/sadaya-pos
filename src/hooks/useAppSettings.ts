@@ -18,6 +18,7 @@ export interface AppSettings {
   auto_select_harga_member: boolean;
   pembulatan_total_harga: boolean;
   logo_url: string | null;
+  token_wa:string | null;
 }
 
 export const useAppSettings = (isAdminOrSuperAdmin: boolean) => {
