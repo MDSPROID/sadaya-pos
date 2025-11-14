@@ -1,7 +1,7 @@
 // src/components/sales/PaymentModal.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { X } from 'lucide-react';
-import { isPrinterAvailable } from '../../utils/printAgent';
+// import { isPrinterAvailable } from '../../utils/printAgent';
 
 interface BankOption {
   id: string;
@@ -82,8 +82,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank_transfer'>('cash');
   const [selectedBankId, setSelectedBankId] = useState<string>('');
-  const [printerWarning, setPrinterWarning] = useState<string | null>(null);
-  const [showPrintFallback, setShowPrintFallback] = useState(false);
+  // const [printerWarning, setPrinterWarning] = useState<string | null>(null);
+  // const [showPrintFallback, setShowPrintFallback] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
   /* ---------- Ringkasan histori ---------- */
@@ -153,8 +153,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     // Reset field lain
     setPaymentMethod('cash');
     setSelectedBankId('');
-    setPrinterWarning(null);
-    setShowPrintFallback(false);
+    // setPrinterWarning(null);
+    // setShowPrintFallback(false);
     setIsProcessing(false);
   }, [
     isOpen,
@@ -196,15 +196,25 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     } as const;
   };
 
-  const sendPayment = async (skipPrint = false) => {
+  const sendPayment = async () => {
     if (isProcessing) return;
     setIsProcessing(true);
     try {
-      await Promise.resolve(onProcessPayment(buildPaymentPayload(), { skipPrint }));
+      await Promise.resolve(onProcessPayment(buildPaymentPayload()));
     } finally {
       setIsProcessing(false);
     }
   };
+
+  // const sendPayment = async (skipPrint = false) => {
+  //   if (isProcessing) return;
+  //   setIsProcessing(true);
+  //   try {
+  //     await Promise.resolve(onProcessPayment(buildPaymentPayload(), { skipPrint }));
+  //   } finally {
+  //     setIsProcessing(false);
+  //   }
+  // };
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -217,17 +227,19 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
     if (isProcessing) return;
 
-    const available = await isPrinterAvailable();
-    if (!available) {
-      setPrinterWarning(
-        'Printer bermasalah atau offline. Anda bisa lanjut bayar tanpa cetak nota atau batalkan transaksi.'
-      );
-      setShowPrintFallback(true);
-      return;
-    }
+    sendPayment();
+
+    // const available = await isPrinterAvailable();
+    // if (!available) {
+    //   setPrinterWarning(
+    //     'Printer bermasalah atau offline. Anda bisa lanjut bayar tanpa cetak nota atau batalkan transaksi.'
+    //   );
+    //   setShowPrintFallback(true);
+    //   return;
+    // }
 
     // Normal flow
-    sendPayment(false);
+    // sendPayment(false);
   };
 
   const disableSubmit =
@@ -466,14 +478,14 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             )}
           </div>
 
-          {printerWarning && (
+          {/* {printerWarning && (
             <div className="p-3 rounded bg-yellow-50 text-yellow-800 border border-yellow-200">
               {printerWarning}
             </div>
-          )}
+          )} */}
 
-          {showPrintFallback ? (
-            <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6">
+          {/* {showPrintFallback ? ( */}
+            {/* <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6">
               <button
                 type="button"
                 disabled={isProcessing}
@@ -491,7 +503,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                 Batalkan Transaksi
               </button>
             </div>
-          ) : (
+          ) : ( */}
             <div className="flex justify-end space-x-3 mt-6">
               <button
                 type="button"
@@ -510,7 +522,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                 {isProcessing ? 'Memproses...' : 'Bayar & Cetak Nota'}
               </button>
             </div>
-          )}
+          {/* )} */}
         </form>
       </div>
     </div>

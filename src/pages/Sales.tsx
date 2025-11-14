@@ -4,7 +4,7 @@ import { useSalesOrder } from '../hooks/useSalesOrder';
 import { showError } from '../utils/toast';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useHistoryPendingSalesData } from '../hooks/useHistoryPendingSalesData';
-import PrinterStatusBadge from '../components/sales/PrinterStatusBadge';
+// import PrinterStatusBadge from '../components/sales/PrinterStatusBadge';
 import { supabase } from '../integrations/supabase/client';
 
 import { isKasirOrSuperAdmin } from '../utils/roles';
@@ -69,6 +69,209 @@ const dbg = (...a:any[]) => { if (__DBG) console.log('[Sales]', ...a); };
 // ============================================================================
 
 const formatRupiah = (n: number) => `Rp ${Number(n||0).toLocaleString('id-ID')}`;
+
+// ====== HELPER CETAK NOTA VIA BROWSER (FORMAT BARU) ======
+const printReceiptWindow = (params: {
+  invoiceNumber?: string;
+  customerName?: string;
+  items: any[];
+  finalAmount: number;
+  dpAmount: number;
+  paidAmount: number;
+  totalPaid: number;
+  tempoActive: boolean;
+  tempoDate?: string;
+  company?: {
+    logoUrl?: string;
+    companyName?: string;
+    address?: string;
+    phone?: string;
+  };
+  bank?: {
+    nama_bank?: string;
+    rekening?: string;
+    nama_akun?: string;
+  };
+  kasirName?: string;
+}) => {
+  if (typeof window === 'undefined') return;
+
+  const {
+    invoiceNumber,
+    customerName,
+    items,
+    finalAmount,
+    dpAmount,
+    paidAmount,
+    totalPaid,
+    tempoActive,
+    tempoDate,
+    company,
+    bank,
+    kasirName,
+  } = params;
+
+  const sisa = Math.max(finalAmount - totalPaid, 0);
+  const status = sisa <= 0 ? 'LUNAS' : 'BELUM LUNAS';
+
+  const now = new Date();
+  const tgl = now.toLocaleDateString('id-ID');
+  const jam = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+  const itemsRows = (items || []).map((it: any, idx: number) => {
+    const name =
+      it?.product_name ||
+      it?.nama_produk ||
+      it?.nama ||
+      `Item ${idx + 1}`;
+    const qty = Number(it?.quantity ?? it?.qty ?? 0);
+    const harga = Number(it?.harga_satuan ?? it?.price ?? it?.harga ?? 0);
+    const subtotal = Number(it?.subtotal_per_item ?? it?.subtotal ?? qty * harga);
+
+    return `
+      <tr>
+        <td class="left">${name}</td>
+        <td class="right">${formatRupiah(harga)}</td>
+        <td class="center">${qty}</td>
+        <td class="right">${formatRupiah(subtotal)}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const bankLine1 = bank
+    ? `${bank.nama_bank || ''} A/N ${bank.nama_akun || ''}`
+    : '';
+  const bankLine2 = bank?.rekening || '';
+
+  const w = window.open('', '_blank', 'width=400,height=600');
+  if (!w) return;
+
+  w.document.open();
+  w.document.write(`
+    <html>
+      <head>
+        <title>Nota Penjualan</title>
+        <style>
+          @page {
+            size: 80mm auto;
+            margin: 4mm;
+          }
+          body {
+            font-family: Arial, sans-serif;
+            font-size: 11px;
+          }
+          .center { text-align: center; }
+          .right { text-align: right; }
+          .left { text-align: left; }
+          .divider { border-top: 1px dashed #000; margin: 4px 0; }
+          table { width: 100%; border-collapse: collapse; }
+          td, th { padding: 2px 0; vertical-align: top; }
+          th { border-bottom: 1px solid #000; }
+        </style>
+      </head>
+      <body onload="window.print(); window.close();">
+
+        <!-- Header perusahaan -->
+        <div class="center">
+          ${company?.logoUrl ? `<img src="${company.logoUrl}" style="max-width:60px;max-height:60px;margin-bottom:4px;" />` : ''}
+          <div><strong>${company?.companyName || ''}</strong></div>
+          <div>${company?.address || ''}</div>
+          <div>${company?.phone || ''}</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Info nota -->
+        <div>
+          <div>Nota : ${invoiceNumber || '-' }   Tgl : ${tgl}</div>
+          <div>Telp/HP : ${company?.phone || '-'}   Jam : ${jam}</div>
+          <div>Customer : ${customerName || '-'}</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Tabel produk -->
+        <table>
+          <thead>
+            <tr>
+              <th class="left">Nama produk</th>
+              <th class="right">Harga</th>
+              <th class="center">Qty</th>
+              <th class="right">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsRows}
+          </tbody>
+        </table>
+
+        <div class="divider"></div>
+
+        <!-- Ringkasan -->
+        <table>
+          <tbody>
+            <tr>
+              <td class="left">Grand total :</td>
+              <td class="right">${formatRupiah(finalAmount)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="divider"></div>
+
+        <table>
+          <tbody>
+            <tr>
+              <td class="left">Sisa :</td>
+              <td class="right">${formatRupiah(sisa)}</td>
+            </tr>
+            <tr>
+              <td class="left">Bayar :</td>
+              <td class="right">${formatRupiah(paidAmount)}</td>
+            </tr>
+            <tr>
+              <td class="left">Kembali :</td>
+              <td class="right">${formatRupiah(Math.max(totalPaid - finalAmount, 0))}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="divider"></div>
+
+        <!-- Status & Petugas -->
+        <table>
+          <tbody>
+            <tr>
+              <td class="left">Status</td>
+              <td class="right">Petugas</td>
+            </tr>
+            <tr>
+              <td class="left"><strong>${status}</strong></td>
+              <td class="right">${kasirName || ''}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        ${tempoActive && tempoDate ? `
+          <div style="margin-top:4px;">Tempo : ${new Date(tempoDate).toLocaleDateString('id-ID')}</div>
+        ` : ''}
+
+        <!-- Bank transfer -->
+        ${bankLine1 || bankLine2 ? `
+        <div class="center" style="margin-top:8px;">
+          Transfer Ke :<br/>
+          ${bankLine1}<br/>
+          ${bankLine2}
+        </div>
+        ` : ''}
+
+      </body>
+    </html>
+  `);
+  w.document.close();
+};
+// ====== END HELPER CETAK NOTA ======
+
 
 const formatItemsForWA = (items: Array<any>) => {
   dbg('formatItemsForWA items=', items);
@@ -231,6 +434,39 @@ const Sales: React.FC = () => {
 
   const { profile } = useSession();
   const canPay = isKasirOrSuperAdmin(profile?.role);
+
+  const kasirName =
+  (profile as any)?.name ||
+  (profile as any)?.full_name ||
+  (profile as any)?.email ||
+  '';
+
+  // App settings untuk logo + identitas perusahaan
+  const [appSettings, setAppSettings] = React.useState<{
+    logo_url?: string;
+    nama_perusahaan?: string;
+    alamat?: string;
+    telepon?: string;
+  } | null>(null);
+
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('app_settings')
+          .select('logo_url, nama_perusahaan, alamat, telepon')
+          .maybeSingle();
+
+        if (error) {
+          console.warn('[Sales] load app_settings for print error:', error);
+          return;
+        }
+        setAppSettings(data || null);
+      } catch (e) {
+        console.warn('[Sales] load app_settings exception:', e);
+      }
+    })();
+  }, []);
 
   const [reloadingProducts, setReloadingProducts] = useState(false);
 
@@ -703,9 +939,134 @@ const Sales: React.FC = () => {
     tempo_date?: string;
   };
 
+  // const handleProcessPayment = async (
+  //   detail: PaymentDetailsFromModal,
+  //   options?: { skipPrint?: boolean }
+  // ) => {
+  //   dbg('handleProcessPayment detail=', detail, 'orderFormData=', orderFormData);
+  //   try {
+  //     if (orderFormData.customer_id) {
+  //       await persistCustomerNotes();
+  //     }
+
+  //     const targetName = (orderFormData.customer_name || (orderFormData as any).customer_display_name || '').trim();
+  //     const itemsText  = formatItemsForWA(orderFormData.items);
+
+  //     // 🚫 Cegah kirim WA ulang kalau sudah pernah dikirim
+  //     let shouldSendWA = true;
+  //     if (loadOrderId) {
+  //       const { data: existingOrder, error: fetchErr } = await supabase
+  //         .from('orders')
+  //         .select('wa_notified')
+  //         .eq('id', loadOrderId)
+  //         .maybeSingle();
+
+  //       if (!fetchErr && existingOrder?.wa_notified) {
+  //         dbg('Order sudah wa_notified = true → WA akan dilewati, tapi order tetap disimpan');
+  //         shouldSendWA = false; // <-- penting
+  //       }
+  //     }
+
+  //     const baseMsg = buildWaMessage({
+  //       customerName: targetName,
+  //       finalAmount: detail.final_amount,
+  //       dpAmount: Number(detail.dp_amount || 0),
+  //       paidAmount: Number(detail.paid_amount || 0),
+  //       totalPaid: Number(detail.total_paid || 0),
+  //       tempoActive: !!detail.tempo_active,
+  //       tempoDate: detail.tempo_date,
+  //       itemsText,
+  //     });
+
+  //     await ensureDesignerId();
+
+  //     const status: 'paid' | 'pending' =
+  //       detail?.payment_status ?? (detail.total_paid >= detail.final_amount ? 'paid' : 'pending');
+
+  //     dbg('handleProcessPayment -> handleSaveOrder status=', status);
+  //     await handleSaveOrder(status, detail, { ...(options || {}), suppressReadyPopup: true });
+
+  //     // Ambil invoice terakhir (atau pakai loadOrderId)
+  //     let invoice = '';
+  //     let orderIdForFlag: string | undefined = loadOrderId;
+
+  //     try {
+  //       const q = supabase
+  //         .from('orders')
+  //         .select('id, invoice_number, created_at, final_amount, payment_status')
+  //         .eq('kasir_id', currentUserId as string)
+  //         .order('created_at', { ascending: false })
+  //         .limit(1);
+
+  //       const { data: last, error: lastErr } = await q;
+  //       dbg('fetch last order by kasir -> err=', lastErr, 'data=', last);
+
+  //       if (!orderIdForFlag && Array.isArray(last) && last[0]) {
+  //         orderIdForFlag = String(last[0].id);
+  //       }
+  //       if (!lastErr && Array.isArray(last) && last[0]?.invoice_number) {
+  //         invoice = String(last[0].invoice_number);
+  //       }
+  //     } catch (e) {
+  //       console.warn('Gagal ambil invoice terbaru:', e);
+  //     }
+
+  //     const finalMsg = invoice ? `*Invoice:* ${invoice}\n${baseMsg}` : baseMsg;
+
+  //     // ⛔️ Jika sudah wa_notified, SKIP bagian kirim WA seluruhnya
+  //     if (!shouldSendWA) {
+  //       dbg('Skip kirim WA karena wa_notified sudah TRUE');
+  //       if (loadOrderId) {
+  //         navigate('/dashboard/history-pending');
+  //       } else {
+  //         navigate('/dashboard/sales', { replace: true });
+  //       }
+  //       return; // <-- penting
+  //     }
+
+  //     // ===== Kirim WA hanya jika shouldSendWA = true =====
+  //     let phoneRaw = (orderFormData.customer_phone || (orderFormData as any).customer_display_phone || '').trim();
+  //     dbg('handleProcessPayment phoneRaw(before)=', phoneRaw);
+
+  //     if (!phoneRaw) {
+  //       // tidak ada nomor → buka prompt WA, kirim setelah user input
+  //       dbg('open WA prompt because phone empty (shouldSendWA = true)');
+  //       setWaPendingDetail({
+  //         msg: finalMsg,
+  //         navigateTo: loadOrderId ? 'history' : 'sales',
+  //         orderId: orderIdForFlag,
+  //       });
+  //       setWaInput('08');
+  //       setShowWaPrompt(true);
+  //       return;
+  //     }
+
+  //     const normalized = normalizePhone(phoneRaw);
+  //     try {
+  //       await sendWhatsApp(normalized, finalMsg);
+  //       if (orderIdForFlag) {
+  //         await markOrderWaNotified(orderIdForFlag);
+  //       } else {
+  //         console.warn('[Sales] orderIdForFlag kosong, tidak bisa update wa_notified');
+  //       }
+  //     } catch (e) {
+  //       console.warn('sendWhatsApp error', e);
+  //     }
+
+  //     if (loadOrderId) {
+  //       navigate('/dashboard/history-pending');
+  //     } else {
+  //       navigate('/dashboard/sales', { replace: true });
+  //     }
+  //   } catch (err: any) {
+  //     console.error(err);
+  //     showError(err?.message || 'Gagal memproses pembayaran.');
+  //   }
+  // };
+
   const handleProcessPayment = async (
     detail: PaymentDetailsFromModal,
-    options?: { skipPrint?: boolean }
+    options?: { skipPrint?: boolean } // boleh dibiarkan, tapi sudah tidak dipakai
   ) => {
     dbg('handleProcessPayment detail=', detail, 'orderFormData=', orderFormData);
     try {
@@ -727,7 +1088,7 @@ const Sales: React.FC = () => {
 
         if (!fetchErr && existingOrder?.wa_notified) {
           dbg('Order sudah wa_notified = true → WA akan dilewati, tapi order tetap disimpan');
-          shouldSendWA = false; // <-- penting
+          shouldSendWA = false;
         }
       }
 
@@ -750,7 +1111,7 @@ const Sales: React.FC = () => {
       dbg('handleProcessPayment -> handleSaveOrder status=', status);
       await handleSaveOrder(status, detail, { ...(options || {}), suppressReadyPopup: true });
 
-      // Ambil invoice terakhir (atau pakai loadOrderId)
+      // ========= Ambil invoice & orderId =========
       let invoice = '';
       let orderIdForFlag: string | undefined = loadOrderId;
 
@@ -777,7 +1138,36 @@ const Sales: React.FC = () => {
 
       const finalMsg = invoice ? `*Invoice:* ${invoice}\n${baseMsg}` : baseMsg;
 
-      // ⛔️ Jika sudah wa_notified, SKIP bagian kirim WA seluruhnya
+      // ========= 🖨 CETAK NOTA via window.print() =========
+      const primaryBank = (bankOptions && bankOptions.length > 0) ? bankOptions[0] : undefined;
+
+      printReceiptWindow({
+        invoiceNumber: invoice,
+        customerName: targetName,
+        items: orderFormData.items ?? [],
+        finalAmount: detail.final_amount,
+        dpAmount: detail.dp_amount,
+        paidAmount: detail.paid_amount,
+        totalPaid: detail.total_paid,
+        tempoActive: !!detail.tempo_active,
+        tempoDate: detail.tempo_date,
+        company: {
+          logoUrl: appSettings?.logo_url || '',
+          companyName: appSettings?.nama_perusahaan || '',
+          address: appSettings?.alamat || '',
+          phone: appSettings?.telepon || '',
+        },
+        bank: primaryBank
+          ? {
+              nama_bank: primaryBank.nama_bank,
+              rekening: primaryBank.rekening,
+              nama_akun: primaryBank.nama_akun,
+            }
+          : undefined,
+        kasirName,
+      });
+
+      // ========= WA LOGIC =========
       if (!shouldSendWA) {
         dbg('Skip kirim WA karena wa_notified sudah TRUE');
         if (loadOrderId) {
@@ -785,10 +1175,9 @@ const Sales: React.FC = () => {
         } else {
           navigate('/dashboard/sales', { replace: true });
         }
-        return; // <-- penting
+        return;
       }
 
-      // ===== Kirim WA hanya jika shouldSendWA = true =====
       let phoneRaw = (orderFormData.customer_phone || (orderFormData as any).customer_display_phone || '').trim();
       dbg('handleProcessPayment phoneRaw(before)=', phoneRaw);
 
@@ -855,7 +1244,7 @@ const Sales: React.FC = () => {
     <div className="h-full w-full space-y-6 p-6 bg-gray-100 flex flex-col">
       <div className="flex items-center justify-between mb-6 flex-shrink-0">
         <h1 className="text-3xl font-bold text-gray-900">Transaksi Penjualan</h1>
-        <PrinterStatusBadge />
+        {/* <PrinterStatusBadge /> */}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden">
