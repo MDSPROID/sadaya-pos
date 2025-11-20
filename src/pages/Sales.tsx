@@ -130,10 +130,10 @@ const printReceiptWindow = (params: {
 
     return `
       <tr>
-        <td class="left">${name}</td>
-        <td class="right">${formatRupiah(harga)}</td>
-        <td class="center">${qty}</td>
-        <td class="right">${formatRupiah(subtotal)}</td>
+        <td style="font-size:11px;" class="left">${name}</td>
+        <td style="font-size:11px;" class="right">${formatRupiah(harga)}</td>
+        <td style="font-size:11px;" class="center">${qty}</td>
+        <td style="font-size:11px;" class="right">${formatRupiah(subtotal)}</td>
       </tr>
     `;
   }).join('');
@@ -194,10 +194,10 @@ const printReceiptWindow = (params: {
         <table>
           <thead>
             <tr>
-              <th class="left">Nama produk</th>
-              <th class="right">Harga</th>
-              <th class="center">Qty</th>
-              <th class="right">Subtotal</th>
+              <th style="font-size:11px;" class="left">Nama produk</th>
+              <th style="font-size:11px;" class="right">Harga</th>
+              <th style="font-size:11px;" class="center">Qty</th>
+              <th style="font-size:11px;" class="right">Subtotal</th>
             </tr>
           </thead>
           <tbody>
@@ -211,8 +211,8 @@ const printReceiptWindow = (params: {
         <table>
           <tbody>
             <tr>
-              <td class="left">Grand total :</td>
-              <td class="right">${formatRupiah(finalAmount)}</td>
+              <td style="font-size:11px;" class="left">Grand total :</td>
+              <td style="font-size:11px;" class="right">${formatRupiah(finalAmount)}</td>
             </tr>
           </tbody>
         </table>
@@ -222,16 +222,16 @@ const printReceiptWindow = (params: {
         <table>
           <tbody>
             <tr>
-              <td class="left">Sisa :</td>
-              <td class="right">${formatRupiah(sisa)}</td>
+              <td style="font-size:11px;" class="left">Sisa :</td>
+              <td style="font-size:11px;" class="right">${formatRupiah(sisa)}</td>
             </tr>
             <tr>
-              <td class="left">Bayar :</td>
-              <td class="right">${formatRupiah(paidAmount)}</td>
+              <td style="font-size:11px;" class="left">Bayar :</td>
+              <td style="font-size:11px;" class="right">${formatRupiah(paidAmount)}</td>
             </tr>
             <tr>
-              <td class="left">Kembali :</td>
-              <td class="right">${formatRupiah(Math.max(totalPaid - finalAmount, 0))}</td>
+              <td style="font-size:11px;" class="left">Kembali :</td>
+              <td style="font-size:11px;" class="right">${formatRupiah(Math.max(totalPaid - finalAmount, 0))}</td>
             </tr>
           </tbody>
         </table>
@@ -242,12 +242,12 @@ const printReceiptWindow = (params: {
         <table>
           <tbody>
             <tr>
-              <td class="left">Status</td>
-              <td class="right">Petugas</td>
+              <td style="font-size:11px;" class="left">Status</td>
+              <td style="font-size:11px;" class="right">Petugas</td>
             </tr>
             <tr>
-              <td class="left"><strong>${status}</strong></td>
-              <td class="right">${kasirName || ''}</td>
+              <td style="font-size:11px;" class="left"><strong>${status}</strong></td>
+              <td style="font-size:11px;" class="right">${kasirName || ''}</td>
             </tr>
           </tbody>
         </table>
