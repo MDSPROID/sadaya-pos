@@ -287,40 +287,85 @@ const SalesTable: React.FC<SalesTableProps> = ({
 
   // ===== C) Nama petugas tampilan =====
   const computePetugasNames = (item: any) => {
-    const designerName =
-      String(item?.designer_name ?? '').trim() ||
-      getNameFromProfilesById(item?.designer_id) ||
-      '';
+    const ensureArray = (v: any) => (Array.isArray(v) ? v : []);
 
-    const operatorName =
-      String(item?.operator_name ?? '').trim() ||
-      getNameFromProfilesById(item?.operator_id) ||
-      '';
-
-    const finishingName =
-      String(item?.finishing_name ?? '').trim() ||
-      getNameFromProfilesById(item?.finishing_id) ||
-      '';
-
-    let kasirName =
-      String(item?.kasir_name ?? '').trim() ||
-      getNameFromProfilesById(item?.kasir_id) ||
-      '';
-    if (!kasirName && item?.profiles) {
-      const fromProfiles = nameFromProfile(item.profiles);
-      if (fromProfiles) kasirName = fromProfiles;
-    }
-
-    const dashIfEmpty = (v: string) => (v && v.trim() ? v.trim() : '-');
-
-    return {
-      designer: dashIfEmpty(designerName),
-      operator: dashIfEmpty(operatorName),
-      finishing: dashIfEmpty(finishingName),
-      kasir: dashIfEmpty(kasirName),
+    // ambil nama dari profileCache berdasarkan id
+    const nameById = (rawId: any): string => {
+      if (rawId === null || rawId === undefined || rawId === '') return '';
+      const id = String(rawId);
+      const n = getNameFromProfilesById(id);
+      return n ? n.trim() : '';
     };
+
+    const joinOrDash = (names: string[]): string => {
+      const cleaned = names
+        .map((s) => (s || '').toString().trim())
+        .filter(Boolean);
+      const uniq = Array.from(new Set(cleaned));
+      return uniq.length ? uniq.join(', ') : '-';
+    };
+
+    // === DESIGNER: hanya dari order_items.designer_id (bisa lebih dari 1) ===
+    const designerIds = new Set<string>();
+    ensureArray((item as any).order_items).forEach((it: any) => {
+      if (it?.designer_id) {
+        designerIds.add(String(it.designer_id));
+      }
+    });
+
+    const designerNames: string[] = [];
+    designerIds.forEach((id) => {
+      const nm = nameById(id);
+      if (nm) designerNames.push(nm);
+    });
+    const designer = joinOrDash(designerNames);
+
+    // === KASIR: dari orders.kasir_id ===
+    const kasirName = nameById(item?.kasir_id) || nameFromProfile(item?.profiles);
+    const kasir = kasirName && kasirName.trim() ? kasirName.trim() : '-';
+
+    // === OPERATOR: dari orders.operator_id ===
+    const operatorName = nameById(item?.operator_id);
+    const operator = operatorName && operatorName.trim() ? operatorName.trim() : '-';
+
+    // === FINISHING: dari orders.finishing_id ===
+    const finishingName = nameById(item?.finishing_id);
+    const finishing = finishingName && finishingName.trim() ? finishingName.trim() : '-';
+
+    return { designer, kasir, operator, finishing };
   };
 
+  // ===== C.1) Helper untuk kapitalisasi & render petugas (adopsi dari StatusOrder) =====
+  const ucfirst = (s?: string | null): string => {
+    const str = (s ?? '').toString().trim();
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  };
+
+  const renderPetugas = (item: any) => {
+    const p = computePetugasNames(item);
+
+    const rows: Array<[string, string]> = [
+      ['Designer', p.designer],
+      ['Kasir', p.kasir],
+      ['Operator', p.operator],
+      ['Finishing', p.finishing],
+    ];
+
+    return (
+      <div className="whitespace-pre-line break-words">
+        {rows.map(([label, val]) => (
+          <div key={label}>
+            <span className="text-gray-500">{label}: </span>
+            <span className="text-gray-900">
+              {val && val.toString().trim() ? val : '-'}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+  
   // ===== D) CUSTOMER (label & id) =====
   const extractCustomerLabel = (it: any): string => {
     return (it.customer_display_name ? it.customer_display_name.charAt(0).toUpperCase() + it.customer_display_name.slice(1) : '') || it?.pelanggan?.[0]?.nama_pelanggan || 'Umum';
@@ -854,25 +899,8 @@ const SalesTable: React.FC<SalesTableProps> = ({
                         </div>
                       </td>
 
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {(() => {
-                          const p = { ...computePetugasNames(item) };
-                          return (
-                            <div className="whitespace-pre-line break-words">
-                              {[
-                                ['Designer', p.designer],
-                                ['Kasir', p.kasir],
-                                ['Operator', p.operator],
-                                ['Finishing', p.finishing],
-                              ].map(([label, val]) => (
-                                <div key={String(label)}>
-                                  <span className="text-gray-500">{label}: </span>
-                                  <span className="text-gray-900">{val}</span>
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        })()}
+                      <td className="px-6 py-4 whitespace-nowrap align-top text-sm text-gray-900">
+                        {renderPetugas(item)}
                       </td>
 
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">

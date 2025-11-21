@@ -118,25 +118,54 @@ const printReceiptWindow = (params: {
   const tgl = now.toLocaleDateString('id-ID');
   const jam = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
-  const itemsRows = (items || []).map((it: any, idx: number) => {
-    const name =
-      it?.product_name ||
-      it?.nama_produk ||
-      it?.nama ||
-      `Item ${idx + 1}`;
-    const qty = Number(it?.quantity ?? it?.qty ?? 0);
-    const harga = Number(it?.harga_satuan ?? it?.price ?? it?.harga ?? 0);
-    const subtotal = Number(it?.subtotal_per_item ?? it?.subtotal ?? qty * harga);
+  const itemsRows = (items || [])
+    .map((it: any, idx: number) => {
+      const name =
+        it?.product_name ||
+        it?.nama_produk ||
+        it?.nama ||
+        `Item ${idx + 1}`;
 
-    return `
-      <tr>
-        <td style="font-size:11px;" class="left">${name}</td>
-        <td style="font-size:11px;" class="right">${formatRupiah(harga)}</td>
-        <td style="font-size:11px;" class="center">${qty}</td>
-        <td style="font-size:11px;" class="right">${formatRupiah(subtotal)}</td>
-      </tr>
-    `;
-  }).join('');
+      const qty = Number(it?.quantity ?? it?.qty ?? 0);
+
+      // --- Ambil harga dengan fallback berurutan ---
+      let harga = Number(
+        it?.unit_price ??
+        it?.harga_satuan ??
+        it?.price ??
+        it?.harga ??
+        0
+      );
+
+      // Kalau harga masih 0, coba hitung dari subtotal_per_item / qty
+      if ((!harga || isNaN(harga) || harga === 0) && qty > 0) {
+        const rawSubtotal = Number(it?.subtotal_per_item ?? it?.subtotal ?? 0);
+        if (rawSubtotal > 0) {
+          harga = rawSubtotal / qty;
+        }
+      }
+
+      if (!isFinite(harga)) harga = 0;
+
+      const subtotal = (() => {
+        const s = Number(
+          it?.subtotal_per_item ??
+          it?.subtotal ??
+          qty * harga
+        );
+        return isFinite(s) ? s : 0;
+      })();
+
+      return `
+        <tr>
+          <td style="font-size:11px;" class="left">${name}</td>
+          <td style="font-size:11px;" class="right">${formatRupiah(harga)}</td>
+          <td style="font-size:11px;" class="center">${qty}</td>
+          <td style="font-size:11px;" class="right">${formatRupiah(subtotal)}</td>
+        </tr>
+      `;
+    })
+    .join('');
 
   const bankLine1 = bank
     ? `${bank.nama_bank || ''} A/N ${bank.nama_akun || ''}`
@@ -154,7 +183,7 @@ const printReceiptWindow = (params: {
         <style>
           @page {
             size: 80mm auto;
-            margin: 4mm;
+            margin: 3mm;
           }
           body {
             font-family: Arial, sans-serif;
@@ -167,26 +196,73 @@ const printReceiptWindow = (params: {
           table { width: 100%; border-collapse: collapse; }
           td, th { padding: 2px 0; vertical-align: top; }
           th { border-bottom: 1px solid #000; }
+          .info-table td { font-size: 11px; }
+          img {
+            image-rendering: crisp-edges;
+            image-rendering: -webkit-optimize-contrast;
+          }
         </style>
       </head>
       <body onload="window.print(); window.close();">
 
         <!-- Header perusahaan -->
         <div class="center">
-          ${company?.logoUrl ? `<img src="${company.logoUrl}" style="max-width:60px;max-height:60px;margin-bottom:4px;" />` : ''}
-          <div><strong>${company?.companyName || ''}</strong></div>
+          ${
+            company?.logoUrl
+              ? `<img src="${company.logoUrl}" style="width:140px;height:auto;margin-bottom:4px;" />`
+              : ''
+          }
+          <div style="font-size:14px !important; font-weight:bold;"><strong>${company?.companyName || ''}</strong></div>
           <div>${company?.address || ''}</div>
           <div>${company?.phone || ''}</div>
         </div>
 
         <div class="divider"></div>
 
-        <!-- Info nota -->
-        <div>
-          <div>Nota : ${invoiceNumber || '-' }   Tgl : ${tgl}</div>
-          <div>Telp/HP : ${company?.phone || '-'}   Jam : ${jam}</div>
-          <div>Customer : ${customerName || '-'}</div>
-        </div>
+        <!-- Info nota dalam bentuk tabel kiri-kanan -->
+        <table class="info-table">
+          <tr>
+            <!-- Kolom kiri -->
+            <td class="left" style="vertical-align: top; width: 60%;">
+              <table style="width:100%; font-size:11px; border-collapse: collapse;">
+                <tr>
+                  <td style="width:60px; padding:1px 0;">Nota</td>
+                  <td style="padding:1px 0;">:</td>
+                  <td style="padding:1px 0;">${invoiceNumber || '-'}</td>
+                </tr>
+                <tr>
+                  <td style="padding:1px 0;">Telp/HP</td>
+                  <td style="padding:1px 0;">:</td>
+                  <td style="padding:1px 0;">${company?.phone || '-'}</td>
+                </tr>
+                <tr>
+                  <td style="padding:1px 0;">Customer</td>
+                  <td style="padding:1px 0;">:</td>
+                  <td style="padding:1px 0;">
+                    ${customerName ? customerName.charAt(0).toUpperCase() + customerName.slice(1).toLowerCase() : '-'}
+                  </td>
+                </tr>
+              </table>
+            </td>
+
+            <!-- Kolom kanan -->
+            <td class="left" style="vertical-align: top; width: 40%;">
+              <table style="width:100%; font-size:11px;">
+                <tr>
+                  <td style="width:40px;">Tgl</td>
+                  <td>:</td>
+                  <td>${tgl}</td>
+                </tr>
+                <tr>
+                  <td>Jam</td>
+                  <td>:</td>
+                  <td>${jam}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
 
         <div class="divider"></div>
 
@@ -252,18 +328,26 @@ const printReceiptWindow = (params: {
           </tbody>
         </table>
 
-        ${tempoActive && tempoDate ? `
+        ${
+          tempoActive && tempoDate
+            ? `
           <div style="margin-top:4px;">Tempo : ${new Date(tempoDate).toLocaleDateString('id-ID')}</div>
-        ` : ''}
+        `
+            : ''
+        }
 
         <!-- Bank transfer -->
-        ${bankLine1 || bankLine2 ? `
+        ${
+          bankLine1 || bankLine2
+            ? `
         <div class="center" style="margin-top:8px;">
           Transfer Ke :<br/>
           ${bankLine1}<br/>
           ${bankLine2}
         </div>
-        ` : ''}
+        `
+            : ''
+        }
 
       </body>
     </html>
@@ -271,7 +355,6 @@ const printReceiptWindow = (params: {
   w.document.close();
 };
 // ====== END HELPER CETAK NOTA ======
-
 
 const formatItemsForWA = (items: Array<any>) => {
   dbg('formatItemsForWA items=', items);
@@ -435,11 +518,9 @@ const Sales: React.FC = () => {
   const { profile } = useSession();
   const canPay = isKasirOrSuperAdmin(profile?.role);
 
-  const kasirName =
-  (profile as any)?.name ||
-  (profile as any)?.full_name ||
-  (profile as any)?.email ||
-  '';
+  const kasirName = profile
+  ? `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim()
+  : '-';
 
   // App settings untuk logo + identitas perusahaan
   const [appSettings, setAppSettings] = React.useState<{
@@ -1134,6 +1215,21 @@ const Sales: React.FC = () => {
         }
       } catch (e) {
         console.warn('Gagal ambil invoice terbaru:', e);
+      }
+
+      // === Set siap_cetak_at saat user klik "Bayar & Cetak Nota" ===
+      try {
+        if (orderIdForFlag) {
+          await supabase
+            .from('orders')
+            .update({
+              siap_cetak_at: new Date().toISOString(),
+            })
+            .eq('id', orderIdForFlag)
+            .is('siap_cetak_at', null); // kalau mau hanya di-set sekali
+        }
+      } catch (e) {
+        console.warn('Gagal update siap_cetak_at:', e);
       }
 
       const finalMsg = invoice ? `*Invoice:* ${invoice}\n${baseMsg}` : baseMsg;

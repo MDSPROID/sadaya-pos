@@ -334,7 +334,7 @@ const LaporanPenjualan: React.FC = () => {
     );
   }, [filteredAndSortedData]);
 
-  // --- Pagination (client-side) ---  (HANYA SEKALI)
+  // --- Pagination (client-side) ---
   const paginatedCombinedData = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
     const endIndex = startIndex + pageSize;
@@ -344,7 +344,7 @@ const LaporanPenjualan: React.FC = () => {
   const totalCombinedCount = filteredAndSortedData.length;
   const totalPages = Math.ceil(totalCombinedCount / pageSize);
 
-  // --- Total penjualan (terfilter) --- (HANYA SEKALI)
+  // --- Total penjualan (terfilter) ---
   const totalSalesAmountForFilteredData = useMemo(() => {
     return filteredAndSortedData.reduce((sum, item) => sum + item.final_amount, 0);
   }, [filteredAndSortedData]);
@@ -496,7 +496,7 @@ const LaporanPenjualan: React.FC = () => {
         )}
       </div>
 
-      {/* KARTU RINGKASAN — berdasarkan filter (tanpa block halaman) */}
+      {/* KARTU RINGKASAN */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-lg shadow-sm p-6 flex items-center">
           <div className="bg-blue-100 p-3 rounded-lg">
@@ -506,7 +506,6 @@ const LaporanPenjualan: React.FC = () => {
             <p className="text-sm font-medium text-gray-600">Omset (Periode Ini)</p>
             <p className="text-2xl font-bold text-gray-900">
               {formatCurrency(totalSalesAmountForFilteredData)}
-              {/* Atau gunakan filteredSummary.omset kalau mau omset+DP saja */}
             </p>
           </div>
         </div>
@@ -572,9 +571,8 @@ const LaporanPenjualan: React.FC = () => {
             finishingOptions={finishingOptions}
             selectedFinishingId={selectedFinishingId}
             onFinishingChange={(e) => setSelectedFinishingId(e.target.value)}
-            isRefreshing={isRefreshing} // ⬅️ mini loader di dalam tabel
+            isRefreshing={isRefreshing}
 
-            /* === NEW: props untuk checkbox selection === */
             selectedIds={selectedIds}
             onToggleRow={toggleRow}
             onToggleAllPage={toggleAllOnPage}
@@ -597,27 +595,10 @@ const LaporanPenjualan: React.FC = () => {
               <Trash2 className="h-5 w-5 mr-2" />
               Hapus Terpilih ({selectedIds.length})
             </button>
-            <button
-              onClick={handleDeleteSelectedIds}
-              disabled={!selectedIds.length}
-              className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-            >
-              <Trash2 className="h-5 w-5 mr-2" />
-              Hapus Semua (Filter)
-            </button>
           </div>
         </div>
         <div className="lg:col-span-1 flex flex-col space-y-6">
           <SalesDetailPanel selectedItem={selectedSalesItem} />
-          {/* <div className="bg-white rounded-lg shadow-sm p-6 space-y-3">
-            <h3 className="text-lg font-semibold text-gray-900">Cetak Format Lain</h3>
-            <button className="w-full px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors">
-              Cetak Format B
-            </button>
-            <button className="w-full px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors">
-              Cetak Format C
-            </button>
-          </div> */}
         </div>
       </div>
     </div>

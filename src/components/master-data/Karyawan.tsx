@@ -17,7 +17,6 @@ interface KaryawanItem {
   role_id: string | null;
   roles: { nama: string } | null;
   email?: string;
-  password?: string;
   gaji?: number | null;
   is_active?: boolean | null;
 }
@@ -36,10 +35,10 @@ const Karyawan: React.FC = () => {
     last_name: '',
     role_id: '',
     email: '',
-    password: '',
-    gaji:null,
+    gaji: null,
     is_active: true,
   };
+
 
   const [selectedItem, setSelectedItem, clearSelectedItem] = useFormPersistence<Partial<KaryawanItem>>({
     key: 'karyawanFormDraft',
@@ -138,18 +137,23 @@ const Karyawan: React.FC = () => {
     const toastId = showLoading(modalMode === 'add' ? 'Menambah karyawan...' : 'Menyimpan perubahan...');
 
     if (modalMode === 'add') {
-      const { email, password, first_name, last_name, role_id, gaji } = selectedItem;
+      const { email, first_name, last_name, role_id, gaji } = selectedItem;
 
-      if (!email || !password || !first_name || !role_id) {
-        showError('Email, Password, Nama Depan, dan Jabatan harus diisi.');
+      if (!email || !first_name || !role_id) {
+        showError('Email, Nama Depan, dan Jabatan harus diisi.');
         dismissToast(toastId);
         return;
       }
 
-      // const { error: authError } = await supabase.auth.signUp({
+      // password otomatis random, supaya tidak perlu input di form karyawan (hanya mode add)
+      const generatedPassword =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+
       const { data: signUpRes, error: authError } = await supabase.auth.signUp({
         email,
-        password,
+        password: generatedPassword,
         options: {
           data: {
             first_name,
@@ -176,7 +180,7 @@ const Karyawan: React.FC = () => {
         fetchKaryawan();
       }
     } else if (modalMode === 'edit') {
-      const { roles, email, password, ...itemToSave } = selectedItem;
+      const { roles, ...itemToSave } = selectedItem; // hanya buang roles & password (password sudah tidak dipakai)
       const { data: updatedKaryawan, error } = await supabase
         .from('profiles')
         .update(itemToSave)
@@ -343,20 +347,6 @@ const Karyawan: React.FC = () => {
                     id="email"
                     name="email"
                     value={selectedItem?.email || ''}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-                <div>
-                  <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                    Kata Sandi
-                  </label>
-                  <input
-                    type="password"
-                    id="password"
-                    name="password"
-                    value={selectedItem?.password || ''}
                     onChange={handleChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     required

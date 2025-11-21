@@ -31,6 +31,7 @@ import StatusOrder from '../pages/StatusOrder';
 import HistoryPendingSales from '../pages/HistoryPendingSales';
 import Pembelian from '../pages/Pembelian';
 import HistoryPendingPurchases from '../pages/HistoryPendingPurchases';
+import UserAkses from './master-data/UserAkses';
 
 // Import halaman Laporan
 import LaporanPenjualan from '../pages/laporan/LaporanPenjualan';
@@ -41,6 +42,7 @@ import LaporanPemasukan from '../pages/laporan/LaporanPemasukan';
 import LaporanPengeluaran from '../pages/laporan/LaporanPengeluaran';
 import LaporanPinjaman from '../pages/laporan/LaporanPinjaman';
 import LaporanNeraca from '../pages/laporan/LaporanNeraca';
+import LaporanRekapKecepatan from '../pages/laporan/LaporanRekapKecepatan';
 
 // Import Pengaturan
 import ProfilePage from '../pages/ProfilePage';
@@ -112,6 +114,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           <Route path="master-data/kategori" element={<ProtectedRoute require="Master.kategori"><Kategori /></ProtectedRoute>} />
           <Route path="master-data/satuan" element={<ProtectedRoute require="Master.satuan"><Satuan /></ProtectedRoute>} />
           <Route path="master-data/karyawan" element={<ProtectedRoute require="Master.karyawan"><Karyawan /></ProtectedRoute>} />
+          <Route path="master-data/user-akses"element={ <ProtectedRoute require="Master.user_akses"><UserAkses /></ProtectedRoute> }/>
           <Route path="master-data/supplier" element={<ProtectedRoute require="Master.supplier"><Supplier /></ProtectedRoute>} />
           <Route path="master-data/pola" element={<ProtectedRoute require="Master.pola"><Pola /></ProtectedRoute>} />
           <Route path="master-data/bank" element={<ProtectedRoute require="Master.bank"><Bank /></ProtectedRoute>} />
@@ -123,7 +126,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           <Route path="laporan/produk-rusak" element={<ProtectedRoute require="Laporan.produk_rusak"><LaporanProdukRusak /></ProtectedRoute>} />
           <Route path="laporan/pemasukan" element={<ProtectedRoute require="Laporan.pemasukan"><LaporanPemasukan /></ProtectedRoute>} />
           <Route path="laporan/pengeluaran" element={<ProtectedRoute require="Laporan.pengeluaran"><LaporanPengeluaran /></ProtectedRoute>} />
-          <Route path="laporan/pinjaman" element={<ProtectedRoute require="Laporan.pinjamana"><LaporanPinjaman /></ProtectedRoute>} />
+          <Route path="laporan/pinjaman" element={<ProtectedRoute require="Laporan.pinjaman"><LaporanPinjaman /></ProtectedRoute>} />
+          <Route path="laporan/rekap-kecepatan"element={<ProtectedRoute require="Laporan.rekap_kecepatan"><LaporanRekapKecepatan /></ProtectedRoute>} />
           <Route path="laporan/neraca" element={<ProtectedRoute require="Laporan.neraca"><LaporanNeraca /></ProtectedRoute>} />
 
           {/* Rute untuk Pengaturan */}

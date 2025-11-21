@@ -27,6 +27,7 @@ const allPermissionsStructure = {
     "kategori": "Kategori",
     "satuan": "Satuan",
     "karyawan": "Karyawan",
+    "user_akses": "User Akses",
     "pelanggan": "Pelanggan",
     "supplier": "Supplier",
     "pola": "Pola",
@@ -51,6 +52,7 @@ const allPermissionsStructure = {
     "pemasukan": "Pemasukan",
     "pengeluaran": "Pengeluaran",
     "pinjaman": "Pinjaman",
+    "rekap_kecepatan": "Rekap Kecepatan",
     "neraca": "Neraca"
   },
   "Pengaturan": { 

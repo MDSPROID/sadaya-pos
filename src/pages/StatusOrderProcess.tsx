@@ -57,6 +57,9 @@ type OrderRow = {
   priority: string;
   ready_status: 'ready' | 'not_ready';
   order_items: OrderItem[];
+  siap_cetak_at: string | null;
+  proses_cetak_at: string | null;
+  siap_ambil_at: string | null;
 };
 
 const formatRupiah = (n: number) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
@@ -231,31 +234,6 @@ const sendWhatsAppReady = async (target: string, message: string) => {
 };
 // ====== END FONNTE WHATSAPP ======
 
-const [appSettings, setAppSettings] = React.useState<{
-  nama_perusahaan?: string;
-  logo_url?: string;
-  alamat?: string;
-  telepon?: string;
-} | null>(null);
-
-// Load app_settings untuk WhatsApp
-React.useEffect(() => {
-  (async () => {
-    try {
-      const { data, error } = await supabase
-        .from('app_settings')
-        .select('nama_perusahaan, logo_url, alamat, telepon')
-        .maybeSingle();
-
-      if (!error && data) {
-        setAppSettings(data);
-      }
-    } catch (err) {
-      console.warn('[StatusOrder] gagal load app_settings:', err);
-    }
-  })();
-}, []);
-
 const StatusOrderProcess: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [loading, setLoading] = useState(true);
@@ -263,6 +241,31 @@ const StatusOrderProcess: React.FC = () => {
   const currentUserId = session?.user?.id || null;
   const [saving, setSaving] = useState(false);
   const [order, setOrder] = useState<OrderRow | null>(null);
+
+  const [appSettings, setAppSettings] = React.useState<{
+    nama_perusahaan?: string;
+    logo_url?: string;
+    alamat?: string;
+    telepon?: string;
+  } | null>(null);
+
+  // Load app_settings untuk WhatsApp
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('app_settings')
+          .select('nama_perusahaan, logo_url, alamat, telepon')
+          .maybeSingle();
+
+        if (!error && data) {
+          setAppSettings(data);
+        }
+      } catch (err) {
+        console.warn('[StatusOrder] gagal load app_settings:', err);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -347,6 +350,13 @@ const StatusOrderProcess: React.FC = () => {
 
       // saat mulai PROSES CETAK, set operator_id = user login
       const updates: Partial<OrderRow> = { order_status: next };
+
+      // kalau status berubah dari NEW -> PROSES CETAK, set proses_cetak_at
+      if (!isProsesCetak && next === 'proses_cetak') {
+        updates.proses_cetak_at = new Date().toISOString();
+      }
+
+      // set operator id
       if (!isProsesCetak && currentUserId) {
         updates.operator_id = currentUserId;
       }
@@ -388,7 +398,11 @@ const StatusOrderProcess: React.FC = () => {
     try {
       setSaving(true);
 
-      const updates: Partial<OrderRow> = { order_status: 'siap_ambil' };
+      const updates: Partial<OrderRow> = { 
+        order_status: 'siap_ambil',
+        siap_ambil_at: new Date().toISOString(),
+      };
+      
       if (currentUserId) {
         updates.finishing_id = currentUserId;
       }

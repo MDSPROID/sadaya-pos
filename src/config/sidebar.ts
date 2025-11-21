@@ -62,12 +62,6 @@ const sidebarConfig: SidebarMenuItem[] = [
         allowedRoles: ['Super Admin', 'Admin', 'Kasir', 'Operator', 'Designer', 'Finishing'],
       },
       {
-        name: 'Karyawan',
-        path: '/dashboard/master-data/karyawan',
-        icon: Users,
-        allowedRoles: ['Super Admin', 'Admin', 'Kasir', 'Operator', 'Designer', 'Finishing'],
-      },
-      {
         name: 'Pelanggan',
         path: '/dashboard/master-data/pelanggan',
         icon: UserCheck,
@@ -86,10 +80,22 @@ const sidebarConfig: SidebarMenuItem[] = [
         allowedRoles: ['Super Admin', 'Admin', 'Kasir', 'Operator', 'Designer', 'Finishing'],
       },
       {
+        name: 'Karyawan',
+        path: '/dashboard/master-data/karyawan',
+        icon: Users,
+        allowedRoles: ['Super Admin', 'Admin', 'Kasir', 'Operator', 'Designer', 'Finishing'],
+      },
+      {
         name: 'Level (Role)',
         path: '/dashboard/master-data/level',
         icon: Shield,
         allowedRoles: ['Super Admin', 'Admin', 'Kasir', 'Operator', 'Designer', 'Finishing'],
+      },
+      {
+        name: 'User Akses',
+        path: '/dashboard/master-data/user-akses',
+        icon: User, // icon User dari lucide-react, sudah di-import di atas
+        allowedRoles: ['Super Admin'], // atur role yang boleh lihat menu ini
       },
       {
         name: 'Bank',
@@ -199,6 +205,12 @@ const sidebarConfig: SidebarMenuItem[] = [
         name: 'Pinjaman',
         path: '/dashboard/laporan/pinjaman',
         icon: Handshake,
+        allowedRoles: ['Super Admin', 'Admin', 'Kasir', 'Operator', 'Designer', 'Finishing'],
+      },
+      {
+        name: 'Rekap Kecepatan',
+        path: '/dashboard/laporan/rekap-kecepatan',
+        icon: Clock,
         allowedRoles: ['Super Admin', 'Admin', 'Kasir', 'Operator', 'Designer', 'Finishing'],
       },
       {

@@ -72,7 +72,7 @@ export const useSalesReports = ({ startDate, endDate }: UseSalesReportsProps) =>
           priority,
           payment_method,
           bank_name,
-          order_items(product_id, product_name, quantity, unit_price, subtotal_per_item, dimensions, notes_per_item)
+          order_items(designer_id, product_id, product_name, quantity, unit_price, subtotal_per_item, dimensions, notes_per_item)
         `,
           { count: 'exact' }
         )
