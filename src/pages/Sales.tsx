@@ -273,7 +273,7 @@ const printReceiptWindow = (params: {
         <div class="divider"></div>
 
         <!-- Tabel produk -->
-        <table>
+        <table style="table-layout: fixed;">
           <thead>
             <tr>
               <th style="font-size:11px;" class="left">Nama produk</th>
