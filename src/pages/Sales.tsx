@@ -199,7 +199,7 @@ const printReceiptWindow = (params: {
           .right { text-align: right; }
           .left { text-align: left; }
           .divider { border-top: 1px dashed #000; margin: 4px 0; }
-          table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+          table { width: 100%; border-collapse: collapse; }
           td, th { padding: 2px 0; vertical-align: top; }
           th { border-bottom: 1px solid #000; }
           .info-table td { font-size: 11px; }
