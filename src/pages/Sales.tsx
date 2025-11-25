@@ -163,10 +163,10 @@ const printReceiptWindow = (params: {
 
       return `
         <tr>
-          <td style="font-size:10px;" class="left">${name}</td>
-          <td style="font-size:10px;" class="right">${formatRupiahNonSymbol(harga)}</td>
-          <td style="font-size:10px;" class="center">${qty}</td>
-          <td style="font-size:10px;" class="right">${formatRupiahNonSymbol(subtotal)}</td>
+          <td style="font-size:11px;" class="left">${name}</td>
+          <td style="font-size:11px;" class="right">${formatRupiahNonSymbol(harga)}</td>
+          <td style="font-size:11px;" class="center">${qty}</td>
+          <td style="font-size:11px;" class="right">${formatRupiahNonSymbol(subtotal)}</td>
         </tr>
       `;
     })
