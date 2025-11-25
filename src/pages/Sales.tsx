@@ -69,6 +69,7 @@ const dbg = (...a:any[]) => { if (__DBG) console.log('[Sales]', ...a); };
 // ============================================================================
 
 const formatRupiah = (n: number) => `Rp ${Number(n||0).toLocaleString('id-ID')}`;
+const formatRupiahNonSymbol = (n: number) => `${Number(n||0).toLocaleString('id-ID')}`;
 
 // ====== HELPER CETAK NOTA VIA BROWSER (FORMAT BARU) ======
 const printReceiptWindow = (params: {
@@ -159,9 +160,9 @@ const printReceiptWindow = (params: {
       return `
         <tr>
           <td style="font-size:11px;" class="left">${name}</td>
-          <td style="font-size:11px;" class="right">${formatRupiah(harga)}</td>
+          <td style="font-size:11px;" class="right">${formatRupiahNonSymbol(harga)}</td>
           <td style="font-size:11px;" class="center">${qty}</td>
-          <td style="font-size:11px;" class="right">${formatRupiah(subtotal)}</td>
+          <td style="font-size:11px;" class="right">${formatRupiahNonSymbol(subtotal)}</td>
         </tr>
       `;
     })
