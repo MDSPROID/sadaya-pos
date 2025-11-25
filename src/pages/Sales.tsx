@@ -191,7 +191,7 @@ const printReceiptWindow = (params: {
             font-size: 11px;
             margin: 0;
             padding: 0;
-            width: 63mm;
+            width: 60mm;           /* dikurangi biar aman dari tepian print */
             margin-left: auto;
             margin-right: auto;
           }
@@ -199,10 +199,34 @@ const printReceiptWindow = (params: {
           .right { text-align: right; }
           .left { text-align: left; }
           .divider { border-top: 1px dashed #000; margin: 4px 0; }
-          table { width: 100%; border-collapse: collapse; }
-          td, th { padding: 2px 0; vertical-align: top; }
+
+          table { 
+            width: 100%; 
+            border-collapse: collapse; 
+          }
+          td, th { 
+            padding: 2px 0; 
+            vertical-align: top; 
+            box-sizing: border-box;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+          }
           th { border-bottom: 1px solid #000; }
           .info-table td { font-size: 11px; }
+
+          /* khusus tabel produk saja yang fixed */
+          .product-table {
+            table-layout: fixed;
+          }
+          .product-table th:nth-child(1),
+          .product-table td:nth-child(1) { width: 40%; } /* Nama produk */
+          .product-table th:nth-child(2),
+          .product-table td:nth-child(2) { width: 22%; } /* Harga */
+          .product-table th:nth-child(3),
+          .product-table td:nth-child(3) { width: 10%; } /* Qty */
+          .product-table th:nth-child(4),
+          .product-table td:nth-child(4) { width: 28%; } /* Subtotal */
+
           img {
             image-rendering: crisp-edges;
             image-rendering: -webkit-optimize-contrast;
@@ -232,7 +256,8 @@ const printReceiptWindow = (params: {
             <td class="left" style="vertical-align: top; width: 60%;">
               <table style="width:100%; font-size:11px; border-collapse: collapse;">
                 <tr>
-                  <td style="width:60px; padding:1px 0;">Nota</td>
+                  <!-- width px DIHAPUS, biar fleksibel -->
+                  <td style="padding:1px 0;">Nota</td>
                   <td style="padding:1px 0;">:</td>
                   <td style="padding:1px 0;">${invoiceNumber || '-'}</td>
                 </tr>
@@ -255,7 +280,7 @@ const printReceiptWindow = (params: {
             <td class="left" style="vertical-align: top; width: 40%;">
               <table style="width:100%; font-size:11px;">
                 <tr>
-                  <td style="width:40px;">Tgl</td>
+                  <td style="">Tgl</td>
                   <td>:</td>
                   <td>${tgl}</td>
                 </tr>
@@ -269,11 +294,10 @@ const printReceiptWindow = (params: {
           </tr>
         </table>
 
-
         <div class="divider"></div>
 
         <!-- Tabel produk -->
-        <table style="table-layout: fixed;">
+        <table class="product-table">
           <thead>
             <tr>
               <th style="font-size:11px;" class="left">Nama produk</th>
