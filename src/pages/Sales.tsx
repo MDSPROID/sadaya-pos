@@ -183,18 +183,23 @@ const printReceiptWindow = (params: {
         <title>Nota Penjualan</title>
         <style>
           @page {
-            size: 80mm auto;
-            margin: 3mm;
+            size: 76mm auto;
+            margin: 0;
           }
           body {
             font-family: Arial, sans-serif;
             font-size: 11px;
+            margin: 0;
+            padding: 0;
+            width: 63mm;
+            margin-left: auto;
+            margin-right: auto;
           }
           .center { text-align: center; }
           .right { text-align: right; }
           .left { text-align: left; }
           .divider { border-top: 1px dashed #000; margin: 4px 0; }
-          table { width: 100%; border-collapse: collapse; }
+          table { width: 100%; border-collapse: collapse; table-layout: fixed; }
           td, th { padding: 2px 0; vertical-align: top; }
           th { border-bottom: 1px solid #000; }
           .info-table td { font-size: 11px; }
