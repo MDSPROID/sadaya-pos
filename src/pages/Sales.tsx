@@ -183,11 +183,16 @@ const printReceiptWindow = (params: {
         <style>
           @page {
             size: 80mm auto;
-            margin: 3mm;
+            margin: 0; /* hilangkan margin halaman */
           }
           body {
             font-family: Arial, sans-serif;
             font-size: 11px;
+            margin: 0;
+            padding: 0;
+            width: 80mm;       /* lebar fix 80mm */
+            margin-left: auto; /* center */
+            margin-right: auto;
           }
           .center { text-align: center; }
           .right { text-align: right; }
@@ -200,6 +205,8 @@ const printReceiptWindow = (params: {
           img {
             image-rendering: crisp-edges;
             image-rendering: -webkit-optimize-contrast;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
           }
         </style>
       </head>
@@ -209,7 +216,7 @@ const printReceiptWindow = (params: {
         <div class="center">
           ${
             company?.logoUrl
-              ? `<img src="${company.logoUrl}" style="width:140px;height:auto;margin-bottom:4px;" />`
+              ? `<img src="${company.logoUrl}" style="width:140px;height:auto;margin-bottom:4px;filter:grayscale(100%) contrast(200%);" />`
               : ''
           }
           <div style="font-size:14px !important; font-weight:bold;"><strong>${company?.companyName || ''}</strong></div>
@@ -288,7 +295,9 @@ const printReceiptWindow = (params: {
           <tbody>
             <tr>
               <td style="font-size:11px;" class="left">Grand total :</td>
-              <td style="font-size:11px;" class="right">${formatRupiah(finalAmount)}</td>
+              <td style="font-size:11px;" class="right">
+                ${formatRupiah(finalAmount).replace(/^Rp\\s*/,'')}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -299,15 +308,21 @@ const printReceiptWindow = (params: {
           <tbody>
             <tr>
               <td style="font-size:11px;" class="left">Sisa :</td>
-              <td style="font-size:11px;" class="right">${formatRupiah(sisa)}</td>
+              <td style="font-size:11px;" class="right">
+                ${formatRupiah(sisa).replace(/^Rp\\s*/,'')}
+              </td>
             </tr>
             <tr>
               <td style="font-size:11px;" class="left">Bayar :</td>
-              <td style="font-size:11px;" class="right">${formatRupiah(paidAmount)}</td>
+              <td style="font-size:11px;" class="right">
+                ${formatRupiah(paidAmount).replace(/^Rp\\s*/,'')}
+              </td>
             </tr>
             <tr>
               <td style="font-size:11px;" class="left">Kembali :</td>
-              <td style="font-size:11px;" class="right">${formatRupiah(Math.max(totalPaid - finalAmount, 0))}</td>
+              <td style="font-size:11px;" class="right">
+                ${formatRupiah(Math.max(totalPaid - finalAmount, 0)).replace(/^Rp\\s*/,'')}
+              </td>
             </tr>
           </tbody>
         </table>
