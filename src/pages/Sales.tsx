@@ -70,6 +70,11 @@ const dbg = (...a:any[]) => { if (__DBG) console.log('[Sales]', ...a); };
 
 const formatRupiah = (n: number) => `Rp ${Number(n||0).toLocaleString('id-ID')}`;
 
+const formatRupiahNonSymbol = (n: any) => {
+  const num = Number(n) || 0;
+  return `${num.toLocaleString('id-ID')}`;
+};
+
 // ====== HELPER CETAK NOTA VIA BROWSER (FORMAT BARU) ======
 const printReceiptWindow = (params: {
   invoiceNumber?: string;
@@ -158,10 +163,10 @@ const printReceiptWindow = (params: {
 
       return `
         <tr>
-          <td style="font-size:11px;" class="left">${name}</td>
-          <td style="font-size:11px;" class="right">${formatRupiah(harga)}</td>
-          <td style="font-size:11px;" class="center">${qty}</td>
-          <td style="font-size:11px;" class="right">${formatRupiah(subtotal)}</td>
+          <td style="font-size:10px;" class="left">${name}</td>
+          <td style="font-size:10px;" class="right">${formatRupiahNonSymbol(harga)}</td>
+          <td style="font-size:10px;" class="center">${qty}</td>
+          <td style="font-size:10px;" class="right">${formatRupiahNonSymbol(subtotal)}</td>
         </tr>
       `;
     })
@@ -277,7 +282,7 @@ const printReceiptWindow = (params: {
         <table>
           <thead>
             <tr>
-              <th style="font-size:11px;" class="left">Nama produk</th>
+              <th style="font-size:11px;" class="left">Nama Produk</th>
               <th style="font-size:11px;" class="right">Harga</th>
               <th style="font-size:11px;" class="center">Qty</th>
               <th style="font-size:11px;" class="right">Subtotal</th>
