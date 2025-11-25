@@ -191,7 +191,7 @@ const printReceiptWindow = (params: {
             font-size: 11px;
             margin: 0;
             padding: 0;
-            width: 60mm;           /* dikurangi biar aman dari tepian print */
+            width: 56mm;           /* dikurangi biar aman dari tepian print */
             margin-left: auto;
             margin-right: auto;
           }
@@ -217,15 +217,22 @@ const printReceiptWindow = (params: {
           /* khusus tabel produk saja yang fixed */
           .product-table {
             table-layout: fixed;
+            width: 95%;            /* jangan full 100%, kasih napas */
+            margin-left: auto;
+            margin-right: auto;
+          }
+          .product-table th,
+          .product-table td {
+            word-break: break-all; /* angka panjang / nama panjang dipaksa bungkus */
           }
           .product-table th:nth-child(1),
-          .product-table td:nth-child(1) { width: 40%; } /* Nama produk */
+          .product-table td:nth-child(1) { width: 38%; } /* Nama produk */
           .product-table th:nth-child(2),
-          .product-table td:nth-child(2) { width: 22%; } /* Harga */
+          .product-table td:nth-child(2) { width: 20%; } /* Harga */
           .product-table th:nth-child(3),
-          .product-table td:nth-child(3) { width: 10%; } /* Qty */
+          .product-table td:nth-child(3) { width: 8%; } /* Qty */
           .product-table th:nth-child(4),
-          .product-table td:nth-child(4) { width: 28%; } /* Subtotal */
+          .product-table td:nth-child(4) { width: 26%; } /* Subtotal */
 
           img {
             image-rendering: crisp-edges;
