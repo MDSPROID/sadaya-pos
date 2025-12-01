@@ -96,7 +96,8 @@ const OrderItemsTable: React.FC<OrderItemsTableProps> = ({
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {items.length === 0 ? (
+            {
+            items.length === 0 ? (
               <tr>
                 <td colSpan={10} className="px-4 py-2 text-center text-sm text-gray-500">
                   Belum ada item dalam pesanan.

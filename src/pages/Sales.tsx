@@ -64,7 +64,7 @@ const loadFonnteApiKey = async (): Promise<string | null> => {
 };
 
 // === DEBUG helper ============================================================
-const __DBG = true; // true or false buat matikan log
+const __DBG = false; // true or false buat matikan log
 const dbg = (...a:any[]) => { if (__DBG) console.log('[Sales]', ...a); };
 // ============================================================================
 
@@ -75,6 +75,7 @@ const formatRupiahNonSymbol = (n: number) => `${Number(n||0).toLocaleString('id-
 const printReceiptWindow = (params: {
   invoiceNumber?: string;
   customerName?: string;
+  customerPhone?: string;
   items: any[];
   finalAmount: number;
   dpAmount: number;
@@ -100,6 +101,7 @@ const printReceiptWindow = (params: {
   const {
     invoiceNumber,
     customerName,
+    customerPhone, 
     items,
     finalAmount,
     dpAmount,
@@ -111,7 +113,13 @@ const printReceiptWindow = (params: {
     bank,
     kasirName,
   } = params;
-
+  
+  // Format telp/HP untuk nota
+  let telpHp = customerPhone || company?.phone || '-';
+  // optional: kalau pakai format 62xxxxxxxx → ubah jadi 08xxxx supaya lebih familiar
+  if (telpHp.startsWith('62') && telpHp.length > 2) {
+    telpHp = '0' + telpHp.slice(2);
+  }
   const sisa = Math.max(finalAmount - totalPaid, 0);
   const status = sisa <= 0 ? 'LUNAS' : 'BELUM LUNAS';
 
@@ -271,7 +279,7 @@ const printReceiptWindow = (params: {
                 <tr>
                   <td style="padding:1px 0;">Telp/HP</td>
                   <td style="padding:1px 0;">:</td>
-                  <td style="padding:1px 0;">${company?.phone || '-'}</td>
+                  <td style="padding:1px 0;">${telpHp}</td>
                 </tr>
                 <tr>
                   <td style="padding:1px 0;">Customer</td>
@@ -1277,6 +1285,7 @@ const Sales: React.FC = () => {
       printReceiptWindow({
         invoiceNumber: invoice,
         customerName: targetName,
+        customerPhone: orderFormData.customer_phone || (orderFormData as any).customer_display_phone || '',     
         items: orderFormData.items ?? [],
         finalAmount: detail.final_amount,
         dpAmount: detail.dp_amount,

@@ -292,7 +292,10 @@ const UserAkses: React.FC = () => {
         const toastId = showLoading('Mengirim email reset password...');
 
         try {
-        const { error } = await supabase.auth.resetPasswordForEmail(user.email);
+        const { error } = 
+        await supabase.auth.resetPasswordForEmail(user.email, {
+          redirectTo: 'https://pos.tepe.fun/auth/reset-password',
+        });
         if (error) {
             showError('Gagal mengirim email reset password: ' + error.message);
             return;

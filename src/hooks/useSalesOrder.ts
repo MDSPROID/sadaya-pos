@@ -359,8 +359,14 @@ export const useSalesOrder = (
   useEffect(() => {
     const fetchAndLoadOrder = async () => {
       if (!loadOrderId || loadedOrderIdRef.current === loadOrderId || isLoadingOrder) return;
-      if (productOptions.length === 0 || designerOptions.length === 0 || customerOptions.length === 0) return;
 
+      // Cukup tunggu productOptions saja. Designer & customer boleh kosong.
+      if (productOptions.length === 0) {
+        console.log('[useSalesOrder] productOptions belum siap, tunda load order');
+        return;
+      }
+
+      console.log('[useSalesOrder] MULAI load pending order', loadOrderId);
       setIsLoadingOrder(true);
       loadedOrderIdRef.current = loadOrderId;
 
@@ -374,11 +380,13 @@ export const useSalesOrder = (
           .eq('id', loadOrderId)
           .single();
         if (orderError) throw orderError;
-
+    
         const { data: orderItemsData, error: itemsError } = await supabase
           .from('order_items')
           .select('*')
           .eq('order_id', loadOrderId);
+    
+        console.log('[useSalesOrder] orderItemsData len =', orderItemsData?.length || 0);
         if (itemsError) throw itemsError;
 
         const loadedItems: OrderItem[] = (orderItemsData || []).map((item: any) => {

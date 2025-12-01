@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from '../components/ProtectedRoute';
+import ResetPasswordPage from '../pages/ResetPasswordPage';
 
 import StatusOrderProcess from '../pages/StatusOrderProcess';
 
@@ -72,6 +73,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         <Routes>
           {/* Rute untuk halaman utama Dashboard */}
           <Route index element={<DashboardHome user={user} />} />
+
+          {/* Rute untuk halaman Reset Password */}
+          <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
 
           {/* Rute untuk status order*/}
           <Route path="status-order" element={<ProtectedRoute require="Status Order.status_order"><StatusOrder /></ProtectedRoute>} />
