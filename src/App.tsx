@@ -2,6 +2,7 @@ import React, { Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useSession } from './components/SessionContextProvider';
 import Login from './components/Login';
+import ResetPasswordPage from './components/ResetPasswordPage';
 import Dashboard from './components/Dashboard';
 import { supabase } from './integrations/supabase/client';
 import NotFound from './pages/NotFound';
@@ -31,6 +32,7 @@ const App: React.FC = () => {
         path="/login"
         element={!session ? <Login /> : <Navigate to="/dashboard" replace />}
       />
+      <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
       <Route
         path="/dashboard/*"
         element={
