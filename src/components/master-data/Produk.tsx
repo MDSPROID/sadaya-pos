@@ -73,6 +73,8 @@ const Produk: React.FC = () => {
       member_prices: restOfItemToSave.member_prices || [],
     };
 
+    console.log("DATA DIKIRIM:", itemToSave);
+
     try {
       if (modalMode === 'add') {
         const { data: newProduk, error: insertError } = await supabase
@@ -103,8 +105,12 @@ const Produk: React.FC = () => {
         fetchProduk();
       }
     } catch (err: any) {
-      showError('Gagal menyimpan produk: ' + err.message);
-      console.error('Error saving product:', err);
+        // showError('Gagal menyimpan produk: ' + err.message);
+        console.error('Error saving product:', err);
+        if (err.code === '23505') {
+          showError('Kode produk sudah digunakan. Silakan gunakan kode lain.');
+          return;
+        }
     } finally {
       dismissToast(toastId);
     }
