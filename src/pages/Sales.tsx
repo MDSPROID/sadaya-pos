@@ -6,6 +6,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useHistoryPendingSalesData } from '../hooks/useHistoryPendingSalesData';
 // import PrinterStatusBadge from '../components/sales/PrinterStatusBadge';
 import { supabase } from '../integrations/supabase/client';
+import NotaPreviewModal from '../components/sales/NotaPreviewModal';
 
 import { isKasirOrSuperAdmin } from '../utils/roles';
 import { useSession } from '../components/SessionContextProvider';
@@ -19,8 +20,6 @@ import SelectCustomerModal from '../components/sales/SelectCustomerModal';
 import SelectProductModal from '../components/sales/SelectProductModal';
 import ProductDetailModal from '../components/sales/ProductDetailModal';
 import PaymentModal from '../components/sales/PaymentModal';
-
-// const FONNTE_API_KEY = (import.meta as any)?.env?.VITE_FONNTE_API_KEY || '6b1EaxqeQSR9oHv7EUdF'; //token fonnte
 
 // ====== FONNTE API KEY (dinamis via DB) ======
 const FONNTE_ENV_FALLBACK =
@@ -120,7 +119,9 @@ const printReceiptWindow = (params: {
   if (telpHp.startsWith('62') && telpHp.length > 2) {
     telpHp = '0' + telpHp.slice(2);
   }
-  const sisa = Math.max(finalAmount - totalPaid, 0);
+
+  const totalDibayar =Number(totalPaid || 0) > 0 ? Number(totalPaid || 0) : Number(dpAmount || 0) + Number(paidAmount || 0);
+  const sisa = Math.max(Number(finalAmount || 0) - totalDibayar, 0);
   const status = sisa <= 0 ? 'LUNAS' : 'BELUM LUNAS';
 
   const now = new Date();
@@ -352,7 +353,7 @@ const printReceiptWindow = (params: {
             </tr>
             <tr>
               <td style="font-size:11px;" class="left">Kembali :</td>
-              <td style="font-size:11px;" class="right">${formatRupiah(Math.max(totalPaid - finalAmount, 0))}</td>
+              <td style="font-size:11px;" class="right">${formatRupiah(Math.max(totalDibayar - finalAmount, 0))}</td>
             </tr>
           </tbody>
         </table>
@@ -459,7 +460,13 @@ const buildWaMessage = (opts: {
   itemsText: string; // <-- baru
 }) => {
   dbg('buildWaMessage opts=', opts);
-  const sisa   = Math.max(opts.finalAmount - opts.totalPaid, 0);
+
+  const totalTerbayar =
+    Number(opts.totalPaid || 0) > 0
+      ? Number(opts.totalPaid || 0)
+      : Number(opts.dpAmount || 0) + Number(opts.paidAmount || 0);
+
+  const sisa = Math.max(Number(opts.finalAmount || 0) - totalTerbayar, 0);
   const status = sisa <= 0 ? 'LUNAS' : 'BELUM LUNAS';
 
   const lines = [
@@ -479,7 +486,7 @@ const buildWaMessage = (opts: {
   }
 
   if (sisa > 0) {
-    lines.push(`Sisa tagihan: Rp ${formatRupiah(sisa)}`);
+    lines.push(`Sisa tagihan: ${formatRupiah(sisa)}`);
   }
 
   lines.push('', '*Detail Pesanan:*', opts.itemsText || '-', '', '—', 'Pesan ini dikirim otomatis.');
@@ -555,6 +562,271 @@ const extractPaymentsFromNotes = (notes?: string): ExistingPayment[] => {
   return results;
 };
 
+type ReceiptPreviewParams = {
+  invoiceNumber?: string;
+  customerName?: string;
+  customerPhone?: string;
+  items: any[];
+  finalAmount: number;
+  dpAmount: number;
+  paidAmount: number;
+  totalPaid: number;
+  tempoActive: boolean;
+  tempoDate?: string;
+  company?: {
+    logoUrl?: string;
+    companyName?: string;
+    address?: string;
+    phone?: string;
+  };
+  bank?: {
+    nama_bank?: string;
+    rekening?: string;
+    nama_akun?: string;
+  };
+  kasirName?: string;
+};
+
+const buildReceiptPreviewHtml = (params: ReceiptPreviewParams) => {
+  const {
+    invoiceNumber,
+    customerName,
+    customerPhone,
+    items,
+    finalAmount,
+    dpAmount,
+    paidAmount,
+    totalPaid,
+    tempoActive,
+    tempoDate,
+    company,
+    bank,
+    kasirName,
+  } = params;
+
+  let telpHp = customerPhone || company?.phone || '-';
+  if (telpHp.startsWith('62') && telpHp.length > 2) {
+    telpHp = '0' + telpHp.slice(2);
+  }
+
+  const totalTerbayar =
+    Number(totalPaid || 0) > 0
+      ? Number(totalPaid || 0)
+      : Number(dpAmount || 0) + Number(paidAmount || 0);
+
+  const sisa = Math.max(Number(finalAmount || 0) - totalTerbayar, 0);
+  const status = sisa <= 0 ? 'LUNAS' : 'BELUM LUNAS';
+
+  const now = new Date();
+  const tgl = now.toLocaleDateString('id-ID');
+  const jam = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+  const itemsRows = (items || [])
+    .map((it: any, idx: number) => {
+      const name =
+        it?.product_name ||
+        it?.nama_produk ||
+        it?.nama ||
+        `Item ${idx + 1}`;
+
+      const qty = Number(it?.quantity ?? it?.qty ?? 0);
+
+      let harga = Number(
+        it?.unit_price ??
+        it?.harga_satuan ??
+        it?.price ??
+        it?.harga ??
+        0
+      );
+      if ((!harga || isNaN(harga) || harga === 0) && qty > 0) {
+        const rawSubtotal = Number(it?.subtotal_per_item ?? it?.subtotal ?? 0);
+        if (rawSubtotal > 0) {
+          harga = rawSubtotal / qty;
+        }
+      }
+      if (!isFinite(harga)) harga = 0;
+
+      const subtotal = (() => {
+        const s = Number(
+          it?.subtotal_per_item ??
+          it?.subtotal ??
+          qty * harga
+        );
+        return isFinite(s) ? s : 0;
+      })();
+
+      return `
+        <tr>
+          <td class="left">${name}</td>
+          <td class="right">${formatRupiahNonSymbol(harga)}</td>
+          <td class="center">${qty}</td>
+          <td class="right">${formatRupiahNonSymbol(subtotal)}</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  const bankLine1 = bank
+    ? `${bank.nama_bank || ''} A/N ${bank.nama_akun || ''}`
+    : '';
+  const bankLine2 = bank?.rekening || '';
+
+  return `
+    <style>
+      .nota-wrapper {
+        font-family: Arial, sans-serif;
+        font-size: 12px;
+        color: #111827;
+      }
+      .nota-center { text-align: center; }
+      .nota-right { text-align: right; }
+      .nota-left  { text-align: left; }
+      .nota-divider {
+        border-top: 1px dashed #d1d5db;
+        margin: 8px 0;
+      }
+      .nota-table { width: 100%; border-collapse: collapse; }
+      .nota-table td, .nota-table th {
+        padding: 4px 0;
+        vertical-align: top;
+      }
+      .nota-table th {
+        border-bottom: 1px solid #e5e7eb;
+        font-weight: 600;
+      }
+    </style>
+
+    <div class="nota-wrapper">
+      <!-- Header -->
+      <div class="nota-center">
+        ${
+          company?.logoUrl
+            ? `<img src="${company.logoUrl}" style="max-width:180px;height:auto;margin-bottom:8px;" />`
+            : ''
+        }
+        <div style="font-size:18px;font-weight:bold;margin-bottom:2px;">
+          ${company?.companyName || ''}
+        </div>
+        <div>${company?.address || ''}</div>
+        <div>${company?.phone || ''}</div>
+      </div>
+
+      <div class="nota-divider"></div>
+
+      <!-- Info atas -->
+      <table class="nota-table">
+        <tr>
+          <td class="nota-left" style="width:60%;">
+            <table class="nota-table">
+              <tr>
+                <td>Nota</td><td>:</td><td>${invoiceNumber || '-'}</td>
+              </tr>
+              <tr>
+                <td>Customer</td><td>:</td>
+                <td>${
+                  customerName
+                    ? customerName.charAt(0).toUpperCase() + customerName.slice(1).toLowerCase()
+                    : '-'
+                }</td>
+              </tr>
+              <tr>
+                <td>Telp/HP</td><td>:</td><td>${telpHp}</td>
+              </tr>
+            </table>
+          </td>
+          <td class="nota-left" style="width:40%;">
+            <table class="nota-table">
+              <tr>
+                <td>Tanggal</td><td>:</td><td>${tgl}</td>
+              </tr>
+              <tr>
+                <td>Jam</td><td>:</td><td>${jam}</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <div class="nota-divider"></div>
+
+      <!-- Tabel item -->
+      <table class="nota-table">
+        <thead>
+          <tr>
+            <th class="nota-left">Nama</th>
+            <th class="nota-right">Harga</th>
+            <th class="nota-center">Qty</th>
+            <th class="nota-right">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemsRows}
+        </tbody>
+      </table>
+
+      <div class="nota-divider"></div>
+
+      <!-- Grand total -->
+      <table class="nota-table">
+        <tr>
+          <td class="nota-left"><strong>Grand Total</strong></td>
+          <td class="nota-right"><strong>${formatRupiah(finalAmount)}</strong></td>
+        </tr>
+      </table>
+
+      <div class="nota-divider"></div>
+
+      <!-- Sisa / Bayar / Kembali -->
+      <table class="nota-table">
+        <tr>
+          <td class="nota-left">Sisa</td>
+          <td class="nota-right">${formatRupiah(sisa)}</td>
+        </tr>
+        <tr>
+          <td class="nota-left">Bayar</td>
+          <td class="nota-right">${formatRupiah(totalTerbayar)}</td>
+        </tr>
+        <tr>
+          <td class="nota-left">Kembali</td>
+          <td class="nota-right">${formatRupiah(sisa)}</td>
+        </tr>
+      </table>
+
+      <div class="nota-divider"></div>
+
+      <!-- Status & petugas -->
+      <table class="nota-table">
+        <tr>
+          <td class="nota-left">Status</td>
+          <td class="nota-right">Petugas</td>
+        </tr>
+        <tr>
+          <td class="nota-left"><strong>${status}</strong></td>
+          <td class="nota-right">${kasirName || ''}</td>
+        </tr>
+      </table>
+
+      ${
+        tempoActive && tempoDate
+          ? `<div style="margin-top:4px;">Tempo: ${new Date(tempoDate).toLocaleDateString('id-ID')}</div>`
+          : ''
+      }
+
+      ${
+        bankLine1 || bankLine2
+          ? `
+            <div class="nota-center" style="margin-top:8px;">
+              <div>Transfer ke:</div>
+              <div>${bankLine1}</div>
+              <div>${bankLine2}</div>
+            </div>
+          `
+          : ''
+      }
+    </div>
+  `;
+};
+
 const Sales: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -562,6 +834,9 @@ const Sales: React.FC = () => {
 
   const { profile } = useSession();
   const canPay = isKasirOrSuperAdmin(profile?.role);
+  const [showNotaModal, setShowNotaModal] = useState(false);
+
+  const [invoiceForPreview, setInvoiceForPreview] = useState<string | undefined>(undefined);
 
   const kasirName = profile
   ? `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim()
@@ -574,6 +849,15 @@ const Sales: React.FC = () => {
     alamat?: string;
     telepon?: string;
   } | null>(null);
+
+  const handleOpenNotaPreview = () => {
+    if (!orderFormData.items || orderFormData.items.length === 0) {
+      showError('Belum ada item untuk ditampilkan di nota.');
+      return;
+    }
+    setShowNotaModal(true);
+  };
+  
 
   React.useEffect(() => {
     (async () => {
@@ -593,6 +877,33 @@ const Sales: React.FC = () => {
       }
     })();
   }, []);
+
+  // 🔹 Ambil invoice_number kalau sedang membuka order lama (loadOrderId)
+  React.useEffect(() => {
+    if (!loadOrderId) return;
+
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('orders')
+          .select('invoice_number')
+          .eq('id', loadOrderId)
+          .maybeSingle();
+
+        if (error) {
+          console.warn('[Sales] fetch invoice_number for preview error:', error);
+          return;
+        }
+
+        if (data?.invoice_number) {
+          setInvoiceForPreview(String(data.invoice_number));
+        }
+      } catch (e) {
+        console.warn('[Sales] fetch invoice_number for preview exception:', e);
+      }
+    })();
+  }, [loadOrderId]);
+
 
   const [reloadingProducts, setReloadingProducts] = useState(false);
 
@@ -1065,131 +1376,6 @@ const Sales: React.FC = () => {
     tempo_date?: string;
   };
 
-  // const handleProcessPayment = async (
-  //   detail: PaymentDetailsFromModal,
-  //   options?: { skipPrint?: boolean }
-  // ) => {
-  //   dbg('handleProcessPayment detail=', detail, 'orderFormData=', orderFormData);
-  //   try {
-  //     if (orderFormData.customer_id) {
-  //       await persistCustomerNotes();
-  //     }
-
-  //     const targetName = (orderFormData.customer_name || (orderFormData as any).customer_display_name || '').trim();
-  //     const itemsText  = formatItemsForWA(orderFormData.items);
-
-  //     // 🚫 Cegah kirim WA ulang kalau sudah pernah dikirim
-  //     let shouldSendWA = true;
-  //     if (loadOrderId) {
-  //       const { data: existingOrder, error: fetchErr } = await supabase
-  //         .from('orders')
-  //         .select('wa_notified')
-  //         .eq('id', loadOrderId)
-  //         .maybeSingle();
-
-  //       if (!fetchErr && existingOrder?.wa_notified) {
-  //         dbg('Order sudah wa_notified = true → WA akan dilewati, tapi order tetap disimpan');
-  //         shouldSendWA = false; // <-- penting
-  //       }
-  //     }
-
-  //     const baseMsg = buildWaMessage({
-  //       customerName: targetName,
-  //       finalAmount: detail.final_amount,
-  //       dpAmount: Number(detail.dp_amount || 0),
-  //       paidAmount: Number(detail.paid_amount || 0),
-  //       totalPaid: Number(detail.total_paid || 0),
-  //       tempoActive: !!detail.tempo_active,
-  //       tempoDate: detail.tempo_date,
-  //       itemsText,
-  //     });
-
-  //     await ensureDesignerId();
-
-  //     const status: 'paid' | 'pending' =
-  //       detail?.payment_status ?? (detail.total_paid >= detail.final_amount ? 'paid' : 'pending');
-
-  //     dbg('handleProcessPayment -> handleSaveOrder status=', status);
-  //     await handleSaveOrder(status, detail, { ...(options || {}), suppressReadyPopup: true });
-
-  //     // Ambil invoice terakhir (atau pakai loadOrderId)
-  //     let invoice = '';
-  //     let orderIdForFlag: string | undefined = loadOrderId;
-
-  //     try {
-  //       const q = supabase
-  //         .from('orders')
-  //         .select('id, invoice_number, created_at, final_amount, payment_status')
-  //         .eq('kasir_id', currentUserId as string)
-  //         .order('created_at', { ascending: false })
-  //         .limit(1);
-
-  //       const { data: last, error: lastErr } = await q;
-  //       dbg('fetch last order by kasir -> err=', lastErr, 'data=', last);
-
-  //       if (!orderIdForFlag && Array.isArray(last) && last[0]) {
-  //         orderIdForFlag = String(last[0].id);
-  //       }
-  //       if (!lastErr && Array.isArray(last) && last[0]?.invoice_number) {
-  //         invoice = String(last[0].invoice_number);
-  //       }
-  //     } catch (e) {
-  //       console.warn('Gagal ambil invoice terbaru:', e);
-  //     }
-
-  //     const finalMsg = invoice ? `*Invoice:* ${invoice}\n${baseMsg}` : baseMsg;
-
-  //     // ⛔️ Jika sudah wa_notified, SKIP bagian kirim WA seluruhnya
-  //     if (!shouldSendWA) {
-  //       dbg('Skip kirim WA karena wa_notified sudah TRUE');
-  //       if (loadOrderId) {
-  //         navigate('/dashboard/history-pending');
-  //       } else {
-  //         navigate('/dashboard/sales', { replace: true });
-  //       }
-  //       return; // <-- penting
-  //     }
-
-  //     // ===== Kirim WA hanya jika shouldSendWA = true =====
-  //     let phoneRaw = (orderFormData.customer_phone || (orderFormData as any).customer_display_phone || '').trim();
-  //     dbg('handleProcessPayment phoneRaw(before)=', phoneRaw);
-
-  //     if (!phoneRaw) {
-  //       // tidak ada nomor → buka prompt WA, kirim setelah user input
-  //       dbg('open WA prompt because phone empty (shouldSendWA = true)');
-  //       setWaPendingDetail({
-  //         msg: finalMsg,
-  //         navigateTo: loadOrderId ? 'history' : 'sales',
-  //         orderId: orderIdForFlag,
-  //       });
-  //       setWaInput('08');
-  //       setShowWaPrompt(true);
-  //       return;
-  //     }
-
-  //     const normalized = normalizePhone(phoneRaw);
-  //     try {
-  //       await sendWhatsApp(normalized, finalMsg);
-  //       if (orderIdForFlag) {
-  //         await markOrderWaNotified(orderIdForFlag);
-  //       } else {
-  //         console.warn('[Sales] orderIdForFlag kosong, tidak bisa update wa_notified');
-  //       }
-  //     } catch (e) {
-  //       console.warn('sendWhatsApp error', e);
-  //     }
-
-  //     if (loadOrderId) {
-  //       navigate('/dashboard/history-pending');
-  //     } else {
-  //       navigate('/dashboard/sales', { replace: true });
-  //     }
-  //   } catch (err: any) {
-  //     console.error(err);
-  //     showError(err?.message || 'Gagal memproses pembayaran.');
-  //   }
-  // };
-
   const handleProcessPayment = async (
     detail: PaymentDetailsFromModal,
     options?: { skipPrint?: boolean } // boleh dibiarkan, tapi sudah tidak dipakai
@@ -1261,6 +1447,8 @@ const Sales: React.FC = () => {
       } catch (e) {
         console.warn('Gagal ambil invoice terbaru:', e);
       }
+
+      setInvoiceForPreview(invoice || undefined);
 
       // === Set siap_cetak_at saat user klik "Bayar & Cetak Nota" ===
       try {
@@ -1382,6 +1570,29 @@ const Sales: React.FC = () => {
 
   dbg('render Sales: cid=', orderFormData.customer_id, 'cphone=', orderFormData.customer_phone, 'items=', orderFormData.items?.length);
 
+  // ====== DATA PAYMENT UNTUK PREVIEW NOTA ======
+  const previewPayments = extractPaymentsFromNotes((orderFormData as any).notes);
+  const previewTotalPaid = previewPayments.reduce(
+    (sum, p) => sum + Number(p.dp_amount || 0) + Number(p.paid_amount || 0),
+    0
+  );
+  const previewLastPayment = previewPayments[previewPayments.length - 1];
+
+  const previewDpAmount = Number(previewLastPayment?.dp_amount || 0);
+  const previewPaidAmount = Number(previewLastPayment?.paid_amount || 0);
+  const previewTempoActive = !!previewLastPayment?.tempo_active;
+  const previewTempoDate = previewLastPayment?.tempo_date || undefined;
+
+  const previewBank =
+    bankOptions && bankOptions.length > 0
+      ? {
+          nama_bank: (bankOptions[0] as any).nama_bank,
+          rekening: (bankOptions[0] as any).rekening,
+          nama_akun: (bankOptions[0] as any).nama_akun,
+        }
+      : undefined;
+  // =============================================
+
   return (
     <div className="h-full w-full space-y-6 p-6 bg-gray-100 flex flex-col">
       <div className="flex items-center justify-between mb-6 flex-shrink-0">
@@ -1450,11 +1661,44 @@ const Sales: React.FC = () => {
               }
             }}
             onOpenPaymentModal={handleOpenPaymentModal}
+            onOpenNotaPreview={handleOpenNotaPreview}
           />
         </div>
       </div>
 
       {/* Modals */}
+      {showNotaModal && (
+        <NotaPreviewModal
+          isOpen={showNotaModal}
+          onClose={() => setShowNotaModal(false)}
+          // coba baca dari invoice_number dulu, kalau nggak ada fallback ke invoice
+          invoiceNumber={
+            invoiceForPreview ||
+            (orderFormData as any).invoice_number ||
+            (orderFormData as any).invoice ||
+            undefined
+          }
+          customerName={orderFormData.customer_name}
+          customerPhone={orderFormData.customer_phone}
+          items={orderFormData.items as any}
+          finalAmount={orderFormData.final_amount}
+          // kirim data pembayaran untuk hitung Sisa/Bayar/Kembali
+          dpAmount={previewDpAmount}
+          paidAmount={previewPaidAmount}
+          totalPaid={previewTotalPaid}
+          tempoActive={previewTempoActive}
+          tempoDate={previewTempoDate}
+          bank={previewBank}
+          company={{
+            logoUrl: appSettings?.logo_url || '',
+            companyName: appSettings?.nama_perusahaan || '',
+            address: appSettings?.alamat || '',
+            phone: appSettings?.telepon || '',
+          }}
+          kasirName={kasirName}
+        />
+      )}
+
       {showSelectCustomerModal && (
         <SelectCustomerModal
           onClose={() => { dbg('close SelectCustomerModal'); setShowSelectCustomerModal(false); }}

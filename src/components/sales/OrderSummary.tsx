@@ -12,6 +12,7 @@ interface OrderSummaryProps {
   currentItemSubtotal: number;// Subtotal of the currently configured item
   onSavePending: () => void | Promise<void>;
   onOpenPaymentModal: () => void | Promise<void>;
+  onOpenNotaPreview?: () => void;
   /**
    * Opsional: override hak akses tombol Pembayaran.
    * Jika tidak diberikan, komponen akan cek dari role user (Kasir / Super Admin).
@@ -27,6 +28,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   currentItemSubtotal,
   onSavePending,
   onOpenPaymentModal,
+  onOpenNotaPreview,
   canPay,
 }) => {
   const grandTotal = cartFinalAmount + currentItemSubtotal;
@@ -74,6 +76,17 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
       </div>
 
       <div className="flex justify-end space-x-3 mt-6">
+        {/* Lihat Nota di sebelah Pending */}
+        {onOpenNotaPreview && (
+          <button
+            type="button"
+            onClick={onOpenNotaPreview}
+            className="px-3 py-2 rounded border border-gray-300 text-sm text-gray-800 hover:bg-gray-50"
+          >
+            Lihat Nota
+          </button>
+        )}
+        
         {/* Pending Trx selalu tersedia */}
         <button
           onClick={onPendingClick}
