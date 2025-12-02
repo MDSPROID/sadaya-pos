@@ -11,6 +11,8 @@ type SpeedRow = {
   proses_cetak_at: string | null;
   siap_ambil_at: string | null;
   duration_minutes: number;
+  operator_name: string | null;
+  finishing_name: string | null;
 };
 
 const toDate = (val: string | null | undefined): Date | null => {
@@ -31,9 +33,7 @@ const resolveTimes = (row: any): { start: Date | null; end: Date | null } => {
     toDate(row.proses_cetak_at) ||
     null; // kalau dua-duanya null kita anggap tidak valid
 
-  const end =
-    toDate(row.siap_ambil_at) ||
-    null;
+  const end = toDate(row.siap_ambil_at) || null;
 
   return { start, end };
 };
@@ -48,8 +48,12 @@ const diffInMinutes = (start: Date | null, end: Date | null): number => {
 type Mode = 'all' | 'fastest' | 'slowest' | 'average';
 
 const LaporanRekapKecepatan: React.FC = () => {
-  const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
+  const [endDate, setEndDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
   const [mode, setMode] = useState<Mode>('average');
   const [data, setData] = useState<SpeedRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -64,7 +68,8 @@ const LaporanRekapKecepatan: React.FC = () => {
         // Ambil hanya order yg sudah SIAP AMBIL (ready_status = 'ready' & punya siap_ambil_at)
         const { data: rows, error: qErr } = await supabase
           .from('orders')
-          .select(`
+          .select(
+            `
             id,
             order_date,
             invoice_number,
@@ -72,18 +77,65 @@ const LaporanRekapKecepatan: React.FC = () => {
             siap_cetak_at,
             proses_cetak_at,
             siap_ambil_at,
-            ready_status
-          `)
+            ready_status,
+            operator_id,
+            finishing_id
+          `
+          )
           .gte('order_date', startDate)
           .lte('order_date', endDate)
           .eq('ready_status', 'ready');
 
         if (qErr) throw qErr;
 
-        const mapped: SpeedRow[] = (rows || [])
+        const allRows = rows || [];
+
+        // 🔹 Kumpulkan semua operator_id & finishing_id unik untuk di-join ke profiles
+        const profileIdSet = new Set<string>();
+        allRows.forEach((r: any) => {
+          if (r.operator_id) profileIdSet.add(String(r.operator_id));
+          if (r.finishing_id) profileIdSet.add(String(r.finishing_id));
+        });
+
+        let profilesMap: Record<string, string> = {};
+
+        if (profileIdSet.size > 0) {
+          const profileIds = Array.from(profileIdSet);
+          const { data: profiles, error: pErr } = await supabase
+            .from('profiles')
+            .select('id, first_name, last_name')
+            .in('id', profileIds);
+
+          if (pErr) {
+            console.warn(
+              '[LaporanRekapKecepatan] gagal load profiles untuk operator/finishing:',
+              pErr
+            );
+          } else {
+            profilesMap = (profiles || []).reduce(
+              (acc: Record<string, string>, p: any) => {
+                const fullName = `${p.first_name ?? ''} ${
+                  p.last_name ?? ''
+                }`.trim();
+                acc[p.id] = fullName || '(Tanpa Nama)';
+                return acc;
+              },
+              {}
+            );
+          }
+        }
+
+        const mapped: SpeedRow[] = allRows
           .map((row: any) => {
             const { start, end } = resolveTimes(row);
             const dur = diffInMinutes(start, end);
+
+            const operatorName = row.operator_id
+              ? profilesMap[String(row.operator_id)] || null
+              : null;
+            const finishingName = row.finishing_id
+              ? profilesMap[String(row.finishing_id)] || null
+              : null;
 
             return {
               id: row.id,
@@ -94,10 +146,12 @@ const LaporanRekapKecepatan: React.FC = () => {
               proses_cetak_at: row.proses_cetak_at,
               siap_ambil_at: row.siap_ambil_at,
               duration_minutes: dur,
+              operator_name: operatorName,
+              finishing_name: finishingName,
             };
           })
           // buang data yg belum lengkap / durasi 0 / minus
-          .filter(r => r.duration_minutes > 0);
+          .filter((r) => r.duration_minutes > 0);
 
         setData(mapped);
       } catch (e: any) {
@@ -124,7 +178,7 @@ const LaporanRekapKecepatan: React.FC = () => {
     let fastest: SpeedRow | null = null;
     let slowest: SpeedRow | null = null;
 
-    data.forEach(row => {
+    data.forEach((row) => {
       const d = row.duration_minutes;
       total += d;
       if (!fastest || d < fastest.duration_minutes) fastest = row;
@@ -167,10 +221,13 @@ const LaporanRekapKecepatan: React.FC = () => {
       {/* Header + filter */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Rekap Kecepatan Produksi</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Rekap Kecepatan Produksi
+          </h1>
           <p className="text-gray-600 text-sm">
             Durasi dari <span className="font-semibold">siap cetak</span> ke{' '}
-            <span className="font-semibold">siap ambil</span> per order (dalam menit).
+            <span className="font-semibold">siap ambil</span> per order (dalam
+            menit).
           </p>
         </div>
 
@@ -180,7 +237,7 @@ const LaporanRekapKecepatan: React.FC = () => {
             <input
               type="date"
               value={startDate}
-              onChange={e => setStartDate(e.target.value)}
+              onChange={(e) => setStartDate(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
             />
           </div>
@@ -189,7 +246,7 @@ const LaporanRekapKecepatan: React.FC = () => {
             <input
               type="date"
               value={endDate}
-              onChange={e => setEndDate(e.target.value)}
+              onChange={(e) => setEndDate(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
             />
           </div>
@@ -197,7 +254,7 @@ const LaporanRekapKecepatan: React.FC = () => {
             <label className="text-sm font-medium text-gray-700">Jenis:</label>
             <select
               value={mode}
-              onChange={e => setMode(e.target.value as Mode)}
+              onChange={(e) => setMode(e.target.value as Mode)}
               className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
             >
               <option value="average">Rata-rata</option>
@@ -216,7 +273,9 @@ const LaporanRekapKecepatan: React.FC = () => {
             <Gauge className="h-6 w-6 text-blue-600" />
           </div>
           <div className="ml-4">
-            <p className="text-sm font-medium text-gray-600">Rata-rata Kecepatan</p>
+            <p className="text-sm font-medium text-gray-600">
+              Rata-rata Kecepatan
+            </p>
             <p className="text-2xl font-bold text-gray-900">
               {stats.average} menit
             </p>
@@ -231,14 +290,18 @@ const LaporanRekapKecepatan: React.FC = () => {
             <Zap className="h-6 w-6 text-green-600" />
           </div>
           <div className="ml-4">
-            <p className="text-sm font-medium text-gray-600">Order Tercepat</p>
+            <p className="text-sm font-medium text-gray-600">
+              Order Tercepat
+            </p>
             {stats.fastest ? (
               <>
                 <p className="text-xl font-bold text-gray-900">
                   {stats.fastest.duration_minutes} menit
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Faktur {stats.fastest.invoice_number || stats.fastest.id.slice(0, 8)}
+                  Faktur{' '}
+                  {stats.fastest.invoice_number ||
+                    stats.fastest.id.slice(0, 8)}
                 </p>
               </>
             ) : (
@@ -252,14 +315,18 @@ const LaporanRekapKecepatan: React.FC = () => {
             <Clock className="h-6 w-6 text-red-600" />
           </div>
           <div className="ml-4">
-            <p className="text-sm font-medium text-gray-600">Order Terlama</p>
+            <p className="text-sm font-medium text-gray-600">
+              Order Terlama
+            </p>
             {stats.slowest ? (
               <>
                 <p className="text-xl font-bold text-gray-900">
                   {stats.slowest.duration_minutes} menit
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Faktur {stats.slowest.invoice_number || stats.slowest.id.slice(0, 8)}
+                  Faktur{' '}
+                  {stats.slowest.invoice_number ||
+                    stats.slowest.id.slice(0, 8)}
                 </p>
               </>
             ) : (
@@ -274,31 +341,62 @@ const LaporanRekapKecepatan: React.FC = () => {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No.</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Faktur</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pelanggan</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tgl Order</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Siap Cetak</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Siap Ambil</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Durasi (menit)</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                No.
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Faktur
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Pelanggan
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Operator
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Finishing
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Tgl Order
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Siap Cetak
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Siap Ambil
+              </th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Durasi (menit)
+              </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {!filteredData.length ? (
               <tr>
-                <td colSpan={7} className="px-4 py-4 text-center text-sm text-gray-500">
+                <td
+                  colSpan={9}
+                  className="px-4 py-4 text-center text-sm text-gray-500"
+                >
                   Tidak ada data untuk periode ini.
                 </td>
               </tr>
             ) : (
               filteredData.map((row, idx) => (
                 <tr key={row.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm text-gray-900">{idx + 1}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {idx + 1}
+                  </td>
                   <td className="px-4 py-3 text-sm text-gray-900">
                     {row.invoice_number || row.id.slice(0, 8)}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900">
                     {row.customer_display_name || 'Umum'}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {row.operator_name || '-'}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {row.finishing_name || '-'}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900">
                     {row.order_date
