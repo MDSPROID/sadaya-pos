@@ -16,7 +16,7 @@ const App: React.FC = () => {
     await supabase.auth.signOut();
   };
 
-  const allowedDashboardRoles = ['Super Admin', 'Admin', 'Kasir', 'Operator', 'Designer', 'Finishing'];
+  const allowedDashboardRoles = ['Super Admin', 'Admin', 'Kasir', 'CS', 'Manager', 'Operator', 'Designer', 'Finishing'];
 
   if (loading) {
     return (
