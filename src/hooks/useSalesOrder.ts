@@ -40,6 +40,23 @@ const upsertPaymentDetailsInNotes = (
   return (notes ? notes + '\n' : '') + line;
 };
 
+// --- helper: ambil unit price yang valid (>0) dengan urutan prioritas khusus -> umum -> pokok
+const resolveUnitPrice = (product: any): number => {
+  if (!product) return 0;
+
+  const toValid = (val: any) => {
+    const n = Number(val);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+
+  const hargaKhusus = toValid(product.harga_jual_khusus);
+  const hargaUmum   = toValid(product.harga_jual_umum);
+  const hargaPokok  = toValid(product.harga_pokok);
+
+  // urutan fallback: khusus -> umum -> pokok
+  return hargaKhusus || hargaUmum || hargaPokok || 0;
+};
+
 // --- helper: hitung area dalam meter (m²) dari dimensi & satuan
 const areaFromDimsM2 = (dims?: { panjang?: number; lebar?: number; satuan?: string }) => {
   if (!dims) return 0;
@@ -268,11 +285,12 @@ export const useSalesOrder = (
     if (!selectedProduct || itemQuantity <= 0) return 0;
 
     // Fallback berurutan agar tidak 0 saat kolom tertentu di-mask RLS
-    const unitPrice =
-      Number((selectedProduct as any).harga_jual_khusus) ||
-      Number(selectedProduct.harga_jual_umum) ||
-      Number((selectedProduct as any).harga_pokok) ||
-      0;
+    // const unitPrice =
+    //   Number((selectedProduct as any).harga_jual_khusus) ||
+    //   Number(selectedProduct.harga_jual_umum) ||
+    //   Number((selectedProduct as any).harga_pokok) ||
+    //   0;
+    const unitPrice = resolveUnitPrice(selectedProduct);
 
     if (!isFinite(unitPrice) || unitPrice <= 0) return 0;
 
@@ -500,17 +518,19 @@ export const useSalesOrder = (
   }, []);
 
   const handleAddItemToOrder = useCallback(() => {
+
     if (!selectedProduct || itemQuantity <= 0) {
       showError('Pilih produk dan masukkan kuantitas yang valid.');
       return;
     }
 
     // Fallback harga sama seperti sebelumnya
-    const unitPrice =
-      Number((selectedProduct as any).harga_jual_khusus) ||
-      Number(selectedProduct.harga_jual_umum) ||
-      Number((selectedProduct as any).harga_pokok) ||
-      0;
+    // const unitPrice =
+    //   Number((selectedProduct as any).harga_jual_khusus) ||
+    //   Number(selectedProduct.harga_jual_umum) ||
+    //   Number((selectedProduct as any).harga_pokok) ||
+    //   0;
+    const unitPrice = resolveUnitPrice(selectedProduct);
 
     if (!isFinite(unitPrice) || unitPrice <= 0) {
       showError('Harga produk tidak tersedia untuk role ini. Hubungi admin atau cek RLS/view harga.');
