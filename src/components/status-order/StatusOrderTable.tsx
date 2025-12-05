@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, RefreshCcw, Play, Trash2, XCircle, CheckCircle2 } from 'lucide-react';
+import { Search, RefreshCcw, Play, Trash2, XCircle, CheckCircle2, Edit3 } from 'lucide-react';
 
 /* ===== Types ===== */
 interface PendingOrderItem {
@@ -190,6 +190,7 @@ interface StatusOrderTableProps {
   onRefresh: () => void;
   onContinue: (orderId: string) => void;
   onDelete: (orderId: string) => void;
+  onEdit: (orderId: string) => void;
   onRekap: () => void;
 
   /* bulk */
@@ -216,6 +217,7 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
   onRefresh,
   onContinue,
   onDelete,
+  onEdit,
   onRekap,
   selectedIds,
   onToggleSelect,
@@ -433,6 +435,15 @@ const StatusOrderTable: React.FC<StatusOrderTableProps> = ({
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex space-x-2">
+                          {/* Tombol Edit → ke Transaksi Penjualan */}
+                          <button
+                            type="button"
+                            onClick={() => onEdit(item.id)}
+                            className="text-blue-600 hover:text-blue-900"
+                            title="Edit di Transaksi Penjualan"
+                          >
+                            <Edit3 className="h-5 w-5" />
+                          </button>
                           <button
                             type="button"
                             onClick={() => onContinue(item.id)}

@@ -270,7 +270,7 @@ export function useNeracaData({
         );
 
         const orderNotPaid = jumlahPiutangPeriod;
-        const jumlahSaldoTunai = orderPaidCash + kasMasukTunai;
+        const jumlahSaldoTunai = orderPaidCash + kasMasukTunai - kasKeluarTunai;
         const jumlahSaldoNonTunai = orderPaidTransfer + kasMasukTransfer;
         const totalJumlahSaldo = jumlahSaldoTunai + jumlahSaldoNonTunai;
         const totalPengeluaran = kasKeluarTunai + kasKeluarTransfer;

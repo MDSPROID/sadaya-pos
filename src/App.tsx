@@ -13,7 +13,16 @@ const App: React.FC = () => {
   const { session, profile, loading } = useSession(); // Get loading state
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    try {
+      // 1) Logout dari Supabase
+      await supabase.auth.signOut();
+
+      // 2) Bersihkan semua storage (opsional, tapi ini yang kamu minta: hapus sesi)
+      sessionStorage.clear();
+      localStorage.clear();
+    } catch (err) {
+      console.error('Error saat logout:', err);
+    }
   };
 
   const allowedDashboardRoles = ['Super Admin', 'Admin', 'Kasir', 'CS', 'Manager', 'Operator', 'Designer', 'Finishing'];

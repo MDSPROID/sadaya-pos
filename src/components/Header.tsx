@@ -48,9 +48,15 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout, onMenuToggle, isMobileN
     return () => { mounted = false; };
   }, []);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    onLogout();
+  // const handleLogout = async () => {
+  //   await supabase.auth.signOut();
+  //   localStorage.clear();  // optional
+  //   sessionStorage.clear(); 
+  //   onLogout();
+  // };
+
+  const handleLogout = () => {
+    onLogout();   // serahkan seluruh proses logout ke App.tsx
   };
 
   return (

@@ -358,7 +358,7 @@ const LaporanNeraca: React.FC = () => {
 
               <tr>
                 <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top">
-                  Jumlah Saldo Tunai / Cash <InfoTip text="Total jumlah realisasi tunai + kas masuk tunai" />
+                  Jumlah Saldo Tunai / Cash <InfoTip text="Total jumlah realisasi tunai + kas masuk tunai - kas keluar tunai" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
                   <ValueOrSkeleton>Rp {summary.jumlah_saldo_tunai.toLocaleString('id-ID')}</ValueOrSkeleton>

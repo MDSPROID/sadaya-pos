@@ -1531,9 +1531,11 @@ const Sales: React.FC = () => {
           await markOrderWaNotified(orderIdForFlag);
         } else {
           console.warn('[Sales] orderIdForFlag kosong, tidak bisa update wa_notified');
+          showError('Gagal kirim WhatsApp ke pelanggan (-1)');
         }
-      } catch (e) {
+      } catch (e: any) {
         console.warn('sendWhatsApp error', e);
+        showError(e?.message || 'Gagal kirim WhatsApp ke pelanggan.');
       }
 
       if (loadOrderId) {

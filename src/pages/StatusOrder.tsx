@@ -337,6 +337,14 @@ const StatusOrder: React.FC = () => {
     navigate(`/dashboard/status-order/process/${orderId}`);
   };
 
+  const handleEdit = (orderId: string) => {
+    navigate('/dashboard/sales', {
+      state: {
+        loadOrderId: orderId,   // ini akan dibaca di Sales.tsx
+      },
+    });
+  };
+
   const handleDelete = async (orderId: string) => {
     if (!confirm('Yakin ingin menghapus transaksi yang siap cetak ini?')) return;
 
@@ -535,6 +543,7 @@ const StatusOrder: React.FC = () => {
         onRefresh={() => fetchStatusOrders({ searchTerm, startDate, endDate, statusFilter })}
         onContinue={handleContinue}
         onDelete={handleDelete}
+        onEdit={handleEdit}
         onRekap={() => showSuccess('Rekap Status Order diproses')}
         selectedIds={selectedIds}
         onToggleSelect={toggleSelect}
