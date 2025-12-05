@@ -489,7 +489,8 @@ const buildWaMessage = (opts: {
     lines.push(`Sisa tagihan: ${formatRupiah(sisa)}`);
   }
 
-  lines.push('', '*Detail Pesanan:*', opts.itemsText || '-', '', '—', 'Pesan ini dikirim otomatis.');
+  // lines.push('', '*Detail Pesanan:*', opts.itemsText || '-', '', '—', 'Pesan ini dikirim otomatis.');
+  lines.push('','*Detail Pesanan:*', opts.itemsText || '-' );
   return lines.join('\n');
 };
 
@@ -1389,6 +1390,9 @@ const Sales: React.FC = () => {
       const targetName = (orderFormData.customer_name || (orderFormData as any).customer_display_name || '').trim();
       const itemsText  = formatItemsForWA(orderFormData.items);
 
+      // 🔹 primaryBank dipindah ke atas supaya bisa dipakai WA + Nota
+      const primaryBank = (bankOptions && bankOptions.length > 0) ? bankOptions[0] : undefined;
+
       // 🚫 Cegah kirim WA ulang kalau sudah pernah dikirim
       let shouldSendWA = true;
       if (loadOrderId) {
@@ -1414,6 +1418,16 @@ const Sales: React.FC = () => {
         tempoDate: detail.tempo_date,
         itemsText,
       });
+
+      // 🔹 Tambah info transfer ke template WA, pakai primaryBank
+      let transferInfo = '';
+      if (primaryBank && primaryBank.nama_bank && primaryBank.rekening && primaryBank.nama_akun) {
+        transferInfo =
+          `\n\n*Transfer ke:*\n` +
+          `Bank: ${primaryBank.nama_bank}\n` +
+          `No.Rek: ${primaryBank.rekening}\n` +
+          `a.n: ${primaryBank.nama_akun}`;
+      }
 
       await ensureDesignerId();
 
@@ -1465,10 +1479,8 @@ const Sales: React.FC = () => {
         console.warn('Gagal update siap_cetak_at:', e);
       }
 
-      const finalMsg = invoice ? `*Invoice:* ${invoice}\n${baseMsg}` : baseMsg;
-
-      // ========= 🖨 CETAK NOTA via window.print() =========
-      const primaryBank = (bankOptions && bankOptions.length > 0) ? bankOptions[0] : undefined;
+      // 🔹 finalMsg + Transfer ke
+      const finalMsg = (invoice ? `*Invoice:* ${invoice}\n${baseMsg}` : baseMsg) + transferInfo  + `\n\n—\nPesan ini dikirim otomatis.`;
 
       printReceiptWindow({
         invoiceNumber: invoice,
