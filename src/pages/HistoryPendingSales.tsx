@@ -35,7 +35,7 @@ const HistoryPendingSales: React.FC = () => {
 
     // debounce agar tidak spam query
     if (typingTimer.current) {
-      window.clearTimeout(typingTimer.current);
+      window.clearTimeout(typingTimer.current); 
     }
     typingTimer.current = window.setTimeout(() => {
       fetchPendingSales({ searchTerm: newValue, startDate, endDate });
@@ -254,7 +254,8 @@ const HistoryPendingSales: React.FC = () => {
       lines.push(`Sisa tagihan: Rp ${formatRupiah(sisa)}`);
     }
   
-    lines.push('', '*Detail Pesanan:*', opts.itemsText || '-', '', '—', 'Pesan ini dikirim otomatis.');
+    // lines.push('', '*Detail Pesanan:*', opts.itemsText || '-', '', '—', 'Pesan ini dikirim otomatis.');
+    lines.push('','*Detail Pesanan:*', opts.itemsText || '-' );
     return lines.join('\n');
   };
 
@@ -320,7 +321,7 @@ const HistoryPendingSales: React.FC = () => {
       const tempoActive = Boolean(last?.tempo_active);
       const tempoDate   = last?.tempo_date || undefined;
   
-      const msg = buildWaMessage({
+      const msgBase = buildWaMessage({
         customerName,
         finalAmount,
         dpAmount,
@@ -331,10 +332,32 @@ const HistoryPendingSales: React.FC = () => {
         itemsText,
         invoice: order.invoice_number,
       });
+
+      let transferInfo = '';
+      try {
+        const { data: banks, error: bankErr } = await supabase
+          .from('bank')
+          .select('nama_bank, rekening, nama_akun')
+          .limit(1);
+
+        if (!bankErr && banks && banks[0]) {
+          const b = banks[0] as any;
+          transferInfo =
+            `\n\n*Transfer ke:*\n` +
+            `Bank: ${b.nama_bank}\n` +
+            `No.Rek: ${b.rekening}\n` +
+            `a.n: ${b.nama_akun}`;
+        }
+      } catch (e) {
+        console.warn('Gagal ambil data bank untuk WA (history):', e);
+      }
+
+      // final message: base + info transfer + kalimat otomatis SETELAH bank
+      const finalMsg = msgBase + transferInfo + `\n\n—\nPesan ini dikirim otomatis.`;
   
       toastId = showLoading('Mengirim WhatsApp...');
       const normalized = normalizePhone(rawPhone);
-      await sendWhatsApp(normalized, msg);
+      await sendWhatsApp(normalized, finalMsg);
       await markOrderWaNotified(orderId);
   
       // update row di UI
