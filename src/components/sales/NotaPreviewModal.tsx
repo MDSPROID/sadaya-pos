@@ -9,6 +9,16 @@ type NotaItem = {
   qty?: number;
   subtotal_per_item?: number;
   subtotal?: number;
+  dimensions?: {
+    panjang?: number;
+    lebar?: number;
+    satuan?: string;
+    tebal_bahan_nama?: string;
+    additional_options?: {
+      name: string;
+      quantity: number;
+    }[];
+  } | null;
 };
 
 type NotaPreviewModalProps = {
@@ -202,6 +212,7 @@ const NotaPreviewModal: React.FC<NotaPreviewModalProps> = ({
                     it.nama_produk ||
                     it.nama ||
                     `Item ${idx + 1}`;
+
                   const qty = Number(it.quantity ?? it.qty ?? 0);
                   let subtotal = Number(
                     it.subtotal_per_item ?? it.subtotal ?? 0
@@ -209,9 +220,51 @@ const NotaPreviewModal: React.FC<NotaPreviewModalProps> = ({
                   if (!Number.isFinite(subtotal)) subtotal = 0;
                   const harga = qty > 0 ? subtotal / qty : 0;
 
+                  // --- Hitung string ukuran dari dimensions ---
+                  const dims = (it as any).dimensions || null;
+
+                  let ukuranMain = '';
+                  if (dims) {
+                    const p = dims.panjang ?? '';
+                    const l = dims.lebar ?? '';
+                    const satuan = dims.satuan ?? '';
+
+                    let base = '';
+                    if (p && l) base = `${p}x${l}`;
+                    else base = p || l || '';
+
+                    if (satuan) {
+                      base = base ? `${base} ${satuan}` : satuan;
+                    }
+
+                    const parts: string[] = [];
+                    if (base) parts.push(base);
+                    if (dims.tebal_bahan_nama) {
+                      parts.push(`(${dims.tebal_bahan_nama})`);
+                    }
+
+                    ukuranMain = parts.join(' ');
+                  }
+
+                  let additionalText = '';
+                  if (dims?.additional_options && Array.isArray(dims.additional_options) && dims.additional_options.length > 0) {
+                    additionalText = dims.additional_options
+                      .map((opt: any) => `${opt.name} (${opt.quantity})`)
+                      .join(', ');
+                  }
+
+                  const ukuranStr = [ukuranMain, additionalText].filter(Boolean).join(' | ');
+
                   return (
                     <tr key={idx}>
-                      <td className="py-1 pr-1 align-top">{name}</td>
+                      <td className="py-1 pr-1 align-top">
+                        <div>{name}</div>
+                        {ukuranStr && (
+                          <div className="text-[10px] text-gray-500">
+                            {ukuranStr}
+                          </div>
+                        )}
+                      </td>
                       <td className="py-1 text-right align-top">
                         {formatRupiahNonSymbol(harga)}
                       </td>

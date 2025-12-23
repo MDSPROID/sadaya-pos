@@ -129,53 +129,95 @@ const printReceiptWindow = (params: {
   const jam = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
   const itemsRows = (items || [])
-    .map((it: any, idx: number) => {
-      const name =
-        it?.product_name ||
-        it?.nama_produk ||
-        it?.nama ||
-        `Item ${idx + 1}`;
+  .map((it: any, idx: number) => {
+    const name =
+      it?.product_name ||
+      it?.nama_produk ||
+      it?.nama ||
+      `Item ${idx + 1}`;
 
-      const qty = Number(it?.quantity ?? it?.qty ?? 0);
+    const qty = Number(it?.quantity ?? it?.qty ?? 0);
 
-      // --- Ambil harga dengan fallback berurutan ---
-      let harga = Number(
-        it?.unit_price ??
-        it?.harga_satuan ??
-        it?.price ??
-        it?.harga ??
-        0
+    // --- Ambil harga dengan fallback berurutan ---
+    let harga = Number(
+      it?.unit_price ??
+      it?.harga_satuan ??
+      it?.price ??
+      it?.harga ??
+      0
+    );
+
+    // Kalau harga masih 0, coba hitung dari subtotal_per_item / qty
+    if ((!harga || isNaN(harga) || harga === 0) && qty > 0) {
+      const rawSubtotal = Number(it?.subtotal_per_item ?? it?.subtotal ?? 0);
+      if (rawSubtotal > 0) {
+        harga = rawSubtotal / qty;
+      }
+    }
+
+    if (!isFinite(harga)) harga = 0;
+
+    const subtotal = (() => {
+      const s = Number(
+        it?.subtotal_per_item ??
+        it?.subtotal ??
+        qty * harga
       );
+      return isFinite(s) ? s : 0;
+    })();
 
-      // Kalau harga masih 0, coba hitung dari subtotal_per_item / qty
-      if ((!harga || isNaN(harga) || harga === 0) && qty > 0) {
-        const rawSubtotal = Number(it?.subtotal_per_item ?? it?.subtotal ?? 0);
-        if (rawSubtotal > 0) {
-          harga = rawSubtotal / qty;
-        }
+    // --- Hitung string ukuran dari dimensions ---
+    const dims = it?.dimensions || null;
+
+    let ukuranMain = '';
+    if (dims) {
+      const p = dims.panjang ?? '';
+      const l = dims.lebar ?? '';
+      const satuan = dims.satuan ?? '';
+
+      let base = '';
+      if (p && l) base = `${p}x${l}`;
+      else base = p || l || '';
+
+      if (satuan) {
+        base = base ? `${base} ${satuan}` : satuan;
       }
 
-      if (!isFinite(harga)) harga = 0;
+      const parts: string[] = [];
+      if (base) parts.push(base);
+      if (dims.tebal_bahan_nama) {
+        parts.push(`(${dims.tebal_bahan_nama})`);
+      }
 
-      const subtotal = (() => {
-        const s = Number(
-          it?.subtotal_per_item ??
-          it?.subtotal ??
-          qty * harga
-        );
-        return isFinite(s) ? s : 0;
-      })();
+      ukuranMain = parts.join(' ');
+    }
 
-      return `
-        <tr>
-          <td style="font-size:11px;" class="left">${name}</td>
-          <td style="font-size:11px;" class="right">${formatRupiahNonSymbol(harga)}</td>
-          <td style="font-size:11px;" class="center">${qty}</td>
-          <td style="font-size:11px;" class="right">${formatRupiahNonSymbol(subtotal)}</td>
-        </tr>
-      `;
-    })
-    .join('');
+    let additionalText = '';
+    if (dims?.additional_options && Array.isArray(dims.additional_options) && dims.additional_options.length > 0) {
+      additionalText = dims.additional_options
+        .map((opt: any) => `${opt.name} (${opt.quantity})`)
+        .join(', ');
+    }
+
+    const ukuranStr = [ukuranMain, additionalText].filter(Boolean).join(' | ');
+
+    return `
+      <tr>
+        <td style="font-size:11px;" class="left">
+          ${name}
+          ${
+            ukuranStr
+              ? `<div style="font-size:10px;color:#555;">${ukuranStr}</div>`
+              : ''
+          }
+        </td>
+        <td style="font-size:11px;" class="right">${formatRupiahNonSymbol(harga)}</td>
+        <td style="font-size:11px;" class="center">${qty}</td>
+        <td style="font-size:11px;" class="right">${formatRupiahNonSymbol(subtotal)}</td>
+      </tr>
+    `;
+  })
+  .join('');
 
   const bankLine1 = bank
     ? `${bank.nama_bank || ''} A/N ${bank.nama_akun || ''}`
