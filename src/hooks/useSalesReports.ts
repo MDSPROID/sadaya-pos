@@ -15,6 +15,45 @@ interface UseSalesReportsProps {
   endDate: string;
 }
 
+/**
+ * Extract DP amount from order notes
+ * @param notes - Order notes yang bisa berisi payment details
+ * @returns DP amount atau 0 jika tidak ada
+ */
+const getDpFromNotes = (notes: any): number => {
+  try {
+    if (!notes) return 0;
+
+    // Jika notes berbentuk object & punya dp_amount
+    if (typeof notes === 'object' && notes !== null) {
+      if (typeof notes.dp_amount === 'number') return notes.dp_amount || 0;
+      if (typeof (notes as any).PaymentDetails?.dp_amount === 'number') {
+        return (notes as any).PaymentDetails.dp_amount || 0;
+      }
+    }
+
+    // Jika string diawali "Payment Details: { ... }"
+    const str = String(notes).trim();
+    const prefix = 'Payment Details:';
+    let jsonPart = str.startsWith(prefix) ? str.slice(prefix.length).trim() : str;
+
+    // Coba parse JSON langsung
+    const parsed = JSON.parse(jsonPart);
+
+    // Bentuk yang umum: { dp_amount: 1000000, ... }
+    if (typeof parsed?.dp_amount === 'number') return parsed.dp_amount || 0;
+
+    // Antisipasi variasi kunci (jaga-jaga)
+    if (typeof parsed?.PaymentDetails?.dp_amount === 'number') {
+      return parsed.PaymentDetails.dp_amount || 0;
+    }
+
+    return 0;
+  } catch {
+    return 0;
+  }
+};
+
 export const useSalesReports = ({ startDate, endDate }: UseSalesReportsProps) => {
   const [data, setData] = useState<SalesItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -154,14 +193,35 @@ export const useSalesReports = ({ startDate, endDate }: UseSalesReportsProps) =>
       }
 
       // === 7) Summary: Piutang (pending dalam rentang tanggal)
+      // const { data: pendingOrders, error: pendingError } = await supabase
+      //   .from('orders')
+      //   .select('final_amount')
+      //   .eq('payment_status', 'pending')
+      //   .gte('order_date', startDate)
+      //   .lte('order_date', endDate);
+      // if (pendingError) throw pendingError;
+      // const totalPiutang = (pendingOrders || []).reduce((sum, order) => sum + order.final_amount, 0);
+
       const { data: pendingOrders, error: pendingError } = await supabase
         .from('orders')
-        .select('final_amount')
+        .select('final_amount, notes, payment_method') // Tambah notes & payment_method
         .eq('payment_status', 'pending')
         .gte('order_date', startDate)
         .lte('order_date', endDate);
       if (pendingError) throw pendingError;
-      const totalPiutang = (pendingOrders || []).reduce((sum, order) => sum + order.final_amount, 0);
+
+      // ✅ BENAR: Dikurangi DP, konsisten dengan Neraca
+      const totalPiutang = (pendingOrders || []).reduce((sum, o) => {
+        // Skip jika tidak ada payment method (belum fix order)
+        const method = (o?.payment_method ?? '').toString().trim();
+        if (!method) return sum;
+
+        const finalAmount = Number(o?.final_amount || 0);
+        const dpAmount = getDpFromNotes(o?.notes) || 0;
+        const remaining = Math.max(0, finalAmount - Number(dpAmount || 0));
+        
+        return sum + remaining;
+      }, 0);
 
       // === 8) Summary: Transaksi hari ini (paid)
       const today = new Date().toISOString().split('T')[0];
