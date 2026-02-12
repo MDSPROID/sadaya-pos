@@ -1,11 +1,11 @@
 // ============================================================================
-// FILE: useNeracaData.ts (FIXED VERSION)
+// FILE: useNeracaData.ts (FINAL FIXED VERSION)
 // ============================================================================
-// PERUBAHAN UTAMA:
-// 1. Tambah perhitungan saldo awal (opening balance)
-// 2. Hapus duplikasi query hutang
-// 3. Tambah logging untuk debugging
-// 4. Perbaiki logika perhitungan saldo
+// PERBAIKAN:
+// 1. ✅ Fix Bug #1: Exclude entry "SALDO AWAL" dari kas_masuk/kas_keluar
+// 2. ✅ Fix Bug #2: Hitung saldo awal dari transaksi sebelum periode
+// 3. ✅ Hapus duplikasi query
+// 4. ✅ Tambah logging untuk debugging
 // ============================================================================
 
 import { useState, useEffect, useCallback } from 'react';
@@ -28,7 +28,7 @@ export interface NeracaSummary {
   jumlah_hutang: number;
   jumlah_piutang: number;
   saldo_seharusnya: number;
-  // TAMBAHAN: untuk transparansi
+  // Tambahan untuk transparansi
   saldo_awal_tunai?: number;
   saldo_awal_non_tunai?: number;
 }
@@ -68,25 +68,21 @@ const getDpFromNotes = (notes: any): number => {
   try {
     if (!notes) return 0;
 
-    // Jika notes berbentuk object & punya dp_amount
     if (typeof notes === 'object' && notes !== null) {
       if (typeof notes.dp_amount === 'number') return notes.dp_amount || 0;
-      if (typeof (notes as any).PaymentDetails?.dp_amount === 'number') return (notes as any).PaymentDetails.dp_amount || 0;
+      if (typeof (notes as any).PaymentDetails?.dp_amount === 'number') 
+        return (notes as any).PaymentDetails.dp_amount || 0;
     }
 
-    // Jika string diawali "Payment Details: { ... }"
     const str = String(notes).trim();
     const prefix = 'Payment Details:';
     let jsonPart = str.startsWith(prefix) ? str.slice(prefix.length).trim() : str;
 
-    // Coba parse JSON langsung
     const parsed = JSON.parse(jsonPart);
 
-    // Bentuk yang umum: { dp_amount: 1000000, ... }
     if (typeof parsed?.dp_amount === 'number') return parsed.dp_amount || 0;
-
-    // Antisipasi variasi kunci (jaga-jaga)
-    if (typeof parsed?.PaymentDetails?.dp_amount === 'number') return parsed.PaymentDetails.dp_amount || 0;
+    if (typeof parsed?.PaymentDetails?.dp_amount === 'number') 
+      return parsed.PaymentDetails.dp_amount || 0;
 
     return 0;
   } catch {
@@ -128,7 +124,6 @@ export function useNeracaData({
     const tryParse = (txt: string) => {
       try {
         const obj = JSON.parse(txt);
-        // coba beberapa lokasi umum
         const a = obj?.payment_method;
         const b = obj?.PaymentDetails?.payment_method;
         const c = obj?.PaymentDetails?.method;
@@ -140,14 +135,12 @@ export function useNeracaData({
       }
     };
 
-    // pola "Payment Details: {...}"
     const m = /Payment Details:\s*({[\s\S]*})/i.exec(raw);
     if (m?.[1]) {
       const v = tryParse(m[1]);
       if (v) return v;
     }
 
-    // coba parse seluruh string sebagai JSON
     const v2 = tryParse(raw);
     if (v2) return v2;
 
@@ -155,17 +148,18 @@ export function useNeracaData({
   };
 
   // ========================================================================
-  // FUNGSI BARU: HITUNG SALDO AWAL
+  // FUNGSI BARU: HITUNG SALDO AWAL (FIX BUG #2)
   // ========================================================================
   const calculateOpeningBalance = useCallback(async (beforeDate: string) => {
     try {
       let saldoAwalTunai = 0;
       let saldoAwalNonTunai = 0;
 
-      // 1. Kas Masuk sebelum periode
+      // 1. Kas Masuk sebelum periode (EXCLUDE SALDO AWAL - FIX BUG #1)
       const { data: kasMasukBefore, error: kmError } = await supabase
         .from('kas_masuk')
         .select('jumlah, payment_method')
+        .neq('nama_pemasukan', 'SALDO AWAL')  // 👈 FIX BUG #1
         .lt('tanggal', beforeDate);
 
       if (kmError) throw kmError;
@@ -230,7 +224,7 @@ export function useNeracaData({
   }, []);
 
   // ========================================================================
-  // FETCH DATA NERACA (IMPROVED)
+  // FETCH DATA NERACA (IMPROVED - FIX BOTH BUGS)
   // ========================================================================
   const fetchNeracaSummary = useCallback(
     async (override?: { startDate?: string; endDate?: string; filterPeriod?: Period }) => {
@@ -243,18 +237,19 @@ export function useNeracaData({
         setError(null);
 
         // ====================================================================
-        // STEP 1: HITUNG SALDO AWAL
+        // STEP 1: HITUNG SALDO AWAL (FIX BUG #2)
         // ====================================================================
         const { saldoAwalTunai, saldoAwalNonTunai } = await calculateOpeningBalance(sDate);
 
         // ====================================================================
-        // STEP 2: AMBIL DATA PERIODE YANG DIPILIH
+        // STEP 2: AMBIL DATA PERIODE (FIX BUG #1 - EXCLUDE SALDO AWAL)
         // ====================================================================
 
-        // Kas Masuk dalam periode
+        // Kas Masuk dalam periode (EXCLUDE SALDO AWAL)
         const { data: kasMasukPeriodData, error: kasMasukPeriodError } = await supabase
           .from('kas_masuk')
           .select('tanggal, jumlah, payment_method')
+          .neq('nama_pemasukan', 'SALDO AWAL')  // 👈 FIX BUG #1
           .gte('tanggal', sDate)
           .lte('tanggal', eDate);
         if (kasMasukPeriodError) throw kasMasukPeriodError;
@@ -270,7 +265,7 @@ export function useNeracaData({
         // Orders dalam periode
         const { data: allOrdersForOmsetPeriod, error: allOrdersForOmsetPeriodError } = await supabase
           .from('orders')
-          .select('order_date, final_amount, payment_method, payment_status, notes, invoice_number, ready_status')
+          .select('order_date, final_amount, payment_method, payment_status, notes, invoice_number')
           .gte('order_date', sDate)
           .lte('order_date', eDate);
         if (allOrdersForOmsetPeriodError) throw allOrdersForOmsetPeriodError;
@@ -284,12 +279,11 @@ export function useNeracaData({
           .lte('order_date', eDate);
         if (pendingOrdersPeriodError) throw pendingOrdersPeriodError;
 
-        // Purchase Orders (hutang) dalam periode
-        // FIX: Hapus duplikasi, gunakan satu query saja
+        // Purchase Orders (hutang) - FIX: Hapus duplikasi
         const { data: hutangPeriodData, error: hutangPeriodError } = await supabase
           .from('purchase_orders')
           .select('order_date, final_amount, total_amount, paid_amount, payment_status')
-          .eq('payment_status', 'due') // TODO: Review apakah perlu status lain?
+          .eq('payment_status', 'due')
           .gte('order_date', sDate)
           .lte('order_date', eDate);
         if (hutangPeriodError) throw hutangPeriodError;
@@ -298,13 +292,13 @@ export function useNeracaData({
         // STEP 3: PROSES DATA & HITUNG SUMMARY
         // ====================================================================
 
-        // Omset dalam periode
+        // Omset
         const omsetPeriod = (allOrdersForOmsetPeriod || []).reduce(
           (sum: number, o: any) => sum + (o.final_amount || 0),
           0
         );
 
-        // Order Paid Cash & Transfer dalam periode
+        // Order Paid Cash & Transfer
         let orderPaidCash = 0;
         let orderPaidTransfer = 0;
 
@@ -313,14 +307,12 @@ export function useNeracaData({
           const method = methodFromNotes || o.payment_method || '';
 
           if (o.payment_status === 'paid') {
-            // paid: masukkan full final_amount ke bucket sesuai metode
             if (method === 'cash') {
               orderPaidCash += o.final_amount || 0;
             } else {
               orderPaidTransfer += o.final_amount || 0;
             }
           } else if (o.payment_status === 'pending') {
-            // pending: jika ada DP, masukkan ke bucket sesuai metode
             const dp = getDpFromNotes(o.notes) || 0;
             if (method === 'cash') {
               orderPaidCash += dp;
@@ -330,7 +322,7 @@ export function useNeracaData({
           }
         });
 
-        // Kas Masuk & Keluar dalam periode (per metode)
+        // Kas Masuk & Keluar
         const kasMasukTunai = (kasMasukPeriodData || []).reduce(
           (s: number, x: any) => s + (x.payment_method === 'cash' ? (x.jumlah || 0) : 0),
           0
@@ -348,7 +340,7 @@ export function useNeracaData({
           0
         );
 
-        // Piutang dalam periode (pending orders, dikurangi DP)
+        // Piutang
         const jumlahPiutangPeriod = (pendingOrdersPeriodData || []).reduce((s: number, o: any) => {
           const method = (o?.payment_method ?? '').toString().trim();
           if (!method) return s;
@@ -359,21 +351,21 @@ export function useNeracaData({
           return s + remaining;
         }, 0);
 
-        // Hutang dalam periode (purchase due, dikurangi paid_amount)
+        // Hutang
         const jumlahHutang = (hutangPeriodData || []).reduce(
           (s: number, po: any) => {
             const unpaid = (po.final_amount || 0) - (po.paid_amount || 0);
-            return s + Math.max(0, unpaid); // Pastikan tidak negatif
+            return s + Math.max(0, unpaid);
           },
           0
         );
 
         // ====================================================================
-        // STEP 4: HITUNG SALDO FINAL (DENGAN SALDO AWAL)
+        // STEP 4: HITUNG SALDO FINAL (DENGAN SALDO AWAL - FIX BUG #2)
         // ====================================================================
         const orderNotPaid = jumlahPiutangPeriod;
         
-        // FIXED: Tambahkan saldo awal ke perhitungan
+        // 👇 FIX BUG #2: Tambahkan saldo awal
         const jumlahSaldoTunai = saldoAwalTunai + orderPaidCash + kasMasukTunai - kasKeluarTunai;
         const jumlahSaldoNonTunai = saldoAwalNonTunai + orderPaidTransfer + kasMasukTransfer - kasKeluarTransfer;
         const totalJumlahSaldo = jumlahSaldoTunai + jumlahSaldoNonTunai;
@@ -390,28 +382,16 @@ export function useNeracaData({
           console.log('💰 Saldo Awal:');
           console.log('  - Tunai:', saldoAwalTunai.toLocaleString('id-ID'));
           console.log('  - Non-Tunai:', saldoAwalNonTunai.toLocaleString('id-ID'));
-          console.log('📊 Periode Data:');
-          console.log('  - Order Paid Cash:', orderPaidCash.toLocaleString('id-ID'));
-          console.log('  - Order Paid Transfer:', orderPaidTransfer.toLocaleString('id-ID'));
-          console.log('  - Kas Masuk Tunai:', kasMasukTunai.toLocaleString('id-ID'));
-          console.log('  - Kas Masuk Transfer:', kasMasukTransfer.toLocaleString('id-ID'));
-          console.log('  - Kas Keluar Tunai:', kasKeluarTunai.toLocaleString('id-ID'));
-          console.log('  - Kas Keluar Transfer:', kasKeluarTransfer.toLocaleString('id-ID'));
+          console.log('📊 Kas Masuk Periode (exclude SALDO AWAL):');
+          console.log('  - Tunai:', kasMasukTunai.toLocaleString('id-ID'));
+          console.log('  - Transfer:', kasMasukTransfer.toLocaleString('id-ID'));
           console.log('💵 Saldo Akhir:');
           console.log('  - Tunai:', jumlahSaldoTunai.toLocaleString('id-ID'));
           console.log('  - Non-Tunai:', jumlahSaldoNonTunai.toLocaleString('id-ID'));
           console.log('  - Total:', totalJumlahSaldo.toLocaleString('id-ID'));
-          console.log('📈 Lainnya:');
-          console.log('  - Omset:', omsetPeriod.toLocaleString('id-ID'));
-          console.log('  - Piutang:', jumlahPiutangPeriod.toLocaleString('id-ID'));
-          console.log('  - Hutang:', jumlahHutang.toLocaleString('id-ID'));
-          console.log('  - Saldo Seharusnya:', saldoSeharusnya.toLocaleString('id-ID'));
           console.groupEnd();
         }
 
-        // ====================================================================
-        // STEP 6: SET SUMMARY
-        // ====================================================================
         setSummary({
           omset: omsetPeriod,
           order_paid_cash: orderPaidCash,
@@ -433,7 +413,7 @@ export function useNeracaData({
         });
 
         // ====================================================================
-        // STEP 7: POPULATE CHART DATA
+        // STEP 6: POPULATE CHART DATA (same as before)
         // ====================================================================
         type Gran = 'daily' | 'monthly';
         const chartGranularity: Gran = p === 'yearly' ? 'monthly' : 'daily';
