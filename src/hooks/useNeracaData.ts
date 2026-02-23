@@ -31,6 +31,8 @@ export interface NeracaSummary {
   // Tambahan untuk transparansi
   saldo_awal_tunai?: number;
   saldo_awal_non_tunai?: number;
+  piutang_carry_over?: number;
+  hutang_carry_over?: number;
 }
 
 export interface NeracaDataPoint {
@@ -62,6 +64,8 @@ const ZERO_SUMMARY: NeracaSummary = {
   saldo_seharusnya: 0,
   saldo_awal_tunai: 0,
   saldo_awal_non_tunai: 0,
+  piutang_carry_over: 0,
+  hutang_carry_over: 0,
 };
 
 const getDpFromNotes = (notes: any): number => {
@@ -148,20 +152,19 @@ export function useNeracaData({
   };
 
   // ========================================================================
-  // FUNGSI BARU: HITUNG SALDO AWAL (FIX BUG #2)
+  // FUNGSI: HITUNG SALDO AWAL + PIUTANG/HUTANG CARRY-OVER SEBELUM PERIODE
   // ========================================================================
   const calculateOpeningBalance = useCallback(async (beforeDate: string) => {
     try {
       let saldoAwalTunai = 0;
       let saldoAwalNonTunai = 0;
 
-      // 1. Kas Masuk sebelum periode (EXCLUDE SALDO AWAL - FIX BUG #1)
+      // 1. Kas Masuk sebelum periode (EXCLUDE SALDO AWAL)
       const { data: kasMasukBefore, error: kmError } = await supabase
         .from('kas_masuk')
         .select('jumlah, payment_method')
-        .neq('nama_pemasukan', 'SALDO AWAL')  // 👈 FIX BUG #1
+        .neq('nama_pemasukan', 'SALDO AWAL')
         .lt('tanggal', beforeDate);
-
       if (kmError) throw kmError;
 
       (kasMasukBefore || []).forEach(km => {
@@ -177,7 +180,6 @@ export function useNeracaData({
         .from('kas_keluar')
         .select('jumlah, payment_method')
         .lt('tanggal', beforeDate);
-
       if (kkError) throw kkError;
 
       (kasKeluarBefore || []).forEach(kk => {
@@ -193,15 +195,12 @@ export function useNeracaData({
         .from('orders')
         .select('final_amount, payment_method, payment_status, notes')
         .lt('order_date', beforeDate);
-
       if (ordersError) throw ordersError;
 
       (ordersBefore || []).forEach(o => {
         const methodFromNotes = getPaymentMethodFromNotes(o.notes);
-        // FIX: Jangan fallback ke 'cash' jika tidak ada payment_method
-        // Order tanpa payment_method tidak bisa diklasifikasikan sbg tunai/transfer
         const method = methodFromNotes || o.payment_method;
-        if (!method) return; // Skip jika tidak ada method sama sekali
+        if (!method) return;
 
         if (o.payment_status === 'paid') {
           if (method === 'cash') {
@@ -211,7 +210,7 @@ export function useNeracaData({
           }
         } else if (o.payment_status === 'pending') {
           const dp = getDpFromNotes(o.notes) || 0;
-          if (dp > 0) { // Hanya masuk saldo jika ada DP yang sudah dibayar
+          if (dp > 0) {
             if (method === 'cash') {
               saldoAwalTunai += dp;
             } else {
@@ -221,10 +220,33 @@ export function useNeracaData({
         }
       });
 
-      return { saldoAwalTunai, saldoAwalNonTunai };
+      // 4. Piutang carry-over: pending orders dari SEBELUM periode yang belum lunas
+      //    Ini penting agar saldo_seharusnya akurat — piutang lama masih jadi tagihan
+      const piutangCarryOver = (ordersBefore || []).reduce((s, o) => {
+        const finalAmount = Number(o?.final_amount || 0);
+        const dpAmount = getDpFromNotes(o?.notes) || 0;
+        if (o.payment_status === 'pending') {
+          return s + Math.max(0, finalAmount - dpAmount);
+        }
+        return s;
+      }, 0);
+
+      // 5. Hutang carry-over: purchase_orders due dari SEBELUM periode
+      const { data: hutangBefore, error: hutangBeforeError } = await supabase
+        .from('purchase_orders')
+        .select('final_amount, paid_amount')
+        .eq('payment_status', 'due')
+        .lt('order_date', beforeDate);
+      if (hutangBeforeError) throw hutangBeforeError;
+
+      const hutangCarryOver = (hutangBefore || []).reduce((s, po) => {
+        return s + Math.max(0, (po.final_amount || 0) - (po.paid_amount || 0));
+      }, 0);
+
+      return { saldoAwalTunai, saldoAwalNonTunai, piutangCarryOver, hutangCarryOver };
     } catch (err) {
       console.error('Error calculating opening balance:', err);
-      return { saldoAwalTunai: 0, saldoAwalNonTunai: 0 };
+      return { saldoAwalTunai: 0, saldoAwalNonTunai: 0, piutangCarryOver: 0, hutangCarryOver: 0 };
     }
   }, []);
 
@@ -242,9 +264,9 @@ export function useNeracaData({
         setError(null);
 
         // ====================================================================
-        // STEP 1: HITUNG SALDO AWAL (FIX BUG #2)
+        // STEP 1: HITUNG SALDO AWAL + CARRY-OVER PIUTANG/HUTANG
         // ====================================================================
-        const { saldoAwalTunai, saldoAwalNonTunai } = await calculateOpeningBalance(sDate);
+        const { saldoAwalTunai, saldoAwalNonTunai, piutangCarryOver, hutangCarryOver } = await calculateOpeningBalance(sDate);
 
         // ====================================================================
         // STEP 2: AMBIL DATA PERIODE (FIX BUG #1 - EXCLUDE SALDO AWAL)
@@ -378,11 +400,13 @@ export function useNeracaData({
         const totalJumlahSaldo = jumlahSaldoTunai + jumlahSaldoNonTunai;
         
         const totalPengeluaran = kasKeluarTunai + kasKeluarTransfer;
-        const saldoSeharusnya = totalJumlahSaldo + jumlahPiutangPeriod - jumlahHutang;
 
-        // ====================================================================
-        // STEP 5: LOGGING (DEVELOPMENT ONLY)
-        // ====================================================================
+        // Saldo seharusnya = uang di tangan + semua piutang (bulan ini + carry-over) - semua hutang (bulan ini + carry-over)
+        // Ini mencerminkan posisi keuangan yang BENAR secara akrual
+        const totalPiutang = jumlahPiutangPeriod + piutangCarryOver;
+        const totalHutang = jumlahHutang + hutangCarryOver;
+        const saldoSeharusnya = totalJumlahSaldo + totalPiutang - totalHutang;
+
         if (process.env.NODE_ENV === 'development') {
           console.group('=== DEBUG: Neraca Summary ===');
           console.log('📅 Periode:', sDate, '→', eDate);
@@ -396,6 +420,15 @@ export function useNeracaData({
           console.log('  - Tunai:', jumlahSaldoTunai.toLocaleString('id-ID'));
           console.log('  - Non-Tunai:', jumlahSaldoNonTunai.toLocaleString('id-ID'));
           console.log('  - Total:', totalJumlahSaldo.toLocaleString('id-ID'));
+          console.log('📋 Piutang:');
+          console.log('  - Periode ini:', jumlahPiutangPeriod.toLocaleString('id-ID'));
+          console.log('  - Carry-over (sebelum periode):', piutangCarryOver.toLocaleString('id-ID'));
+          console.log('  - Total:', totalPiutang.toLocaleString('id-ID'));
+          console.log('📋 Hutang:');
+          console.log('  - Periode ini:', jumlahHutang.toLocaleString('id-ID'));
+          console.log('  - Carry-over (sebelum periode):', hutangCarryOver.toLocaleString('id-ID'));
+          console.log('  - Total:', totalHutang.toLocaleString('id-ID'));
+          console.log('✅ Saldo Seharusnya:', saldoSeharusnya.toLocaleString('id-ID'));
           console.groupEnd();
         }
 
@@ -412,11 +445,13 @@ export function useNeracaData({
           jumlah_saldo_non_tunai: jumlahSaldoNonTunai,
           total_jumlah_saldo: totalJumlahSaldo,
           total_pengeluaran: totalPengeluaran,
-          jumlah_hutang: jumlahHutang,
-          jumlah_piutang: jumlahPiutangPeriod,
+          jumlah_hutang: totalHutang,
+          jumlah_piutang: totalPiutang,
           saldo_seharusnya: saldoSeharusnya,
           saldo_awal_tunai: saldoAwalTunai,
           saldo_awal_non_tunai: saldoAwalNonTunai,
+          piutang_carry_over: piutangCarryOver,
+          hutang_carry_over: hutangCarryOver,
         });
 
         // ====================================================================
@@ -425,10 +460,17 @@ export function useNeracaData({
         type Gran = 'daily' | 'monthly';
         const chartGranularity: Gran = p === 'yearly' ? 'monthly' : 'daily';
 
+        // FIX: Parse tanggal sebagai local date (bukan UTC) untuk menghindari timezone shift
+        // "2026-02-23" di-parse UTC jadi 2026-02-22T17:00:00 WIB → key salah!
+        const parseLocalDate = (dateStr: string): Date => {
+          const [year, month, day] = dateStr.split('-').map(Number);
+          return new Date(year, month - 1, day); // local timezone, bukan UTC
+        };
+
         const getKey = (d: Date) =>
           chartGranularity === 'monthly'
             ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-            : d.toISOString().split('T')[0];
+            : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
         const getLabel = (d: Date, spanYears: boolean) =>
           chartGranularity === 'monthly'
@@ -439,8 +481,8 @@ export function useNeracaData({
                 year: spanYears ? 'numeric' : undefined,
               });
 
-        let startObj = new Date(sDate);
-        let endObj = new Date(eDate);
+        let startObj = parseLocalDate(sDate);
+        let endObj = parseLocalDate(eDate);
         if (p === 'yearly') {
           startObj = new Date(new Date(sDate).getFullYear(), 0, 1);
           endObj = new Date(new Date(eDate).getFullYear(), 11, 31);
@@ -467,33 +509,42 @@ export function useNeracaData({
           }
         }
 
+        // Populate chart data
         (allOrdersForOmsetPeriod || []).forEach((o: any) => {
-          const d = new Date(o.order_date);
-          if (d >= startObj && d <= endObj) grouped[getKey(d)].Omset += o.final_amount || 0;
+          if (!o.order_date) return;
+          const d = parseLocalDate(o.order_date);
+          const key = getKey(d);
+          if (grouped[key]) grouped[key].Omset += o.final_amount || 0;
         });
         (kasKeluarPeriodData || []).forEach((r: any) => {
-          const d = new Date(r.tanggal);
-          if (d >= startObj && d <= endObj) grouped[getKey(d)]['Total Pengeluaran'] += r.jumlah || 0;
+          if (!r.tanggal) return;
+          const d = parseLocalDate(r.tanggal);
+          const key = getKey(d);
+          if (grouped[key]) grouped[key]['Total Pengeluaran'] += r.jumlah || 0;
         });
         (pendingOrdersPeriodData || []).forEach((o: any) => {
-          const d = new Date(o.order_date);
-          if (d < startObj || d > endObj) return;
+          if (!o.order_date) return;
+          const d = parseLocalDate(o.order_date);
+          const key = getKey(d);
+          if (!grouped[key]) return;
 
-          // FIX: Jangan skip order pending dengan payment_method NULL
           const finalAmount = Number(o?.final_amount || 0);
           const dpAmount = getDpFromNotes(o?.notes) || 0;
           const remaining = Math.max(0, finalAmount - Number(dpAmount || 0));
-          grouped[getKey(d)]['Jumlah Piutang'] += remaining;
+          grouped[key]['Jumlah Piutang'] += remaining;
         });
         (hutangPeriodData || []).forEach((po: any) => {
-          const d = new Date(po.order_date);
-          if (d >= startObj && d <= endObj) {
+          if (!po.order_date) return;
+          const d = parseLocalDate(po.order_date);
+          const key = getKey(d);
+          if (grouped[key]) {
             const unpaid = (po.final_amount || 0) - (po.paid_amount || 0);
-            grouped[getKey(d)]['Jumlah Hutang'] += Math.max(0, unpaid);
+            grouped[key]['Jumlah Hutang'] += Math.max(0, unpaid);
           }
         });
 
-        setPeriodData(Object.values(grouped).sort((a, b) => a.sortKey.localeCompare(b.sortKey)));
+        const finalPeriodData = Object.values(grouped).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+        setPeriodData(finalPeriodData);
 
       } catch (err: any) {
         console.error('Error fetching neraca summary:', err);

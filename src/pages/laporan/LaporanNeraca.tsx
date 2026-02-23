@@ -52,18 +52,14 @@ const LaporanNeraca: React.FC = () => {
   );
 
   // Data hook: autoFetch=false agar default 0 sampai user klik
-  const { summary, periodData, loading, error, fetchNeracaSummary, resetToZero } = useNeracaData({
+  const { summary, periodData, loading, error, fetchNeracaSummary } = useNeracaData({
     startDate: appliedStartDate,
     endDate: appliedEndDate,
     filterPeriod: appliedFilterPeriod,
     autoFetch: false,
   });
 
-  // Pastikan awalnya nol (tanpa auto-fetch)
-  useEffect(() => {
-    resetToZero();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Data dimulai dari ZERO_SUMMARY (sudah default di useState), tidak perlu reset manual
 
   // Tombol Lihat → commit UI ke APPLIED, lalu fetch dengan override (hindari race setState)
   const handleLihatClick = () => {
@@ -131,6 +127,9 @@ const LaporanNeraca: React.FC = () => {
 
   const ValueOrSkeleton: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     loading ? <span className="inline-block h-4 w-28 bg-gray-200 rounded animate-pulse" /> : <>{children}</>;
+
+  // Bulatkan ke Rupiah (integer) lalu format ribuan — menghindari floating point dari DB
+  const rp = (val: number) => `Rp ${Math.round(val).toLocaleString('id-ID')}`;
 
   if (error) {
     return (
@@ -289,7 +288,7 @@ const LaporanNeraca: React.FC = () => {
                   Omset <InfoTip text="Total penjualan fix yang sudah lunas maupun belum lunas" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right font-medium">
-                  <ValueOrSkeleton>Rp {summary.omset.toLocaleString('id-ID')}</ValueOrSkeleton>
+                  <ValueOrSkeleton>{rp(summary.omset)}</ValueOrSkeleton>
                 </td>
               </tr>
 
@@ -298,7 +297,7 @@ const LaporanNeraca: React.FC = () => {
                   Realisasi Tunai <InfoTip text="Jumlah uang masuk yang sudah fix order dengan metode pembayaran tunai" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
-                  <ValueOrSkeleton>Rp {summary.order_paid_cash.toLocaleString('id-ID')}</ValueOrSkeleton>
+                  <ValueOrSkeleton>{rp(summary.order_paid_cash)}</ValueOrSkeleton>
                 </td>
               </tr>
 
@@ -307,7 +306,7 @@ const LaporanNeraca: React.FC = () => {
                   Realisasi Transfer <InfoTip text="Jumlah uang masuk yang sudah fix order dengan metode pembayaran transfer" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
-                  <ValueOrSkeleton>Rp {summary.order_paid_transfer.toLocaleString('id-ID')}</ValueOrSkeleton>
+                  <ValueOrSkeleton>{rp(summary.order_paid_transfer)}</ValueOrSkeleton>
                 </td>
               </tr>
 
@@ -316,7 +315,7 @@ const LaporanNeraca: React.FC = () => {
                   Non Realisasi <InfoTip text="Jumlah fix order yang belum bayar" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
-                  <ValueOrSkeleton>Rp {summary.order_not_paid.toLocaleString('id-ID')}</ValueOrSkeleton>
+                  <ValueOrSkeleton>{rp(summary.order_not_paid)}</ValueOrSkeleton>
                 </td>
               </tr>
 
@@ -325,7 +324,7 @@ const LaporanNeraca: React.FC = () => {
                   Kas Masuk Tunai <InfoTip text="Total dari pemasukan menu 'Kas masuk' tunai" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
-                  <ValueOrSkeleton>Rp {summary.kas_masuk_tunai.toLocaleString('id-ID')}</ValueOrSkeleton>
+                  <ValueOrSkeleton>{rp(summary.kas_masuk_tunai)}</ValueOrSkeleton>
                 </td>
               </tr>
 
@@ -334,7 +333,7 @@ const LaporanNeraca: React.FC = () => {
                   Kas Masuk Transfer <InfoTip text="Total dari pemasukan menu 'Kas masuk' transfer" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
-                  <ValueOrSkeleton>Rp {summary.kas_masuk_transfer.toLocaleString('id-ID')}</ValueOrSkeleton>
+                  <ValueOrSkeleton>{rp(summary.kas_masuk_transfer)}</ValueOrSkeleton>
                 </td>
               </tr>
 
@@ -343,7 +342,7 @@ const LaporanNeraca: React.FC = () => {
                   Kas Keluar Tunai <InfoTip text="Total dari pengeluaran menu 'Kas keluar' tunai" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
-                  <ValueOrSkeleton>Rp {summary.kas_keluar_tunai.toLocaleString('id-ID')}</ValueOrSkeleton>
+                  <ValueOrSkeleton>{rp(summary.kas_keluar_tunai)}</ValueOrSkeleton>
                 </td>
               </tr>
 
@@ -352,7 +351,7 @@ const LaporanNeraca: React.FC = () => {
                   Kas Keluar Transfer <InfoTip text="Total dari pengeluaran menu 'Kas keluar' transfer" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
-                  <ValueOrSkeleton>Rp {summary.kas_keluar_transfer.toLocaleString('id-ID')}</ValueOrSkeleton>
+                  <ValueOrSkeleton>{rp(summary.kas_keluar_transfer)}</ValueOrSkeleton>
                 </td>
               </tr>
 
@@ -361,7 +360,7 @@ const LaporanNeraca: React.FC = () => {
                   Jumlah Saldo Tunai / Cash <InfoTip text="Total jumlah realisasi tunai + kas masuk tunai - kas keluar tunai" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
-                  <ValueOrSkeleton>Rp {summary.jumlah_saldo_tunai.toLocaleString('id-ID')}</ValueOrSkeleton>
+                  <ValueOrSkeleton>{rp(summary.jumlah_saldo_tunai)}</ValueOrSkeleton>
                 </td>
               </tr>
 
@@ -370,7 +369,7 @@ const LaporanNeraca: React.FC = () => {
                   Jumlah Saldo Transfer <InfoTip text="Total jumlah realisasi transfer + kas masuk transfer - kas keluar transfer" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
-                  <ValueOrSkeleton>Rp {summary.jumlah_saldo_non_tunai.toLocaleString('id-ID')}</ValueOrSkeleton>
+                  <ValueOrSkeleton>{rp(summary.jumlah_saldo_non_tunai)}</ValueOrSkeleton>
                 </td>
               </tr>
 
@@ -379,7 +378,7 @@ const LaporanNeraca: React.FC = () => {
                   Total Jumlah Saldo <InfoTip text="Jumlah saldo tunai + non tunai" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right font-semibold">
-                  <ValueOrSkeleton>Rp {summary.total_jumlah_saldo.toLocaleString('id-ID')}</ValueOrSkeleton>
+                  <ValueOrSkeleton>{rp(summary.total_jumlah_saldo)}</ValueOrSkeleton>
                 </td>
               </tr>
 
@@ -388,34 +387,34 @@ const LaporanNeraca: React.FC = () => {
                   Total Pengeluaran <InfoTip text="Penjumlahan dari kas keluar" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right font-semibold">
-                  <ValueOrSkeleton>Rp {summary.total_pengeluaran.toLocaleString('id-ID')}</ValueOrSkeleton>
+                  <ValueOrSkeleton>{rp(summary.total_pengeluaran)}</ValueOrSkeleton>
                 </td>
               </tr>
 
               <tr>
                 <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top font-semibold">
-                  Jumlah Hutang <InfoTip text="Jumlah hutang ke supplier" />
+                  Jumlah Hutang <InfoTip text="Total hutang ke supplier (periode ini + hutang lama yang belum lunas)" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right font-semibold">
-                  <ValueOrSkeleton>Rp {summary.jumlah_hutang.toLocaleString('id-ID')}</ValueOrSkeleton>
+                  <ValueOrSkeleton>{rp(summary.jumlah_hutang)}</ValueOrSkeleton>
                 </td>
               </tr>
 
               <tr>
                 <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top font-semibold">
-                  Jumlah Piutang <InfoTip text="Jumlah fix order yang belum bayar" />
+                  Jumlah Piutang <InfoTip text="Total piutang dari pelanggan (periode ini + piutang lama yang belum lunas)" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right font-semibold">
-                  <ValueOrSkeleton>Rp {summary.jumlah_piutang.toLocaleString('id-ID')}</ValueOrSkeleton>
+                  <ValueOrSkeleton>{rp(summary.jumlah_piutang)}</ValueOrSkeleton>
                 </td>
               </tr>
 
               <tr>
                 <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top font-bold">
-                  Saldo Seharusnya <InfoTip text="Jumlah saldo + jumlah piutang - jumlah hutang" />
+                  Saldo Seharusnya <InfoTip text="Total saldo kas + total piutang (periode ini + carry-over) - total hutang (periode ini + carry-over)" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right font-bold">
-                  <ValueOrSkeleton>Rp {summary.saldo_seharusnya.toLocaleString('id-ID')}</ValueOrSkeleton>
+                  <ValueOrSkeleton>{rp(summary.saldo_seharusnya)}</ValueOrSkeleton>
                 </td>
               </tr>
             </tbody>
@@ -461,7 +460,12 @@ const LaporanNeraca: React.FC = () => {
             ))}
           </div>
         </div>
-        <NeracaChart data={periodData} selectedSeriesKeys={selectedChartSeries} loading={loading} />
+        <NeracaChart 
+          key={`chart-${periodData.reduce((s, d) => s + d.Omset + d['Total Pengeluaran'], 0)}-${periodData.length}`}
+          data={periodData} 
+          selectedSeriesKeys={selectedChartSeries} 
+          loading={loading} 
+        />
       </div>
 
       {/* CSS PRINT HARUS berada di dalam JSX agar aktif */}

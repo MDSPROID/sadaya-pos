@@ -44,6 +44,10 @@ const NeracaChart: React.FC<NeracaChartProps> = ({ data, selectedSeriesKeys, loa
     ? data
     : [{ periodLabel: '-', sortKey: '-', Omset: 0, 'Total Pengeluaran': 0, 'Jumlah Hutang': 0, 'Jumlah Piutang': 0 }];
 
+  // FIX: Buat chartKey unik dari total nilai data agar Recharts remount saat data berubah
+  // Recharts kadang tidak re-render meski props berubah jika array length-nya sama
+  const chartKey = safeData.reduce((sum, d) => sum + d.Omset + d['Total Pengeluaran'], 0);
+
   const allSelectedSeriesZero = (payload: any) =>
     seriesToDisplay.every(s => Number(payload?.[s.key] ?? 0) === 0);
 
@@ -64,7 +68,7 @@ const NeracaChart: React.FC<NeracaChartProps> = ({ data, selectedSeriesKeys, loa
     <div className="relative">
       <div className="bg-white rounded-lg shadow-sm p-6">
         <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={safeData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+          <BarChart key={chartKey} data={safeData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="periodLabel" />
             <YAxis tickFormatter={(value) => formatCurrency(value)} />
