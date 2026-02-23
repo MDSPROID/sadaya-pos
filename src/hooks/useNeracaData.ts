@@ -198,7 +198,10 @@ export function useNeracaData({
 
       (ordersBefore || []).forEach(o => {
         const methodFromNotes = getPaymentMethodFromNotes(o.notes);
-        const method = methodFromNotes || o.payment_method || 'cash';
+        // FIX: Jangan fallback ke 'cash' jika tidak ada payment_method
+        // Order tanpa payment_method tidak bisa diklasifikasikan sbg tunai/transfer
+        const method = methodFromNotes || o.payment_method;
+        if (!method) return; // Skip jika tidak ada method sama sekali
 
         if (o.payment_status === 'paid') {
           if (method === 'cash') {
@@ -208,10 +211,12 @@ export function useNeracaData({
           }
         } else if (o.payment_status === 'pending') {
           const dp = getDpFromNotes(o.notes) || 0;
-          if (method === 'cash') {
-            saldoAwalTunai += dp;
-          } else {
-            saldoAwalNonTunai += dp;
+          if (dp > 0) { // Hanya masuk saldo jika ada DP yang sudah dibayar
+            if (method === 'cash') {
+              saldoAwalTunai += dp;
+            } else {
+              saldoAwalNonTunai += dp;
+            }
           }
         }
       });
@@ -245,11 +250,11 @@ export function useNeracaData({
         // STEP 2: AMBIL DATA PERIODE (FIX BUG #1 - EXCLUDE SALDO AWAL)
         // ====================================================================
 
-        // Kas Masuk dalam periode (EXCLUDE SALDO AWAL)
+        // Kas Masuk dalam periode (EXCLUDE SALDO AWAL - baik di saldo awal maupun dalam periode)
         const { data: kasMasukPeriodData, error: kasMasukPeriodError } = await supabase
           .from('kas_masuk')
           .select('tanggal, jumlah, payment_method')
-          .neq('nama_pemasukan', 'SALDO AWAL')  // 👈 FIX BUG #1
+          .neq('nama_pemasukan', 'SALDO AWAL')  // 👈 Exclude SALDO AWAL dari periode juga
           .gte('tanggal', sDate)
           .lte('tanggal', eDate);
         if (kasMasukPeriodError) throw kasMasukPeriodError;
@@ -304,7 +309,9 @@ export function useNeracaData({
 
         (allOrdersForOmsetPeriod || []).forEach((o: any) => {
           const methodFromNotes = getPaymentMethodFromNotes(o.notes);
-          const method = methodFromNotes || o.payment_method || '';
+          // FIX: Jangan fallback ke '' lalu masuk ke 'else' (transfer) secara salah
+          const method = methodFromNotes || o.payment_method;
+          if (!method) return; // Skip order tanpa payment_method (tidak bisa diklasifikasikan)
 
           if (o.payment_status === 'paid') {
             if (method === 'cash') {
@@ -314,10 +321,12 @@ export function useNeracaData({
             }
           } else if (o.payment_status === 'pending') {
             const dp = getDpFromNotes(o.notes) || 0;
-            if (method === 'cash') {
-              orderPaidCash += dp;
-            } else {
-              orderPaidTransfer += dp;
+            if (dp > 0) { // Hanya hitung jika ada DP
+              if (method === 'cash') {
+                orderPaidCash += dp;
+              } else {
+                orderPaidTransfer += dp;
+              }
             }
           }
         });
@@ -340,11 +349,9 @@ export function useNeracaData({
           0
         );
 
-        // Piutang
+        // Piutang - FIX BUG #3: Hitung SEMUA pending order, termasuk payment_method = NULL
+        // Order dengan payment_method NULL tetap punya piutang (sisa tagihan yang belum dibayar)
         const jumlahPiutangPeriod = (pendingOrdersPeriodData || []).reduce((s: number, o: any) => {
-          const method = (o?.payment_method ?? '').toString().trim();
-          if (!method) return s;
-
           const finalAmount = Number(o?.final_amount || 0);
           const dpAmount = getDpFromNotes(o?.notes) || 0;
           const remaining = Math.max(0, finalAmount - Number(dpAmount || 0));
@@ -472,9 +479,7 @@ export function useNeracaData({
           const d = new Date(o.order_date);
           if (d < startObj || d > endObj) return;
 
-          const method = (o?.payment_method ?? '').toString().trim();
-          if (!method) return;
-
+          // FIX: Jangan skip order pending dengan payment_method NULL
           const finalAmount = Number(o?.final_amount || 0);
           const dpAmount = getDpFromNotes(o?.notes) || 0;
           const remaining = Math.max(0, finalAmount - Number(dpAmount || 0));
