@@ -31,8 +31,6 @@ export interface NeracaSummary {
   // Tambahan untuk transparansi
   saldo_awal_tunai?: number;
   saldo_awal_non_tunai?: number;
-  piutang_carry_over?: number;
-  hutang_carry_over?: number;
 }
 
 export interface NeracaDataPoint {
@@ -64,8 +62,6 @@ const ZERO_SUMMARY: NeracaSummary = {
   saldo_seharusnya: 0,
   saldo_awal_tunai: 0,
   saldo_awal_non_tunai: 0,
-  piutang_carry_over: 0,
-  hutang_carry_over: 0,
 };
 
 const getDpFromNotes = (notes: any): number => {
@@ -93,6 +89,36 @@ const getDpFromNotes = (notes: any): number => {
     return 0;
   }
 };
+
+// ============================================================================
+// HELPER: Fetch semua rows dengan pagination (workaround PostgREST max-rows limit)
+// Supabase Free tier membatasi max 1000 rows per request, tidak bisa di-override
+// dari client side. Solusi: ambil berulang dengan .range() sampai tidak ada lagi data.
+// ============================================================================
+async function fetchAllRows<T>(
+  queryBuilder: () => any,
+  pageSize: number = 900
+): Promise<T[]> {
+  const allData: T[] = [];
+  let from = 0;
+  
+  while (true) {
+    const { data, error } = await queryBuilder()
+      .range(from, from + pageSize - 1);
+    
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    
+    allData.push(...data);
+    
+    // Jika kurang dari pageSize, berarti sudah halaman terakhir
+    if (data.length < pageSize) break;
+    
+    from += pageSize;
+  }
+  
+  return allData;
+}
 
 export function useNeracaData({
   startDate,
@@ -152,20 +178,20 @@ export function useNeracaData({
   };
 
   // ========================================================================
-  // FUNGSI: HITUNG SALDO AWAL + PIUTANG/HUTANG CARRY-OVER SEBELUM PERIODE
+  // FUNGSI BARU: HITUNG SALDO AWAL (FIX BUG #2)
   // ========================================================================
   const calculateOpeningBalance = useCallback(async (beforeDate: string) => {
     try {
       let saldoAwalTunai = 0;
       let saldoAwalNonTunai = 0;
 
-      // 1. Kas Masuk sebelum periode (EXCLUDE SALDO AWAL)
-      const { data: kasMasukBefore, error: kmError } = await supabase
-        .from('kas_masuk')
-        .select('jumlah, payment_method')
-        .neq('nama_pemasukan', 'SALDO AWAL')
-        .lt('tanggal', beforeDate);
-      if (kmError) throw kmError;
+      // 1. Kas Masuk sebelum periode (transaksi biasa, tidak termasuk SALDO AWAL)
+      const kasMasukBefore = await fetchAllRows<any>(() =>
+        supabase.from('kas_masuk')
+          .select('jumlah, payment_method')
+          .neq('nama_pemasukan', 'SALDO AWAL')
+          .lt('tanggal', beforeDate)
+      );
 
       (kasMasukBefore || []).forEach(km => {
         if (km.payment_method === 'cash') {
@@ -175,12 +201,28 @@ export function useNeracaData({
         }
       });
 
+      // 1b. SALDO AWAL entry — dicatat tepat di tanggal startDate, harus ikut ke saldo awal
+      const saldoAwalEntries = await fetchAllRows<any>(() =>
+        supabase.from('kas_masuk')
+          .select('jumlah, payment_method')
+          .eq('nama_pemasukan', 'SALDO AWAL')
+          .lte('tanggal', beforeDate)
+      );
+
+      (saldoAwalEntries || []).forEach(km => {
+        if (km.payment_method === 'cash') {
+          saldoAwalTunai += km.jumlah || 0;
+        } else {
+          saldoAwalNonTunai += km.jumlah || 0;
+        }
+      });
+
       // 2. Kas Keluar sebelum periode
-      const { data: kasKeluarBefore, error: kkError } = await supabase
-        .from('kas_keluar')
-        .select('jumlah, payment_method')
-        .lt('tanggal', beforeDate);
-      if (kkError) throw kkError;
+      const kasKeluarBefore = await fetchAllRows<any>(() =>
+        supabase.from('kas_keluar')
+          .select('jumlah, payment_method')
+          .lt('tanggal', beforeDate)
+      );
 
       (kasKeluarBefore || []).forEach(kk => {
         if (kk.payment_method === 'cash') {
@@ -191,16 +233,18 @@ export function useNeracaData({
       });
 
       // 3. Orders sebelum periode (paid & pending dengan DP)
-      const { data: ordersBefore, error: ordersError } = await supabase
-        .from('orders')
-        .select('final_amount, payment_method, payment_status, notes')
-        .lt('order_date', beforeDate);
-      if (ordersError) throw ordersError;
+      const ordersBefore = await fetchAllRows<any>(() =>
+        supabase.from('orders')
+          .select('final_amount, payment_method, payment_status, notes')
+          .lt('order_date', beforeDate)
+      );
 
       (ordersBefore || []).forEach(o => {
         const methodFromNotes = getPaymentMethodFromNotes(o.notes);
+        // FIX: Jangan fallback ke 'cash' jika tidak ada payment_method
+        // Order tanpa payment_method tidak bisa diklasifikasikan sbg tunai/transfer
         const method = methodFromNotes || o.payment_method;
-        if (!method) return;
+        if (!method) return; // Skip jika tidak ada method sama sekali
 
         if (o.payment_status === 'paid') {
           if (method === 'cash') {
@@ -210,7 +254,7 @@ export function useNeracaData({
           }
         } else if (o.payment_status === 'pending') {
           const dp = getDpFromNotes(o.notes) || 0;
-          if (dp > 0) {
+          if (dp > 0) { // Hanya masuk saldo jika ada DP yang sudah dibayar
             if (method === 'cash') {
               saldoAwalTunai += dp;
             } else {
@@ -220,33 +264,10 @@ export function useNeracaData({
         }
       });
 
-      // 4. Piutang carry-over: pending orders dari SEBELUM periode yang belum lunas
-      //    Ini penting agar saldo_seharusnya akurat — piutang lama masih jadi tagihan
-      const piutangCarryOver = (ordersBefore || []).reduce((s, o) => {
-        const finalAmount = Number(o?.final_amount || 0);
-        const dpAmount = getDpFromNotes(o?.notes) || 0;
-        if (o.payment_status === 'pending') {
-          return s + Math.max(0, finalAmount - dpAmount);
-        }
-        return s;
-      }, 0);
-
-      // 5. Hutang carry-over: purchase_orders due dari SEBELUM periode
-      const { data: hutangBefore, error: hutangBeforeError } = await supabase
-        .from('purchase_orders')
-        .select('final_amount, paid_amount')
-        .eq('payment_status', 'due')
-        .lt('order_date', beforeDate);
-      if (hutangBeforeError) throw hutangBeforeError;
-
-      const hutangCarryOver = (hutangBefore || []).reduce((s, po) => {
-        return s + Math.max(0, (po.final_amount || 0) - (po.paid_amount || 0));
-      }, 0);
-
-      return { saldoAwalTunai, saldoAwalNonTunai, piutangCarryOver, hutangCarryOver };
+      return { saldoAwalTunai, saldoAwalNonTunai };
     } catch (err) {
       console.error('Error calculating opening balance:', err);
-      return { saldoAwalTunai: 0, saldoAwalNonTunai: 0, piutangCarryOver: 0, hutangCarryOver: 0 };
+      return { saldoAwalTunai: 0, saldoAwalNonTunai: 0 };
     }
   }, []);
 
@@ -264,56 +285,56 @@ export function useNeracaData({
         setError(null);
 
         // ====================================================================
-        // STEP 1: HITUNG SALDO AWAL + CARRY-OVER PIUTANG/HUTANG
+        // STEP 1: HITUNG SALDO AWAL (FIX BUG #2)
         // ====================================================================
-        const { saldoAwalTunai, saldoAwalNonTunai, piutangCarryOver, hutangCarryOver } = await calculateOpeningBalance(sDate);
+        const { saldoAwalTunai, saldoAwalNonTunai } = await calculateOpeningBalance(sDate);
 
         // ====================================================================
         // STEP 2: AMBIL DATA PERIODE (FIX BUG #1 - EXCLUDE SALDO AWAL)
         // ====================================================================
 
-        // Kas Masuk dalam periode (EXCLUDE SALDO AWAL - baik di saldo awal maupun dalam periode)
-        const { data: kasMasukPeriodData, error: kasMasukPeriodError } = await supabase
-          .from('kas_masuk')
-          .select('tanggal, jumlah, payment_method')
-          .neq('nama_pemasukan', 'SALDO AWAL')  // 👈 Exclude SALDO AWAL dari periode juga
-          .gte('tanggal', sDate)
-          .lte('tanggal', eDate);
-        if (kasMasukPeriodError) throw kasMasukPeriodError;
+        // Kas Masuk dalam periode (EXCLUDE SALDO AWAL agar tidak double-count dengan saldoAwal)
+        const kasMasukPeriodData = await fetchAllRows<any>(() =>
+          supabase.from('kas_masuk')
+            .select('tanggal, jumlah, payment_method')
+            .neq('nama_pemasukan', 'SALDO AWAL')
+            .gte('tanggal', sDate)
+            .lte('tanggal', eDate)
+        );
 
         // Kas Keluar dalam periode
-        const { data: kasKeluarPeriodData, error: kasKeluarPeriodError } = await supabase
-          .from('kas_keluar')
-          .select('tanggal, jumlah, payment_method')
-          .gte('tanggal', sDate)
-          .lte('tanggal', eDate);
-        if (kasKeluarPeriodError) throw kasKeluarPeriodError;
+        const kasKeluarPeriodData = await fetchAllRows<any>(() =>
+          supabase.from('kas_keluar')
+            .select('tanggal, jumlah, payment_method')
+            .gte('tanggal', sDate)
+            .lte('tanggal', eDate)
+        );
 
         // Orders dalam periode
-        const { data: allOrdersForOmsetPeriod, error: allOrdersForOmsetPeriodError } = await supabase
-          .from('orders')
-          .select('order_date, final_amount, payment_method, payment_status, notes, invoice_number')
-          .gte('order_date', sDate)
-          .lte('order_date', eDate);
-        if (allOrdersForOmsetPeriodError) throw allOrdersForOmsetPeriodError;
+        const allOrdersForOmsetPeriod = await fetchAllRows<any>(() =>
+          supabase.from('orders')
+            .select('order_date, final_amount, payment_method, payment_status, notes, invoice_number')
+            .gte('order_date', sDate)
+            .lte('order_date', eDate)
+        );
 
         // Pending Orders dalam periode (untuk piutang)
-        const { data: pendingOrdersPeriodData, error: pendingOrdersPeriodError } = await supabase
-          .from('orders')
-          .select('order_date, final_amount, notes, payment_method')
-          .eq('payment_status', 'pending')
-          .gte('order_date', sDate)
-          .lte('order_date', eDate);
-        if (pendingOrdersPeriodError) throw pendingOrdersPeriodError;
+        const pendingOrdersPeriodData = await fetchAllRows<any>(() =>
+          supabase.from('orders')
+            .select('order_date, final_amount, notes, payment_method')
+            .eq('payment_status', 'pending')
+            .gte('order_date', sDate)
+            .lte('order_date', eDate)
+        );
 
-        // Purchase Orders (hutang) - FIX: Hapus duplikasi
-        const { data: hutangPeriodData, error: hutangPeriodError } = await supabase
-          .from('purchase_orders')
-          .select('order_date, final_amount, total_amount, paid_amount, payment_status')
-          .eq('payment_status', 'due')
-          .gte('order_date', sDate)
-          .lte('order_date', eDate);
-        if (hutangPeriodError) throw hutangPeriodError;
+        // Purchase Orders (hutang)
+        const hutangPeriodData = await fetchAllRows<any>(() =>
+          supabase.from('purchase_orders')
+            .select('order_date, final_amount, total_amount, paid_amount, payment_status')
+            .eq('payment_status', 'due')
+            .gte('order_date', sDate)
+            .lte('order_date', eDate)
+        );
 
         // ====================================================================
         // STEP 3: PROSES DATA & HITUNG SUMMARY
@@ -400,13 +421,11 @@ export function useNeracaData({
         const totalJumlahSaldo = jumlahSaldoTunai + jumlahSaldoNonTunai;
         
         const totalPengeluaran = kasKeluarTunai + kasKeluarTransfer;
+        const saldoSeharusnya = totalJumlahSaldo + jumlahPiutangPeriod - jumlahHutang;
 
-        // Saldo seharusnya = uang di tangan + semua piutang (bulan ini + carry-over) - semua hutang (bulan ini + carry-over)
-        // Ini mencerminkan posisi keuangan yang BENAR secara akrual
-        const totalPiutang = jumlahPiutangPeriod + piutangCarryOver;
-        const totalHutang = jumlahHutang + hutangCarryOver;
-        const saldoSeharusnya = totalJumlahSaldo + totalPiutang - totalHutang;
-
+        // ====================================================================
+        // STEP 5: LOGGING (DEVELOPMENT ONLY)
+        // ====================================================================
         if (process.env.NODE_ENV === 'development') {
           console.group('=== DEBUG: Neraca Summary ===');
           console.log('📅 Periode:', sDate, '→', eDate);
@@ -420,15 +439,6 @@ export function useNeracaData({
           console.log('  - Tunai:', jumlahSaldoTunai.toLocaleString('id-ID'));
           console.log('  - Non-Tunai:', jumlahSaldoNonTunai.toLocaleString('id-ID'));
           console.log('  - Total:', totalJumlahSaldo.toLocaleString('id-ID'));
-          console.log('📋 Piutang:');
-          console.log('  - Periode ini:', jumlahPiutangPeriod.toLocaleString('id-ID'));
-          console.log('  - Carry-over (sebelum periode):', piutangCarryOver.toLocaleString('id-ID'));
-          console.log('  - Total:', totalPiutang.toLocaleString('id-ID'));
-          console.log('📋 Hutang:');
-          console.log('  - Periode ini:', jumlahHutang.toLocaleString('id-ID'));
-          console.log('  - Carry-over (sebelum periode):', hutangCarryOver.toLocaleString('id-ID'));
-          console.log('  - Total:', totalHutang.toLocaleString('id-ID'));
-          console.log('✅ Saldo Seharusnya:', saldoSeharusnya.toLocaleString('id-ID'));
           console.groupEnd();
         }
 
@@ -445,13 +455,11 @@ export function useNeracaData({
           jumlah_saldo_non_tunai: jumlahSaldoNonTunai,
           total_jumlah_saldo: totalJumlahSaldo,
           total_pengeluaran: totalPengeluaran,
-          jumlah_hutang: totalHutang,
-          jumlah_piutang: totalPiutang,
+          jumlah_hutang: jumlahHutang,
+          jumlah_piutang: jumlahPiutangPeriod,
           saldo_seharusnya: saldoSeharusnya,
           saldo_awal_tunai: saldoAwalTunai,
           saldo_awal_non_tunai: saldoAwalNonTunai,
-          piutang_carry_over: piutangCarryOver,
-          hutang_carry_over: hutangCarryOver,
         });
 
         // ====================================================================
