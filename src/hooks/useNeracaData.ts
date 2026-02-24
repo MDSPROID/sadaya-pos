@@ -90,36 +90,6 @@ const getDpFromNotes = (notes: any): number => {
   }
 };
 
-// ============================================================================
-// HELPER: Fetch semua rows dengan pagination (workaround PostgREST max-rows limit)
-// Supabase Free tier membatasi max 1000 rows per request, tidak bisa di-override
-// dari client side. Solusi: ambil berulang dengan .range() sampai tidak ada lagi data.
-// ============================================================================
-async function fetchAllRows<T>(
-  queryBuilder: () => any,
-  pageSize: number = 900
-): Promise<T[]> {
-  const allData: T[] = [];
-  let from = 0;
-  
-  while (true) {
-    const { data, error } = await queryBuilder()
-      .range(from, from + pageSize - 1);
-    
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    
-    allData.push(...data);
-    
-    // Jika kurang dari pageSize, berarti sudah halaman terakhir
-    if (data.length < pageSize) break;
-    
-    from += pageSize;
-  }
-  
-  return allData;
-}
-
 export function useNeracaData({
   startDate,
   endDate,
@@ -186,12 +156,13 @@ export function useNeracaData({
       let saldoAwalNonTunai = 0;
 
       // 1. Kas Masuk sebelum periode (transaksi biasa, tidak termasuk SALDO AWAL)
-      const kasMasukBefore = await fetchAllRows<any>(() =>
-        supabase.from('kas_masuk')
-          .select('jumlah, payment_method')
-          .neq('nama_pemasukan', 'SALDO AWAL')
-          .lt('tanggal', beforeDate)
-      );
+      const { data: kasMasukBefore, error: kmError } = await supabase
+        .from('kas_masuk')
+        .select('jumlah, payment_method')
+        .neq('nama_pemasukan', 'SALDO AWAL')
+        .lt('tanggal', beforeDate)
+        .limit(10000);
+      if (kmError) throw kmError;
 
       (kasMasukBefore || []).forEach(km => {
         if (km.payment_method === 'cash') {
@@ -200,14 +171,17 @@ export function useNeracaData({
           saldoAwalNonTunai += km.jumlah || 0;
         }
       });
+      console.log('🔍 DEBUG saldoAwal Step 1 - kasMasukBefore:', (kasMasukBefore||[]).length, 'rows, saldoAwalTunai=', saldoAwalTunai, 'detail:', JSON.stringify(kasMasukBefore));
 
       // 1b. SALDO AWAL entry — dicatat tepat di tanggal startDate, harus ikut ke saldo awal
-      const saldoAwalEntries = await fetchAllRows<any>(() =>
-        supabase.from('kas_masuk')
-          .select('jumlah, payment_method')
-          .eq('nama_pemasukan', 'SALDO AWAL')
-          .lte('tanggal', beforeDate)
-      );
+      //     Gunakan .lte() + filter nama = 'SALDO AWAL' agar ambil entry di tanggal start
+      const { data: saldoAwalEntries, error: saError } = await supabase
+        .from('kas_masuk')
+        .select('jumlah, payment_method')
+        .eq('nama_pemasukan', 'SALDO AWAL')
+        .lte('tanggal', beforeDate)
+        .limit(100);
+      if (saError) throw saError;
 
       (saldoAwalEntries || []).forEach(km => {
         if (km.payment_method === 'cash') {
@@ -216,13 +190,16 @@ export function useNeracaData({
           saldoAwalNonTunai += km.jumlah || 0;
         }
       });
+      console.log('🔍 DEBUG saldoAwal Step 1b - saldoAwalEntries:', (saldoAwalEntries||[]).length, 'rows, saldoAwalTunai=', saldoAwalTunai, 'detail:', JSON.stringify(saldoAwalEntries));
 
       // 2. Kas Keluar sebelum periode
-      const kasKeluarBefore = await fetchAllRows<any>(() =>
-        supabase.from('kas_keluar')
-          .select('jumlah, payment_method')
-          .lt('tanggal', beforeDate)
-      );
+      const { data: kasKeluarBefore, error: kkError } = await supabase
+        .from('kas_keluar')
+        .select('jumlah, payment_method')
+        .lt('tanggal', beforeDate)
+        .limit(10000);
+
+      if (kkError) throw kkError;
 
       (kasKeluarBefore || []).forEach(kk => {
         if (kk.payment_method === 'cash') {
@@ -231,13 +208,16 @@ export function useNeracaData({
           saldoAwalNonTunai -= kk.jumlah || 0;
         }
       });
+      console.log('🔍 DEBUG saldoAwal Step 2 - kasKeluarBefore:', (kasKeluarBefore||[]).length, 'rows, saldoAwalTunai=', saldoAwalTunai);
 
       // 3. Orders sebelum periode (paid & pending dengan DP)
-      const ordersBefore = await fetchAllRows<any>(() =>
-        supabase.from('orders')
-          .select('final_amount, payment_method, payment_status, notes')
-          .lt('order_date', beforeDate)
-      );
+      const { data: ordersBefore, error: ordersError } = await supabase
+        .from('orders')
+        .select('final_amount, payment_method, payment_status, notes')
+        .lt('order_date', beforeDate)
+        .limit(10000);
+
+      if (ordersError) throw ordersError;
 
       (ordersBefore || []).forEach(o => {
         const methodFromNotes = getPaymentMethodFromNotes(o.notes);
@@ -264,6 +244,7 @@ export function useNeracaData({
         }
       });
 
+      console.log('🔍 DEBUG saldoAwal Step 3 - ordersBefore:', (ordersBefore||[]).length, 'rows, saldoAwalTunai FINAL=', saldoAwalTunai, 'saldoAwalNonTunai FINAL=', saldoAwalNonTunai);
       return { saldoAwalTunai, saldoAwalNonTunai };
     } catch (err) {
       console.error('Error calculating opening balance:', err);
@@ -294,47 +275,52 @@ export function useNeracaData({
         // ====================================================================
 
         // Kas Masuk dalam periode (EXCLUDE SALDO AWAL agar tidak double-count dengan saldoAwal)
-        const kasMasukPeriodData = await fetchAllRows<any>(() =>
-          supabase.from('kas_masuk')
-            .select('tanggal, jumlah, payment_method')
-            .neq('nama_pemasukan', 'SALDO AWAL')
-            .gte('tanggal', sDate)
-            .lte('tanggal', eDate)
-        );
+        const { data: kasMasukPeriodData, error: kasMasukPeriodError } = await supabase
+          .from('kas_masuk')
+          .select('tanggal, jumlah, payment_method')
+          .neq('nama_pemasukan', 'SALDO AWAL')
+          .gte('tanggal', sDate)
+          .lte('tanggal', eDate)
+          .limit(10000);
+        if (kasMasukPeriodError) throw kasMasukPeriodError;
 
         // Kas Keluar dalam periode
-        const kasKeluarPeriodData = await fetchAllRows<any>(() =>
-          supabase.from('kas_keluar')
-            .select('tanggal, jumlah, payment_method')
-            .gte('tanggal', sDate)
-            .lte('tanggal', eDate)
-        );
+        const { data: kasKeluarPeriodData, error: kasKeluarPeriodError } = await supabase
+          .from('kas_keluar')
+          .select('tanggal, jumlah, payment_method')
+          .gte('tanggal', sDate)
+          .lte('tanggal', eDate)
+          .limit(10000);
+        if (kasKeluarPeriodError) throw kasKeluarPeriodError;
 
         // Orders dalam periode
-        const allOrdersForOmsetPeriod = await fetchAllRows<any>(() =>
-          supabase.from('orders')
-            .select('order_date, final_amount, payment_method, payment_status, notes, invoice_number')
-            .gte('order_date', sDate)
-            .lte('order_date', eDate)
-        );
+        const { data: allOrdersForOmsetPeriod, error: allOrdersForOmsetPeriodError } = await supabase
+          .from('orders')
+          .select('order_date, final_amount, payment_method, payment_status, notes, invoice_number')
+          .gte('order_date', sDate)
+          .lte('order_date', eDate)
+          .limit(10000);
+        if (allOrdersForOmsetPeriodError) throw allOrdersForOmsetPeriodError;
 
         // Pending Orders dalam periode (untuk piutang)
-        const pendingOrdersPeriodData = await fetchAllRows<any>(() =>
-          supabase.from('orders')
-            .select('order_date, final_amount, notes, payment_method')
-            .eq('payment_status', 'pending')
-            .gte('order_date', sDate)
-            .lte('order_date', eDate)
-        );
+        const { data: pendingOrdersPeriodData, error: pendingOrdersPeriodError } = await supabase
+          .from('orders')
+          .select('order_date, final_amount, notes, payment_method')
+          .eq('payment_status', 'pending')
+          .gte('order_date', sDate)
+          .lte('order_date', eDate)
+          .limit(10000);
+        if (pendingOrdersPeriodError) throw pendingOrdersPeriodError;
 
         // Purchase Orders (hutang)
-        const hutangPeriodData = await fetchAllRows<any>(() =>
-          supabase.from('purchase_orders')
-            .select('order_date, final_amount, total_amount, paid_amount, payment_status')
-            .eq('payment_status', 'due')
-            .gte('order_date', sDate)
-            .lte('order_date', eDate)
-        );
+        const { data: hutangPeriodData, error: hutangPeriodError } = await supabase
+          .from('purchase_orders')
+          .select('order_date, final_amount, total_amount, paid_amount, payment_status')
+          .eq('payment_status', 'due')
+          .gte('order_date', sDate)
+          .lte('order_date', eDate)
+          .limit(10000);
+        if (hutangPeriodError) throw hutangPeriodError;
 
         // ====================================================================
         // STEP 3: PROSES DATA & HITUNG SUMMARY
