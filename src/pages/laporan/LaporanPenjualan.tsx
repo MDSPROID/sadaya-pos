@@ -2,16 +2,19 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useSalesReports } from '../../hooks/useSalesReports';
 import SalesDetailPanel from '../../components/laporan/SalesDetailPanel';
 import { formatCurrency } from '../../utils/formatters';
-import { CalendarDays, DollarSign, Users, Trash2, Loader2 } from 'lucide-react';
+import { CalendarDays, DollarSign, Users, Trash2, Loader2, FileCheck2 } from 'lucide-react';
 import { supabase } from '../../integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '../../utils/toast';
 import Pagination from '../../components/Pagination';
 import SalesTable from '../../components/laporan/SalesTable';
 import { SalesItem, PendingOrderItem } from '../../types/orderTypes';
+import { useSession } from '../../components/SessionContextProvider';
+import { fetchCompanyInfo, printTandaTerimaWindow, TandaTerimaRow } from '../../utils/printTandaTerima';
 
 type CombinedSalesItem = SalesItem | PendingOrderItem;
 
 const LaporanPenjualan: React.FC = () => {
+  const { profile } = useSession();
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -71,6 +74,11 @@ const LaporanPenjualan: React.FC = () => {
     fetchSalesData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startDate, endDate]);
+
+  // Reset ke halaman 1 saat filter/pencarian berubah agar hasil filter tidak "kosong" di halaman lanjutan
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, paymentStatusFilter, selectedPaymentMethod, selectedKasirId, selectedCustomerId, selectedDesignerId, selectedOperatorId, selectedFinishingId]);
 
   // Gunakan snapshot saat refetch agar UI tidak kosong
   const effectiveData: CombinedSalesItem[] = useMemo(() => {
@@ -161,9 +169,23 @@ const LaporanPenjualan: React.FC = () => {
     return Array.from(out, ([id, name]) => ({ id, name }));
   };
 
+  // Hanya order yang benar-benar "sudah jadi transaksi" yang masuk laporan:
+  // sudah lunas, atau pending dengan metode pembayaran terisi (ada DP/pembayaran).
+  // Order batal / belum ada pembayaran sama sekali tidak dihitung — supaya
+  // "Total Transaksi", tabel, pagination, dan hasil cetak semuanya konsisten.
+  const reportableData = useMemo(
+    () =>
+      effectiveData.filter(
+        (item: any) =>
+          item.payment_status === 'paid' ||
+          (item.payment_status === 'pending' && item.payment_method !== null && item.payment_method !== '')
+      ),
+    [effectiveData]
+  );
+
   // --- Pipeline filter + sort (client-side) ---
   const filteredAndSortedData = useMemo(() => {
-    const filteredByPaymentStatus = effectiveData.filter(item => {
+    const filteredByPaymentStatus = reportableData.filter(item => {
       if (paymentStatusFilter === 'all') return true;
       return item.payment_status === paymentStatusFilter;
     });
@@ -256,7 +278,7 @@ const LaporanPenjualan: React.FC = () => {
 
     return sortedData;
   }, [
-    effectiveData,
+    reportableData,
     searchTerm,
     paymentStatusFilter,
     selectedPaymentMethod,
@@ -268,71 +290,6 @@ const LaporanPenjualan: React.FC = () => {
     sortColumn,
     sortDirection,
   ]);
-
-  // --- Options dari data terfilter ---
-  const kasirOptions = useMemo(() => {
-    const uniqueKasirs = new Map<string, string>();
-    filteredAndSortedData.forEach(order => {
-      if (order.kasir_id && order.profiles?.first_name) {
-        uniqueKasirs.set(
-          order.kasir_id,
-          `${order.profiles.first_name} ${order.profiles.last_name || ''}`.trim()
-        );
-      }
-    });
-    return Array.from(uniqueKasirs, ([id, name]) => ({ id, name })).sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
-  }, [filteredAndSortedData]);
-
-  const customerOptions = useMemo(() => {
-    const uniqueCustomers = new Map<string, string>();
-    filteredAndSortedData.forEach(order => {
-      const customerId = order.customer_id;
-      const customerName =
-        order.customer_display_name || order.pelanggan?.[0]?.nama_pelanggan;
-      if (customerId && customerName) uniqueCustomers.set(customerId, customerName);
-    });
-    return Array.from(uniqueCustomers, ([id, name]) => ({ id, name })).sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
-  }, [filteredAndSortedData]);
-
-  const designerOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    filteredAndSortedData.forEach(order => {
-      extractDesignerIdsFromOrder(order).forEach(({ id, name }) => {
-        if (id) map.set(id, name || id);
-      });
-    });
-    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
-  }, [filteredAndSortedData]);
-
-  const operatorOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    filteredAndSortedData.forEach(order => {
-      extractOperatorIdsFromOrder(order).forEach(({ id, name }) => {
-        if (id) map.set(id, name || id);
-      });
-    });
-    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
-  }, [filteredAndSortedData]);
-
-  const finishingOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    filteredAndSortedData.forEach(order => {
-      extractFinishingIdsFromOrder(order).forEach(({ id, name }) => {
-        if (id) map.set(id, name || id);
-      });
-    });
-    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
-  }, [filteredAndSortedData]);
 
   // --- Pagination (client-side) ---
   const paginatedCombinedData = useMemo(() => {
@@ -372,16 +329,17 @@ const LaporanPenjualan: React.FC = () => {
   };
 
   // --- Ringkasan (terfilter, client-side) ---
+  // filteredAndSortedData sudah hanya berisi order yang reportable ('paid' atau
+  // 'pending' dengan metode pembayaran terisi), jadi transactionsToday = jumlahnya.
   const filteredSummary = useMemo(() => {
     let omset = 0;
     let piutang = 0;
-    let transactionsToday = filteredAndSortedData.length;
+    const transactionsToday = filteredAndSortedData.length;
 
     filteredAndSortedData.forEach((it: any) => {
       if (it.payment_status === 'paid') {
         omset += Number(it.final_amount || 0);
-      }
-      if (it.payment_status === 'pending' && it.payment_method !== null && it.payment_method !== '') {
+      } else {
         const finalAmount = Number(it.final_amount || 0);
         const dpAmount = getDpFromNotes(it.notes);
         const remaining = Math.max(0, finalAmount - Number(dpAmount || 0));
@@ -443,6 +401,78 @@ const LaporanPenjualan: React.FC = () => {
       dismissToast(toastId);
     }
   };
+
+  // === CETAK TANDA TERIMA (untuk baris yang dicentang, bisa lintas halaman) ===
+  const [printingTandaTerima, setPrintingTandaTerima] = useState(false);
+  const handlePrintTandaTerima = async () => {
+    if (!selectedIds.length) {
+      showError('Centang dulu transaksi yang ingin dicetak tanda terimanya.');
+      return;
+    }
+    const selectedSet = new Set(selectedIds);
+    const selectedOrders = filteredAndSortedData.filter(o => selectedSet.has(o.id));
+    if (!selectedOrders.length) {
+      showError('Transaksi terpilih tidak ditemukan pada data saat ini.');
+      return;
+    }
+
+    setPrintingTandaTerima(true);
+    try {
+      const company = await fetchCompanyInfo();
+      const rows: TandaTerimaRow[] = selectedOrders.map((o: any) => {
+        const finalAmount = Number(o.final_amount || 0);
+        const paid = o.payment_status === 'paid'
+          ? finalAmount
+          : Math.min(finalAmount, Number(getDpFromNotes(o.notes) || 0));
+        return {
+          invoice_number: o.invoice_number,
+          order_date: o.order_date,
+          pickup_date: o.pickup_date,
+          customer_name: o.customer_display_name || o.pelanggan?.[0]?.nama_pelanggan || 'Umum',
+          customer_phone: o.customer_display_phone || o.pelanggan?.[0]?.telepon || '',
+          items: (Array.isArray(o.order_items) ? o.order_items : []).map((it: any) => ({
+            product_name: it.product_name || '-',
+            quantity: Number(it.quantity || 0),
+            dimensions: it.dimensions,
+          })),
+          final_amount: finalAmount,
+          paid,
+          remaining: Math.max(0, finalAmount - paid),
+          payment_status: o.payment_status,
+        };
+      });
+      const handedOverBy = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ').trim();
+      printTandaTerimaWindow({ rows, company, handedOverBy });
+    } catch (err: any) {
+      console.error(err);
+      showError(err?.message || 'Gagal menyiapkan tanda terima.');
+    } finally {
+      setPrintingTandaTerima(false);
+    }
+  };
+
+  const selectionActions = (
+    <div className="flex flex-wrap justify-end gap-3">
+      {selectedIds.length > 0 && (
+        <button
+          onClick={handlePrintTandaTerima}
+          disabled={printingTandaTerima}
+          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+        >
+          <FileCheck2 className="h-5 w-5 mr-2" />
+          Cetak Tanda Terima ({selectedIds.length})
+        </button>
+      )}
+      <button
+        onClick={handleDeleteSelectedIds}
+        disabled={!selectedIds.length}
+        className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+      >
+        <Trash2 className="h-5 w-5 mr-2" />
+        Hapus Terpilih ({selectedIds.length})
+      </button>
+    </div>
+  );
 
   const handlePageChange = (page: number) => setCurrentPage(page);
 
@@ -539,6 +569,10 @@ const LaporanPenjualan: React.FC = () => {
         <div className="lg:col-span-2 flex flex-col space-y-6">
           <SalesTable
             data={paginatedCombinedData}
+            printData={filteredAndSortedData}
+            optionsData={reportableData}
+            numberOffset={(currentPage - 1) * pageSize}
+            toolbar={selectionActions}
             searchTerm={searchTerm}
             onSearchChange={(e) => setSearchTerm(e.target.value)}
             startDate={startDate}
@@ -556,19 +590,14 @@ const LaporanPenjualan: React.FC = () => {
             onPaymentStatusFilterChange={(e) => setPaymentStatusFilter(e.target.value)}
             selectedPaymentMethod={selectedPaymentMethod}
             onPaymentMethodChange={(e) => setSelectedPaymentMethod(e.target.value)}
-            kasirOptions={kasirOptions}
             selectedKasirId={selectedKasirId}
             onKasirChange={(e) => setSelectedKasirId(e.target.value)}
-            customerOptions={customerOptions}
             selectedCustomerId={selectedCustomerId}
-            onCustomerChange={(e) => setSelectedCustomerId(e.target.value)}
-            designerOptions={designerOptions}
+            onCustomerChange={setSelectedCustomerId}
             selectedDesignerId={selectedDesignerId}
             onDesignerChange={(e) => setSelectedDesignerId(e.target.value)}
-            operatorOptions={operatorOptions}
             selectedOperatorId={selectedOperatorId}
             onOperatorChange={(e) => setSelectedOperatorId(e.target.value)}
-            finishingOptions={finishingOptions}
             selectedFinishingId={selectedFinishingId}
             onFinishingChange={(e) => setSelectedFinishingId(e.target.value)}
             isRefreshing={isRefreshing}
@@ -586,16 +615,7 @@ const LaporanPenjualan: React.FC = () => {
             pageSize={pageSize}
             totalItems={totalCombinedCount}
           />
-          <div className="flex justify-end space-x-3 mt-6">
-            <button
-              onClick={handleDeleteSelectedIds}
-              disabled={!selectedIds.length}
-              className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-            >
-              <Trash2 className="h-5 w-5 mr-2" />
-              Hapus Terpilih ({selectedIds.length})
-            </button>
-          </div>
+          <div className="mt-2">{selectionActions}</div>
         </div>
         <div className="lg:col-span-1 flex flex-col space-y-6">
           <SalesDetailPanel selectedItem={selectedSalesItem} />

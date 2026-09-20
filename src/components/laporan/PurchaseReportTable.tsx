@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Search, Printer, ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
 import { PurchaseReportItem } from '../../types/purchaseOrderTypes';
 import { formatCurrency, formatPaymentMethod } from '../../utils/formatters';
+import SearchableSelect from './SearchableSelect';
 
 interface SupplierOption { id: string; name: string; }
 interface RecordedByOption { id: string; name: string; }
@@ -9,6 +10,10 @@ interface RecordedByOption { id: string; name: string; }
 interface PurchaseReportTableProps {
   loading?: boolean;
   data: PurchaseReportItem[];
+  /** Seluruh data hasil filter (tanpa pagination) — dipakai khusus untuk cetak. */
+  printData?: PurchaseReportItem[];
+  /** Offset penomoran baris di layar agar lanjut antar halaman, mis. (currentPage-1)*pageSize. */
+  numberOffset?: number;
   searchTerm: string;
   onSearchChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   startDate: string;
@@ -28,7 +33,7 @@ interface PurchaseReportTableProps {
   onPaymentMethodChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   supplierOptions: SupplierOption[];
   selectedSupplierId: string;
-  onSupplierChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  onSupplierChange: (supplierId: string) => void;
   recordedByOptions: RecordedByOption[];
   selectedRecordedById: string;
   onRecordedByChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
@@ -47,6 +52,8 @@ interface PurchaseReportTableProps {
 const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
   loading = false,
   data,
+  printData,
+  numberOffset = 0,
   searchTerm,
   onSearchChange,
   startDate,
@@ -107,6 +114,54 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
   );
 
   const showEmpty = !loading && data.length === 0;
+
+  // Kalau ada baris dicentang, yang dicetak hanya baris terpilih; kalau tidak, semua hasil filter
+  const hasSelection = (selectedIds?.length ?? 0) > 0;
+  const rowsToPrint = useMemo(() => {
+    const all = printData ?? [];
+    if (!hasSelection) return all;
+    const set = new Set(selectedIds);
+    return all.filter((it) => set.has(it.id));
+  }, [printData, selectedIds, hasSelection]);
+
+  // Sel data satu baris (tanpa kolom checkbox) — dipakai bersama oleh tabel layar & tabel cetak
+  const renderDataCells = (item: PurchaseReportItem, index: number) => (
+    <>
+      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+        {index + 1}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        {new Date(item.order_date).toLocaleDateString('id-ID')}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        {item.invoice_number || 'N/A'}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="text-sm font-medium text-gray-900">
+          {item.supplier_display_name || item.supplier?.nama || 'N/A'}
+        </div>
+        <div className="text-xs text-gray-500">
+          {item.supplier_display_phone || item.supplier?.telepon || 'N/A'}
+        </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        {formatCurrency(item.final_amount)}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        {item.due_date ? new Date(item.due_date).toLocaleDateString('id-ID') : 'N/A'}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        {formatCurrency(item.due_amount)}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        {formatPaymentMethod(item.payment_method)}
+        {item.bank_name && ` (${item.bank_name})`}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        {item.profiles ? `${item.profiles.first_name} ${item.profiles.last_name || ''}` : 'N/A'}
+      </td>
+    </>
+  );
 
   // master checkbox indeterminate
   const masterRef = useRef<HTMLInputElement | null>(null);
@@ -177,17 +232,14 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
         </div>
         <div className="flex items-center gap-2">
           <label htmlFor="supplierFilter" className="text-sm font-medium text-gray-700">Supplier:</label>
-          <select
+          <SearchableSelect
             id="supplierFilter"
+            options={supplierOptions}
             value={selectedSupplierId}
             onChange={onSupplierChange}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="">Semua Supplier</option>
-            {supplierOptions.map(s => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
+            allLabel="Semua Supplier"
+            placeholder="Ketik nama supplier..."
+          />
         </div>
         <div className="flex items-center gap-2">
           <label htmlFor="recordedByFilter" className="text-sm font-medium text-gray-700">Petugas:</label>
@@ -208,7 +260,7 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
           className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors w-full sm:col-span-2 lg:col-span-1 xl:col-span-1"
         >
           <Printer className="h-5 w-5 mr-2" />
-          Cetak
+          {hasSelection ? `Cetak Data yang Dipilih (${selectedIds!.length})` : 'Cetak'}
         </button>
       </div>
 
@@ -221,7 +273,8 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
 
       {/* === INI AREA YANG AKAN DICETAK === */}
       <div id="purchase-print-area" className="bg-white rounded-lg shadow-sm overflow-hidden print-only-block">
-        <div className="overflow-x-auto">
+        {/* TABLE (layar, per-halaman) — disembunyikan saat print */}
+        <div className="no-print overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -299,43 +352,45 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
                             />
                           </td>
                         )}
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {index + 1}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {new Date(item.order_date).toLocaleDateString('id-ID')}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {item.invoice_number || 'N/A'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
-                            {item.supplier_display_name || item.supplier?.nama || 'N/A'}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {item.supplier_display_phone || item.supplier?.telepon || 'N/A'}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {formatCurrency(item.final_amount)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {item.due_date ? new Date(item.due_date).toLocaleDateString('id-ID') : 'N/A'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {formatCurrency(item.due_amount)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {formatPaymentMethod(item.payment_method)}
-                          {item.bank_name && ` (${item.bank_name})`}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {item.profiles ? `${item.profiles.first_name} ${item.profiles.last_name || ''}` : 'N/A'}
-                        </td>
+                        {renderDataCells(item, numberOffset + index)}
                       </tr>
                     );
                   })
                 )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* TABLE (cetak, SELURUH hasil filter — bukan per halaman) — hanya tampil saat print */}
+        <div className="print-only overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No.</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tanggal</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Faktur</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Jumlah Total</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tgl Tempo</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hutang</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Metode</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Petugas</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {rowsToPrint.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                    Tidak ada data pembelian.
+                  </td>
+                </tr>
+              ) : (
+                rowsToPrint.map((item, index) => (
+                  <tr key={item.id} className="avoid-break">
+                    {renderDataCells(item, index)}
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

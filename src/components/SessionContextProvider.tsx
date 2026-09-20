@@ -1,6 +1,7 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../integrations/supabase/client';
+import { showError } from '../utils/toast';
 
 interface RoleDetails {
   nama: string;
@@ -11,6 +12,7 @@ interface UserProfileDataFromDB {
   first_name: string | null;
   last_name: string | null;
   avatar_url: string | null;
+  deleted_at: string | null;
   roles: RoleDetails | null;
 }
 
@@ -34,17 +36,26 @@ export const SessionContextProvider: React.FC<{ children: React.ReactNode }> = (
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Dipakai untuk menghindari fetch profile berulang saat Supabase
+    // mengirim ulang event auth (mis. TOKEN_REFRESHED) untuk user yang sama.
+    const lastFetchedUserIdRef = { current: null as string | null };
+
     const fetchAndSetProfile = async (currentSession: Session | null) => {
       if (currentSession) {
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
-          .select('first_name, last_name, avatar_url, roles(nama, permissions)')
+          .select('first_name, last_name, avatar_url, deleted_at, roles(nama, permissions)')
           .eq('id', currentSession.user.id)
           .single<UserProfileDataFromDB>();
 
         if (profileError) {
           console.error('Error fetching profile:', profileError);
           setProfile(null);
+        } else if (profileData?.deleted_at) {
+          // Akun sudah dihapus (soft delete) dari Master User Akses -> paksa keluar
+          showError('Akun Anda sudah dihapus. Hubungi admin.');
+          setProfile(null);
+          await supabase.auth.signOut();
         } else {
           setProfile({
             first_name: profileData?.first_name || null,
@@ -57,20 +68,32 @@ export const SessionContextProvider: React.FC<{ children: React.ReactNode }> = (
       } else {
         setProfile(null);
       }
-      setLoading(false);
+      lastFetchedUserIdRef.current = currentSession?.user.id ?? null;
     };
 
     supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
       setSession(initialSession);
-      fetchAndSetProfile(initialSession);
+      fetchAndSetProfile(initialSession).finally(() => setLoading(false));
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setLoading(true);
+      const newUserId = newSession?.user.id ?? null;
+      const isUserChange = newUserId !== lastFetchedUserIdRef.current;
+
       setSession(newSession);
-      fetchAndSetProfile(newSession);
+
+      if (isUserChange) {
+        // Transisi user sesungguhnya (login/logout/ganti akun): profile lama
+        // sudah tidak valid, jadi tampilkan loading sampai profile baru siap
+        // agar ProtectedRoute tidak sempat mengecek permission dengan profile lama/null.
+        setLoading(true);
+        fetchAndSetProfile(newSession).finally(() => setLoading(false));
+      }
+      // Kalau user-nya sama (mis. event TOKEN_REFRESHED saat tab kembali fokus),
+      // tidak perlu setLoading/fetch ulang - session di atas sudah cukup diperbarui
+      // tanpa mem-blok/reset tampilan halaman.
     });
 
     return () => subscription.unsubscribe();

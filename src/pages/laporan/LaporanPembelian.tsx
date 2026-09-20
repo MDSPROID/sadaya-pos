@@ -43,29 +43,17 @@ const LaporanPembelian: React.FC = () => {
     setCurrentPage(1);
   }, [searchTerm, paymentStatusFilter, paymentMethodFilter, selectedSupplierId, selectedRecordedById, startDate, endDate]);
 
-  const filteredAndSortedData = useMemo(() => {
-    const filteredByPaymentStatus = allPurchaseData.filter(item => {
-      if (paymentStatusFilter === 'all') return true;
-      return item.payment_status === paymentStatusFilter;
-    });
-
-    const filteredByPaymentMethod = filteredByPaymentStatus.filter(item => {
-      if (paymentMethodFilter === 'all') return true;
-      return item.payment_method === paymentMethodFilter;
-    });
-
-    const filteredBySupplier = filteredByPaymentMethod.filter(item => {
-      if (!selectedSupplierId) return true;
-      return item.supplier_id === selectedSupplierId;
-    });
-
-    const filteredByRecordedBy = filteredBySupplier.filter(item => {
-      if (!selectedRecordedById) return true;
-      return item.recorded_by_id === selectedRecordedById;
-    });
-
+  // Filter baris. `except` = dimensi yang tidak diterapkan (dipakai untuk opsi dropdown
+  // agar dropdown suatu dimensi tetap menampilkan alternatif lain, bukan cuma yang dipilih).
+  const applyFilters = (items: PurchaseReportItem[], except?: 'supplier' | 'recordedBy') => {
     const s = searchTerm.toLowerCase();
-    const filteredBySearch = filteredByRecordedBy.filter(item => {
+    return items.filter(item => {
+      if (paymentStatusFilter !== 'all' && item.payment_status !== paymentStatusFilter) return false;
+      if (paymentMethodFilter !== 'all' && item.payment_method !== paymentMethodFilter) return false;
+      if (except !== 'supplier' && selectedSupplierId && item.supplier_id !== selectedSupplierId) return false;
+      if (except !== 'recordedBy' && selectedRecordedById && item.recorded_by_id !== selectedRecordedById) return false;
+
+      if (!s) return true;
       const supplierName = item.supplier_display_name || item.supplier?.nama || '';
       const supplierPhone = item.supplier_display_phone || item.supplier?.telepon || '';
       const recordedByName = item.profiles?.first_name || '';
@@ -78,6 +66,10 @@ const LaporanPembelian: React.FC = () => {
         (item.purchase_order_items && Array.isArray(item.purchase_order_items) && item.purchase_order_items.some((oi: any) => (oi.item_name || '').toLowerCase().includes(s)))
       );
     });
+  };
+
+  const filteredAndSortedData = useMemo(() => {
+    const filteredBySearch = applyFilters(allPurchaseData);
 
     const sortedData = [...filteredBySearch].sort((a, b) => {
       let compareValue = 0;
@@ -109,30 +101,34 @@ const LaporanPembelian: React.FC = () => {
     });
 
     return sortedData;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allPurchaseData, searchTerm, paymentStatusFilter, paymentMethodFilter, selectedSupplierId, selectedRecordedById, sortColumn, sortDirection]);
 
+  // Opsi dropdown dari data yang lolos semua filter lain (kecuali dimensinya sendiri), tanpa duplikat
   const supplierOptions: SupplierOption[] = useMemo(() => {
     const unique = new Map<string, string>();
-    allPurchaseData.forEach(order => {
+    applyFilters(allPurchaseData, 'supplier').forEach(order => {
       const id = order.supplier_id;
       const name = order.supplier_display_name || order.supplier?.nama;
-      if (id && name) unique.set(id, name);
+      if (id && name && !unique.has(id)) unique.set(id, name);
     });
     return Array.from(unique, ([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [allPurchaseData]);
-  
+      .sort((a, b) => a.name.localeCompare(b.name, 'id'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allPurchaseData, searchTerm, paymentStatusFilter, paymentMethodFilter, selectedRecordedById]);
+
   const recordedByOptions: RecordedByOption[] = useMemo(() => {
     const unique = new Map<string, string>();
-    allPurchaseData.forEach(order => {
-      if (order.recorded_by_id) {
+    applyFilters(allPurchaseData, 'recordedBy').forEach(order => {
+      if (order.recorded_by_id && !unique.has(order.recorded_by_id)) {
         const name = `${order.profiles?.first_name || ''} ${order.profiles?.last_name || ''}`.trim();
         if (name) unique.set(order.recorded_by_id, name);
       }
     });
     return Array.from(unique, ([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [allPurchaseData]);
+      .sort((a, b) => a.name.localeCompare(b.name, 'id'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allPurchaseData, searchTerm, paymentStatusFilter, paymentMethodFilter, selectedSupplierId]);
 
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
@@ -325,6 +321,8 @@ const LaporanPembelian: React.FC = () => {
           <PurchaseReportTable
             loading={loading}
             data={paginatedData}
+            printData={filteredAndSortedData}
+            numberOffset={(currentPage - 1) * pageSize}
             searchTerm={searchTerm}
             onSearchChange={(e) => setSearchTerm(e.target.value)}
             startDate={startDate}
@@ -344,7 +342,7 @@ const LaporanPembelian: React.FC = () => {
             onPaymentMethodChange={(e) => setPaymentMethodFilter(e.target.value)}
             supplierOptions={supplierOptions}
             selectedSupplierId={selectedSupplierId}
-            onSupplierChange={(e) => setSelectedSupplierId(e.target.value)}
+            onSupplierChange={setSelectedSupplierId}
             recordedByOptions={recordedByOptions}
             selectedRecordedById={selectedRecordedById}
             onRecordedByChange={(e) => setSelectedRecordedById(e.target.value)}

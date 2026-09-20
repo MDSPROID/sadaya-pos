@@ -1484,21 +1484,38 @@ const Sales: React.FC = () => {
       let orderIdForFlag: string | undefined = loadOrderId;
 
       try {
-        const q = supabase
-          .from('orders')
-          .select('id, invoice_number, created_at, final_amount, payment_status')
-          .eq('kasir_id', currentUserId as string)
-          .order('created_at', { ascending: false })
-          .limit(1);
+        if (loadOrderId) {
+          // Lanjutkan transaksi yang sudah ada -> pakai invoice_number milik
+          // order ini sendiri, JANGAN ambil order terakhir milik kasir
+          // (bisa nyasar ke invoice transaksi lain yang lebih baru).
+          const { data: current, error: curErr } = await supabase
+            .from('orders')
+            .select('invoice_number')
+            .eq('id', loadOrderId)
+            .maybeSingle();
 
-        const { data: last, error: lastErr } = await q;
-        dbg('fetch last order by kasir -> err=', lastErr, 'data=', last);
+          dbg('fetch invoice by loadOrderId -> err=', curErr, 'data=', current);
 
-        if (!orderIdForFlag && Array.isArray(last) && last[0]) {
-          orderIdForFlag = String(last[0].id);
-        }
-        if (!lastErr && Array.isArray(last) && last[0]?.invoice_number) {
-          invoice = String(last[0].invoice_number);
+          if (!curErr && current?.invoice_number) {
+            invoice = String(current.invoice_number);
+          }
+        } else {
+          const q = supabase
+            .from('orders')
+            .select('id, invoice_number, created_at, final_amount, payment_status')
+            .eq('kasir_id', currentUserId as string)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          const { data: last, error: lastErr } = await q;
+          dbg('fetch last order by kasir -> err=', lastErr, 'data=', last);
+
+          if (Array.isArray(last) && last[0]) {
+            orderIdForFlag = String(last[0].id);
+          }
+          if (!lastErr && Array.isArray(last) && last[0]?.invoice_number) {
+            invoice = String(last[0].invoice_number);
+          }
         }
       } catch (e) {
         console.warn('Gagal ambil invoice terbaru:', e);

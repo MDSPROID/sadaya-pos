@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, RefreshCw, Shield, Mail } from 'lucide-react';
+import { Plus, Search, RefreshCw, Shield, Mail, Trash2 } from 'lucide-react';
 import { supabase } from '../../integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '../../utils/toast';
 import { indoAuthError } from '../../utils/translateAuthError';
@@ -68,6 +68,7 @@ const UserAkses: React.FC = () => {
         .from('profiles')
         .select('id, first_name, last_name, email, is_active, role_id, roles(nama)')
         .neq('roles.nama', 'User') // kalau mau semua role, hapus baris ini
+        .is('deleted_at', null) // sembunyikan yang sudah dihapus (soft delete)
         .order('first_name', { ascending: true });
 
         if (error) {
@@ -277,35 +278,78 @@ const UserAkses: React.FC = () => {
         }
     };
 
-    // === Kirim email reset password ===
-    const handleResetPassword = async (user: UserAccessItem) => {
-        if (!user.email) {
-        showError('User ini belum memiliki email login.');
-        return;
-        }
+    // === Reset password langsung di aplikasi (via RPC admin_set_user_password) ===
+    const [resetTarget, setResetTarget] = useState<UserAccessItem | null>(null);
+    const [pwdForm, setPwdForm] = useState({ password: '', confirm: '' });
+    const [resetting, setResetting] = useState(false);
 
-        const ok = confirm(
-        `Kirim email reset password ke ${user.email}?\n\nPastikan pengaturan SMTP sudah benar.`
-        );
-        if (!ok) return;
+    const openResetModal = (user: UserAccessItem) => {
+        setResetTarget(user);
+        setPwdForm({ password: '', confirm: '' });
+    };
 
-        const toastId = showLoading('Mengirim email reset password...');
+    const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!resetTarget) return;
 
-        try {
-        const { error } = 
-        await supabase.auth.resetPasswordForEmail(user.email, {
-          redirectTo: 'https://sadayaprinting.com/auth/reset-password',
-        });
-        if (error) {
-            showError('Gagal mengirim email reset password: ' + error.message);
+        const pwd = pwdForm.password;
+        if (pwd.length < 6) {
+            showError('Password minimal 6 karakter.');
             return;
         }
-        showSuccess('Email reset password telah dikirim.');
+        if (pwd !== pwdForm.confirm) {
+            showError('Konfirmasi password tidak sama.');
+            return;
+        }
+
+        setResetting(true);
+        const toastId = showLoading('Menyimpan password baru...');
+        try {
+            const { error } = await supabase.rpc('admin_set_user_password', {
+                target_user_id: resetTarget.id,
+                new_password: pwd,
+            });
+            if (error) {
+                const msg = /could not find the function|schema cache/i.test(error.message)
+                    ? 'Fungsi admin_set_user_password belum dibuat di database. Jalankan file supabase/sql/admin_set_user_password.sql di Supabase SQL Editor.'
+                    : error.message;
+                showError('Gagal mereset password: ' + msg);
+                return;
+            }
+            showSuccess(`Password ${resetTarget.first_name || resetTarget.email || 'user'} berhasil direset.`);
+            setResetTarget(null);
         } catch (err: any) {
-        console.error(err);
-        showError(err.message || 'Terjadi kesalahan saat mengirim reset password.');
+            console.error(err);
+            showError(err.message || 'Terjadi kesalahan saat mereset password.');
         } finally {
-        dismissToast(toastId);
+            setResetting(false);
+            dismissToast(toastId);
+        }
+    };
+
+    // === Hapus user akses (soft delete: profiles.deleted_at) ===
+    const handleSoftDelete = async (user: UserAccessItem) => {
+        const name = `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email || 'user ini';
+        if (!confirm(`Hapus akses ${name}?\n\nAkun akan disembunyikan dari daftar dan tidak bisa login lagi. Data transaksi yang pernah dibuat tetap tersimpan.`)) return;
+
+        const toastId = showLoading('Menghapus user akses...');
+        try {
+            const { error } = await supabase
+                .from('profiles')
+                .update({ deleted_at: new Date().toISOString(), is_active: false })
+                .eq('id', user.id);
+
+            if (error) {
+                showError('Gagal menghapus user akses: ' + error.message);
+                return;
+            }
+            setData(prev => prev.filter(row => row.id !== user.id));
+            showSuccess('User akses berhasil dihapus.');
+        } catch (err: any) {
+            console.error(err);
+            showError(err.message || 'Terjadi kesalahan saat menghapus user akses.');
+        } finally {
+            dismissToast(toastId);
         }
     };
 
@@ -443,11 +487,19 @@ const UserAkses: React.FC = () => {
                             {statusActive ? 'Nonaktifkan' : 'Aktifkan'}
                         </button>
                         <button
-                          onClick={() => handleResetPassword(user)}
+                          onClick={() => openResetModal(user)}
                           className="px-2 py-1 text-xs border border-blue-500 text-blue-600 rounded hover:bg-blue-50 flex items-center gap-1"
                         >
                           <Shield className="h-3 w-3" />
                           Reset Password
+                        </button>
+                        <button
+                          onClick={() => handleSoftDelete(user)}
+                          className="px-2 py-1 text-xs border border-red-500 text-red-600 rounded hover:bg-red-50 flex items-center gap-1"
+                          title="Hapus user akses"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          Hapus
                         </button>
                       </div>
                     </td>
@@ -565,6 +617,62 @@ const UserAkses: React.FC = () => {
     </div>
   </div>
 )}
+
+      {/* Modal Reset Password */}
+      {resetTarget && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6">
+            <h2 className="text-lg font-semibold mb-1">Reset Password</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              {`${resetTarget.first_name || ''} ${resetTarget.last_name || ''}`.trim() || '-'}
+              {resetTarget.email ? ` — ${resetTarget.email}` : ''}
+            </p>
+            <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Password Baru *</label>
+                <input
+                  type="password"
+                  value={pwdForm.password}
+                  onChange={e => setPwdForm(prev => ({ ...prev, password: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  minLength={6}
+                  autoFocus
+                  required
+                />
+                <p className="mt-1 text-xs text-gray-500">Minimal 6 karakter. Sampaikan password baru ini ke user.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ulangi Password Baru *</label>
+                <input
+                  type="password"
+                  value={pwdForm.confirm}
+                  onChange={e => setPwdForm(prev => ({ ...prev, confirm: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  minLength={6}
+                  required
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setResetTarget(null)}
+                  disabled={resetting}
+                  className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={resetting}
+                  className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Simpan Password
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );
