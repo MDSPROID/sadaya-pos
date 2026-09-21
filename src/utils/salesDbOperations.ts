@@ -285,7 +285,9 @@ export const updateSalesOrder = async (
   paymentDetails?: PaymentDetails,
   options?: { skipPrint?: boolean }
 ) => {
-  const { invoice_number: _ignoreInvoice, ...updatePayload } = orderData as any;
+  // Saat melanjutkan transaksi: nomor faktur dan kasir pembuat order TIDAK boleh berubah
+  // (kasir_id di payload berisi user yang sedang login, bukan kasir asli).
+  const { invoice_number: _ignoreInvoice, kasir_id: _ignoreKasir, ...updatePayload } = orderData as any;
 
   // 0) Ambil items lama dulu (SEBELUM replace)
   const { data: oldItems, error: oldErr } = await supabase

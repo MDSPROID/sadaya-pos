@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Printer, ArrowUp, ArrowDown, Loader2 } from 'lucide-react';
+import { Search, Printer, ArrowUp, ArrowDown, Loader2, FileDown } from 'lucide-react';
 import { SalesItem, PendingOrderItem } from '../../types/orderTypes';
 import { formatCurrency } from '../../utils/formatters';
-import { supabase } from '../../integrations/supabase/client';
+import { IdName, customerLabelOf, petugasOf } from '../../utils/salesReportFilters';
 import SearchableSelect from './SearchableSelect';
+import { downloadXlsx } from '../../utils/exportXlsx';
+import { showError } from '../../utils/toast';
 
 const getDpFromNotes = (notes: any): number => {
   try {
@@ -25,27 +27,21 @@ const getDpFromNotes = (notes: any): number => {
   }
 };
 
-const nameFromProfile = (p: any) => {
-  if (!p) return '';
-  const fn = String(p.first_name ?? '').trim();
-  const ln = String(p.last_name ?? '').trim();
-  return [fn, ln].filter(Boolean).join(' ').trim();
-};
-
 type CombinedSalesItem = SalesItem | PendingOrderItem;
 
-type IdName = { id: string; name: string };
-
 interface SalesTableProps {
+  /** Baris halaman aktif (sudah difilter & dipaginasi oleh halaman induk). */
   data: CombinedSalesItem[];
   /** Seluruh data hasil filter (tanpa pagination) — dipakai khusus untuk cetak. */
   printData?: CombinedSalesItem[];
-  /**
-   * Seluruh data periode ini SEBELUM filter dropdown/pencarian diterapkan.
-   * Dipakai untuk mengisi opsi dropdown (customer/kasir/designer/operator/finishing)
-   * agar opsinya selalu sesuai data yang ada, tanpa duplikat.
-   */
-  optionsData?: CombinedSalesItem[];
+  /** Peta id profil -> nama, untuk kolom Petugas. */
+  nameById: Record<string, string>;
+  /** Opsi dropdown (sudah dihitung halaman induk dari data yang tampil, tanpa duplikat). */
+  customerOptions: IdName[];
+  kasirOptions: IdName[];
+  designerOptions: IdName[];
+  operatorOptions: IdName[];
+  finishingOptions: IdName[];
   /** Offset penomoran baris di layar agar lanjut antar halaman, mis. (currentPage-1)*pageSize. */
   numberOffset?: number;
   /** Tombol aksi (mis. cetak tanda terima / hapus) yang ditampilkan tepat di atas tabel. */
@@ -90,17 +86,15 @@ interface SalesTableProps {
   someSelectedOnPage?: boolean;
 }
 
-const displayName = (p: { first_name?: string | null; last_name?: string | null }) => {
-  const fn = String(p.first_name ?? '').trim();
-  const ln = String(p.last_name ?? '').trim();
-  const nm = [fn, ln].filter(Boolean).join(' ').trim();
-  return nm || '-';
-};
-
 const SalesTable: React.FC<SalesTableProps> = ({
   data,
   printData,
-  optionsData,
+  nameById,
+  customerOptions,
+  kasirOptions,
+  designerOptions,
+  operatorOptions,
+  finishingOptions,
   numberOffset = 0,
   toolbar,
   searchTerm,
@@ -154,124 +148,10 @@ const SalesTable: React.FC<SalesTableProps> = ({
     return method.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
-  // ===== A) Cache profile =====
-  type ProfileName = { first_name: string | null; last_name: string | null };
-  const [profileCache, setProfileCache] = useState<Record<string, ProfileName>>({});
-
-  useEffect(() => {
-    // Kumpulkan id petugas dari semua sumber (halaman aktif, data cetak, data opsi dropdown)
-    // supaya nama selalu bisa di-resolve, termasuk untuk baris di luar halaman aktif.
-    const sourceForProfiles: any[] = [
-      ...data,
-      ...(printData ?? []),
-      ...(optionsData ?? []),
-    ];
-    const ids = new Set<string>();
-    sourceForProfiles.forEach((item: any) => {
-      ['kasir_id', 'designer_id', 'operator_id', 'finishing_id'].forEach((key) => {
-        const val = item?.[key];
-        if (val) ids.add(String(val));
-      });
-      const items = Array.isArray((item as any)?.order_items) ? (item as any).order_items : [];
-      items.forEach((it: any) => {
-        ['designer_id', 'operator_id', 'finishing_id'].forEach((key) => {
-          const val = it?.[key];
-          if (val) ids.add(String(val));
-        });
-      });
-    });
-
-    const idsToFetch = Array.from(ids).filter(id => !profileCache[id]);
-    if (idsToFetch.length === 0) return;
-
-    (async () => {
-      const { data: profiles, error } = await supabase
-        .from('profiles')
-        .select('id, first_name, last_name')
-        .in('id', idsToFetch);
-
-      if (error) {
-        console.error('profiles lookup error:', error);
-        return;
-      }
-      const next = { ...profileCache };
-      (profiles || []).forEach((p: any) => {
-        next[String(p.id)] = { first_name: p.first_name ?? null, last_name: p.last_name ?? null };
-      });
-      setProfileCache(next);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, printData, optionsData]);
-
-  const getNameFromProfilesById = (id?: string | null) => {
-    if (!id) return '';
-    const rec = profileCache[String(id)];
-    if (!rec) return '';
-    return displayName(rec);
-  };
-
-  // ===== C) Nama petugas tampilan =====
-  const computePetugasNames = (item: any) => {
-    const ensureArray = (v: any) => (Array.isArray(v) ? v : []);
-
-    // ambil nama dari profileCache berdasarkan id
-    const nameById = (rawId: any): string => {
-      if (rawId === null || rawId === undefined || rawId === '') return '';
-      const id = String(rawId);
-      const n = getNameFromProfilesById(id);
-      return n ? n.trim() : '';
-    };
-
-    const joinOrDash = (names: string[]): string => {
-      const cleaned = names
-        .map((s) => (s || '').toString().trim())
-        .filter(Boolean);
-      const uniq = Array.from(new Set(cleaned));
-      return uniq.length ? uniq.join(', ') : '-';
-    };
-
-    // === DESIGNER: hanya dari order_items.designer_id (bisa lebih dari 1) ===
-    const designerIds = new Set<string>();
-    ensureArray((item as any).order_items).forEach((it: any) => {
-      if (it?.designer_id) {
-        designerIds.add(String(it.designer_id));
-      }
-    });
-
-    const designerNames: string[] = [];
-    designerIds.forEach((id) => {
-      const nm = nameById(id);
-      if (nm) designerNames.push(nm);
-    });
-    const designer = joinOrDash(designerNames);
-
-    // === KASIR: dari orders.kasir_id ===
-    const kasirName = nameById(item?.kasir_id) || nameFromProfile(item?.profiles);
-    const kasir = kasirName && kasirName.trim() ? kasirName.trim() : '-';
-
-    // === OPERATOR: dari orders.operator_id ===
-    const operatorName = nameById(item?.operator_id);
-    const operator = operatorName && operatorName.trim() ? operatorName.trim() : '-';
-
-    // === FINISHING: dari orders.finishing_id ===
-    const finishingName = nameById(item?.finishing_id);
-    const finishing = finishingName && finishingName.trim() ? finishingName.trim() : '-';
-
-    return { designer, kasir, operator, finishing };
-  };
-
-  // ===== C.1) Helper untuk kapitalisasi & render petugas (adopsi dari StatusOrder) =====
-  const ucfirst = (s?: string | null): string => {
-    const str = (s ?? '').toString().trim();
-    if (!str) return '';
-    return str.charAt(0).toUpperCase() + str.slice(1);
-  };
-
   const renderPetugas = (item: any) => {
-    const p = computePetugasNames(item);
-
+    const p = petugasOf(item, nameById);
     const rows: Array<[string, string]> = [
-      ['Designer', p.designer],
+      ['Designer', p.designers.map(d => d.name).join(', ')],
       ['Kasir', p.kasir],
       ['Operator', p.operator],
       ['Finishing', p.finishing],
@@ -282,179 +162,18 @@ const SalesTable: React.FC<SalesTableProps> = ({
         {rows.map(([label, val]) => (
           <div key={label}>
             <span className="text-gray-500">{label}: </span>
-            <span className="text-gray-900">
-              {val && val.toString().trim() ? val : '-'}
-            </span>
+            <span className="text-gray-900">{val && val.trim() ? val : '-'}</span>
           </div>
         ))}
       </div>
     );
   };
-  
-  // ===== D) CUSTOMER (label & id) =====
-  const extractCustomerLabel = (it: any): string => {
-    return (it.customer_display_name ? it.customer_display_name.charAt(0).toUpperCase() + it.customer_display_name.slice(1) : '') || it?.pelanggan?.[0]?.nama_pelanggan || 'Umum';
-  };
-  const extractCustomerId = (it: any): string | null => {
-    const raw = it?.customer_id;
-    return raw != null && raw !== '' ? String(raw) : null;
-  };
 
-  // ===== E) Data tanpa filter customer =====
-  const anyOrderItemMatch = (arr: any[] | undefined, key: string, uuid: string) =>
-    Array.isArray(arr) && arr.some((x) => String(x?.[key] ?? '') === uuid);
+  const extractCustomerLabel = (it: any): string => customerLabelOf(it);
 
-  type FilterDim = 'customer' | 'kasir' | 'designer' | 'operator' | 'finishing';
-
-  // Predikat filter baris — dipakai bersama untuk data layar (paginated), data cetak,
-  // dan opsi dropdown. `except` = dimensi yang TIDAK diterapkan (agar opsi dropdown
-  // suatu dimensi tetap menampilkan alternatif lain, bukan cuma yang sedang dipilih).
-  const passesRowFilters = (it: any, except?: FilterDim): boolean => {
-    if (
-      !(
-        it.payment_status === 'paid' ||
-        (it.payment_status === 'pending' && it.payment_method !== null && it.payment_method !== '')
-      )
-    ) return false;
-
-    if (paymentStatusFilter !== 'all' && it.payment_status !== paymentStatusFilter) return false;
-    if (selectedPaymentMethod !== 'all' && (it.payment_method ?? '') !== selectedPaymentMethod) return false;
-
-    if (except !== 'customer' && selectedCustomerId) {
-      if (String(extractCustomerId(it) ?? '') !== String(selectedCustomerId).trim()) return false;
-    }
-
-    if (except !== 'kasir' && selectedKasirId && String(it.kasir_id ?? '') !== selectedKasirId) return false;
-
-    if (except !== 'designer' && selectedDesignerId) {
-      const matchTop = String(it.designer_id ?? '') === selectedDesignerId;
-      const matchItems = anyOrderItemMatch(it.order_items, 'designer_id', selectedDesignerId);
-      if (!matchTop && !matchItems) return false;
-    }
-
-    if (except !== 'operator' && selectedOperatorId) {
-      const matchTop = String(it.operator_id ?? '') === selectedOperatorId;
-      const matchItems = anyOrderItemMatch(it.order_items, 'operator_id', selectedOperatorId);
-      if (!matchTop && !matchItems) return false;
-    }
-
-    if (except !== 'finishing' && selectedFinishingId) {
-      const matchTop = String(it.finishing_id ?? '') === selectedFinishingId;
-      const matchItems = anyOrderItemMatch(it.order_items, 'finishing_id', selectedFinishingId);
-      if (!matchTop && !matchItems) return false;
-    }
-
-    if (searchTerm?.trim()) {
-      const p = computePetugasNames(it);
-      const q = searchTerm.trim().toLocaleLowerCase();
-      const hay = [
-        it.invoice_number,
-        it.customer_display_name,
-        it.customer_display_phone,
-        p.kasir, p.designer, p.operator, p.finishing,
-      ].filter(Boolean).join(' | ').toLocaleLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-
-    return true;
-  };
-
-  const filterDeps = [
-    searchTerm,
-    paymentStatusFilter,
-    selectedPaymentMethod,
-    selectedCustomerId,
-    selectedKasirId,
-    selectedDesignerId,
-    selectedOperatorId,
-    selectedFinishingId,
-    profileCache, // nama petugas dipakai di pencarian
-  ];
-
-  // Data layar (halaman aktif)
-  const filteredData = useMemo(
-    () => data.filter((it: any) => passesRowFilters(it)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data, ...filterDeps]
-  );
-
-  // Versi filteredData dari SELURUH hasil filter (tanpa pagination) — dipakai di tabel khusus cetak
-  const printFilteredData = useMemo(
-    () => (printData ?? []).filter((it: any) => passesRowFilters(it)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [printData, ...filterDeps]
-  );
-
-  // ===== F) Opsi dropdown dari data (tanpa duplikat) =====
-  // Setiap dimensi dibangun dari data yang sudah lolos SEMUA filter lain (kecuali dimensi itu sendiri),
-  // jadi opsinya selalu sesuai data yang ada di tabel, tapi tetap bisa ganti pilihan tanpa reset dulu.
-  const optionsSource: any[] = optionsData ?? printData ?? data;
-
-  const buildOptions = (dim: FilterDim, collect: (it: any, add: (id: string, name: string) => void) => void): IdName[] => {
-    const uniq = new Map<string, string>();
-    const add = (id: string, name: string) => {
-      if (!id) return;
-      if (!uniq.has(id)) uniq.set(id, name);
-    };
-    optionsSource.forEach((it) => {
-      if (!passesRowFilters(it, dim)) return;
-      collect(it, add);
-    });
-    return Array.from(uniq, ([id, name]) => ({ id, name: name || id }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'id'));
-  };
-
-  const petugasName = (id: any) => getNameFromProfilesById(id ? String(id) : null);
-
-  const customerOptions = useMemo(
-    () => buildOptions('customer', (it, add) => {
-      const cid = extractCustomerId(it);
-      if (cid) add(cid, (extractCustomerLabel(it) || '').trim());
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [optionsSource, ...filterDeps]
-  );
-
-  const kasirOptions = useMemo(
-    () => buildOptions('kasir', (it, add) => {
-      if (it.kasir_id) add(String(it.kasir_id), petugasName(it.kasir_id) || nameFromProfile(it.profiles));
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [optionsSource, ...filterDeps]
-  );
-
-  const designerOptions = useMemo(
-    () => buildOptions('designer', (it, add) => {
-      if (it.designer_id) add(String(it.designer_id), petugasName(it.designer_id));
-      (Array.isArray(it.order_items) ? it.order_items : []).forEach((oi: any) => {
-        if (oi?.designer_id) add(String(oi.designer_id), petugasName(oi.designer_id));
-      });
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [optionsSource, ...filterDeps]
-  );
-
-  const operatorOptions = useMemo(
-    () => buildOptions('operator', (it, add) => {
-      if (it.operator_id) add(String(it.operator_id), petugasName(it.operator_id));
-      (Array.isArray(it.order_items) ? it.order_items : []).forEach((oi: any) => {
-        if (oi?.operator_id) add(String(oi.operator_id), petugasName(oi.operator_id));
-      });
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [optionsSource, ...filterDeps]
-  );
-
-  const finishingOptions = useMemo(
-    () => buildOptions('finishing', (it, add) => {
-      if (it.finishing_id) add(String(it.finishing_id), petugasName(it.finishing_id));
-      (Array.isArray(it.order_items) ? it.order_items : []).forEach((oi: any) => {
-        if (oi?.finishing_id) add(String(oi.finishing_id), petugasName(oi.finishing_id));
-      });
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [optionsSource, ...filterDeps]
-  );
+  // Filter & opsi dropdown sepenuhnya dihitung halaman induk; di sini hanya tampilan.
+  const filteredData = data;
+  const printFilteredData = printData ?? [];
 
   // Kalau ada baris dicentang, yang dicetak hanya baris terpilih; kalau tidak, semua hasil filter
   const hasSelection = (selectedIds?.length ?? 0) > 0;
@@ -539,7 +258,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
   // ===== Label filter aktif untuk area print =====
   const labelFromOptions = (id: string, options: IdName[]) => {
     if (!id) return '';
-    return options.find(o => o.id === id)?.name || petugasName(id) || '-';
+    return options.find(o => o.id === id)?.name || nameById[id] || '-';
   };
 
   const activeFilter = useMemo(() => {
@@ -579,8 +298,58 @@ const SalesTable: React.FC<SalesTableProps> = ({
     paymentStatusFilter, selectedPaymentMethod,
     selectedCustomerId, selectedKasirId, selectedDesignerId, selectedOperatorId, selectedFinishingId,
     customerOptions, kasirOptions, designerOptions, operatorOptions, finishingOptions,
-    profileCache, searchTerm
+    nameById, searchTerm
   ]);
+
+  // ===== Export Excel (data sama dengan yang dicetak) =====
+  const [exporting, setExporting] = useState(false);
+  const handleExportExcel = async () => {
+    if (rowsToPrint.length === 0) {
+      showError('Tidak ada data untuk diekspor.');
+      return;
+    }
+    setExporting(true);
+    try {
+      const d = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+      await downloadXlsx(`laporan-penjualan-${stamp}.xlsx`, {
+        name: 'Laporan Penjualan',
+        preface: [
+          ['LAPORAN PENJUALAN'],
+          ...activeFilter.map(f => [f.k, f.v]),
+          ['Jumlah transaksi', rowsToPrint.length],
+          ['Total penjualan', rowsToPrint.reduce((s, it: any) => s + Number(it.final_amount || 0), 0)],
+        ],
+        header: ['No', 'Tanggal', 'Faktur', 'Pelanggan', 'HP', 'Designer', 'Kasir', 'Operator', 'Finishing', 'Jumlah Total', 'Dibayar', 'Kekurangan', 'Status Pembayaran', 'Metode Pembayaran'],
+        rows: rowsToPrint.map((it: any, i) => {
+          const p = petugasOf(it, nameById);
+          const { paid, remaining } = computePaidAndRemaining(it);
+          return [
+            i + 1,
+            new Date(it.order_date).toLocaleDateString('id-ID'),
+            it.invoice_number || '',
+            extractCustomerLabel(it),
+            it.customer_display_phone || it?.pelanggan?.[0]?.telepon || '',
+            p.designers.map(d => d.name).join(', '),
+            p.kasir,
+            p.operator,
+            p.finishing,
+            Number(it.final_amount || 0),
+            paid,
+            remaining,
+            it.payment_status === 'paid' ? 'Lunas' : it.payment_status === 'pending' ? 'Belum Lunas' : 'Batal',
+            formatPaymentMethod(it.payment_method),
+          ];
+        }),
+        colWidths: [5, 12, 14, 26, 16, 18, 14, 14, 14, 14, 14, 14, 16, 18],
+      });
+    } catch (e: any) {
+      showError(e?.message || 'Gagal membuat file Excel.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // ====== Checkbox master indeterminate (kalau selection props ada) ======
   const masterRef = useRef<HTMLInputElement | null>(null);
@@ -733,13 +502,22 @@ const SalesTable: React.FC<SalesTableProps> = ({
           </select>
         </div>
 
-        <div className="md:justify-self-end">
+        <div className="md:justify-self-end flex flex-col md:flex-row gap-2">
           <button
             onClick={onPrint}
             className="no-print w-full md:w-auto flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
           >
             <Printer className="h-5 w-5 mr-2" />
             {hasSelection ? `Cetak Data yang Dipilih (${selectedIds!.length})` : 'Cetak'}
+          </button>
+          <button
+            onClick={handleExportExcel}
+            disabled={exporting}
+            className="no-print w-full md:w-auto flex items-center justify-center px-4 py-2 bg-emerald-700 text-white rounded-lg hover:bg-emerald-800 disabled:opacity-50 transition-colors"
+            title="Export ke Excel (.xlsx) — data sama dengan yang dicetak"
+          >
+            <FileDown className="h-5 w-5 mr-2" />
+            {exporting ? 'Menyiapkan…' : hasSelection ? `Export Excel (${selectedIds!.length})` : 'Export Excel'}
           </button>
         </div>
 

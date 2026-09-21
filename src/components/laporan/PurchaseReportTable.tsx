@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { Search, Printer, ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Search, Printer, ArrowUp, ArrowDown, Trash2, FileDown } from 'lucide-react';
 import { PurchaseReportItem } from '../../types/purchaseOrderTypes';
 import { formatCurrency, formatPaymentMethod } from '../../utils/formatters';
 import SearchableSelect from './SearchableSelect';
+import { downloadXlsx } from '../../utils/exportXlsx';
+import { showError } from '../../utils/toast';
 
 interface SupplierOption { id: string; name: string; }
 interface RecordedByOption { id: string; name: string; }
@@ -163,6 +165,60 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
     </>
   );
 
+  // ===== Export Excel (data sama dengan yang dicetak) =====
+  const [exporting, setExporting] = useState(false);
+  const handleExportExcel = async () => {
+    if (rowsToPrint.length === 0) {
+      showError('Tidak ada data untuk diekspor.');
+      return;
+    }
+    setExporting(true);
+    try {
+      const d = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+      const statusLabel = paymentStatusFilter === 'all' ? 'Semua Status' : paymentStatusFilter === 'paid' ? 'Lunas' : 'Belum Lunas';
+      const methodLabel = paymentMethodFilter === 'all' ? 'Semua Metode' : formatPaymentMethod(paymentMethodFilter);
+      const supplierLabel = selectedSupplierId ? (supplierOptions.find(s => s.id === selectedSupplierId)?.name || '-') : 'Semua Supplier';
+      const petugasLabel = selectedRecordedById ? (recordedByOptions.find(u => u.id === selectedRecordedById)?.name || '-') : 'Semua Petugas';
+      await downloadXlsx(`laporan-pembelian-${stamp}.xlsx`, {
+        name: 'Laporan Pembelian',
+        preface: [
+          ['LAPORAN PEMBELIAN'],
+          ['Periode', `${startDate || '-'} s/d ${endDate || '-'}`],
+          ['Status', statusLabel],
+          ['Metode', methodLabel],
+          ['Supplier', supplierLabel],
+          ['Petugas', petugasLabel],
+          ['Pencarian', searchTerm.trim() ? `"${searchTerm.trim()}"` : '-'],
+          ['Jumlah transaksi', rowsToPrint.length],
+          ['Total pembelian', rowsToPrint.reduce((sum, it) => sum + Number(it.final_amount || 0), 0)],
+          ['Total hutang', rowsToPrint.reduce((sum, it) => sum + Number(it.due_amount || 0), 0)],
+        ],
+        header: ['No', 'Tanggal', 'Faktur', 'Supplier', 'HP', 'Jumlah Total', 'Tgl Tempo', 'Hutang', 'Status', 'Metode', 'Bank', 'Petugas'],
+        rows: rowsToPrint.map((it, i) => [
+          i + 1,
+          new Date(it.order_date).toLocaleDateString('id-ID'),
+          it.invoice_number || '',
+          it.supplier_display_name || it.supplier?.nama || '',
+          it.supplier_display_phone || it.supplier?.telepon || '',
+          Number(it.final_amount || 0),
+          it.due_date ? new Date(it.due_date).toLocaleDateString('id-ID') : '',
+          Number(it.due_amount || 0),
+          it.payment_status === 'paid' ? 'Lunas' : 'Belum Lunas',
+          formatPaymentMethod(it.payment_method),
+          it.bank_name || '',
+          it.profiles ? `${it.profiles.first_name} ${it.profiles.last_name || ''}`.trim() : '',
+        ]),
+        colWidths: [5, 12, 14, 26, 16, 14, 12, 14, 12, 16, 16, 18],
+      });
+    } catch (e: any) {
+      showError(e?.message || 'Gagal membuat file Excel.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // master checkbox indeterminate
   const masterRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
@@ -261,6 +317,15 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
         >
           <Printer className="h-5 w-5 mr-2" />
           {hasSelection ? `Cetak Data yang Dipilih (${selectedIds!.length})` : 'Cetak'}
+        </button>
+        <button
+          onClick={handleExportExcel}
+          disabled={exporting}
+          className="flex items-center px-4 py-2 bg-emerald-700 text-white rounded-lg hover:bg-emerald-800 disabled:opacity-50 transition-colors w-full sm:col-span-2 lg:col-span-1 xl:col-span-1"
+          title="Export ke Excel (.xlsx) — data sama dengan yang dicetak"
+        >
+          <FileDown className="h-5 w-5 mr-2" />
+          {exporting ? 'Menyiapkan…' : hasSelection ? `Export Excel (${selectedIds!.length})` : 'Export Excel'}
         </button>
       </div>
 

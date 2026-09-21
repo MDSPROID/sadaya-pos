@@ -1,6 +1,8 @@
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useHistoryPendingSalesData } from '../hooks/useHistoryPendingSalesData';
-import HistoryPendingSalesTable from '../components/back-office/HistoryPendingSalesTable';
+import HistoryPendingSalesTable, { isKeteranganEmpty, getManualNote } from '../components/back-office/HistoryPendingSalesTable';
+import RekapPendingModal from '../components/back-office/RekapPendingModal';
+import type { RekapPendingRow } from '../utils/printRekapPending';
 import { showSuccess, showError, showLoading, dismissToast } from '../utils/toast';
 import { supabase } from '../integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
@@ -17,6 +19,10 @@ const HistoryPendingSales: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState<string>(todayStr());
   const [endDate, setEndDate] = useState<string>(todayStr());
+  // Mode "Semua Belum Lunas": ambil seluruh pending dari yang paling lama s/d hari ini (abaikan tanggal)
+  const [allPending, setAllPending] = useState(false);
+  // Filter: hanya order yang kolom Keterangan-nya kosong (tanpa catatan manual)
+  const [emptyNotesOnly, setEmptyNotesOnly] = useState(false);
 
   const typingTimer = useRef<number | null>(null);
   const navigate = useNavigate();
@@ -27,7 +33,27 @@ const HistoryPendingSales: React.FC = () => {
     error,
     fetchPendingSales,
     setData,
+    allFetchedAt,
+    patchCache,
   } = useHistoryPendingSalesData({ startDate, endDate, searchTerm: '' }); // jangan jadikan searchTerm dep hook
+
+  const mode = allPending ? 'all' : 'range';
+
+  const displayData = useMemo(
+    () => (emptyNotesOnly ? data.filter(it => isKeteranganEmpty(it.notes)) : data),
+    [data, emptyNotesOnly]
+  );
+
+  const earliestPendingDate = useMemo(() => {
+    if (!allPending || data.length === 0) return null;
+    return data.reduce((min, it) => (it.order_date < min ? it.order_date : min), data[0].order_date);
+  }, [allPending, data]);
+
+  const handleToggleAllPending = async () => {
+    const next = !allPending;
+    setAllPending(next);
+    await fetchPendingSales({ searchTerm, startDate, endDate, mode: next ? 'all' : 'range' });
+  };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
@@ -38,7 +64,7 @@ const HistoryPendingSales: React.FC = () => {
       window.clearTimeout(typingTimer.current); 
     }
     typingTimer.current = window.setTimeout(() => {
-      fetchPendingSales({ searchTerm: newValue, startDate, endDate });
+      fetchPendingSales({ searchTerm: newValue, startDate, endDate, mode });
     }, 300);
   };
 
@@ -87,6 +113,7 @@ const HistoryPendingSales: React.FC = () => {
       }
 
       setData(prev => prev.filter(item => item.id !== orderId));
+      patchCache(rows => rows.filter(item => item.id !== orderId));
       showSuccess('Order berhasil dihapus.');
     } catch (err: any) {
       console.error(err);
@@ -366,6 +393,7 @@ const HistoryPendingSales: React.FC = () => {
           it.id === orderId ? { ...it, wa_notified: true } : it
         )
       );
+      patchCache(rows => rows.map(it => (it.id === orderId ? { ...it, wa_notified: true } : it)));
   
       if (toastId !== undefined) dismissToast(toastId);
       showSuccess('WhatsApp terkirim.');
@@ -378,9 +406,46 @@ const HistoryPendingSales: React.FC = () => {
     }
   };
 
+  // ==== Rekap (dari data yang sedang tampil) ====
+  const [showRekap, setShowRekap] = useState(false);
+
+  const rekapRows = useMemo<RekapPendingRow[]>(() => displayData.map((o: any) => {
+    const pays = extractPaymentsFromNotes(o.notes || '');
+    const last = pays.length ? pays[pays.length - 1] : undefined;
+    const finalAmount = Number(last?.final_amount || o.final_amount || o.total_amount || 0);
+    const dp = Number(last?.dp_amount || 0);
+    const paidAmt = Number(last?.paid_amount || 0);
+    const paid = Math.min(finalAmount, Number(last?.total_paid ?? (dp + paidAmt)));
+    return {
+      invoice_number: o.invoice_number,
+      order_date: o.order_date,
+      customer_name: o.customer_display_name || o.pelanggan?.[0]?.nama_pelanggan || 'Umum',
+      customer_phone: o.customer_display_phone || o.pelanggan?.[0]?.telepon || '',
+      kasir_name: o.kasir_name || '',
+      final_amount: finalAmount,
+      paid,
+      remaining: Math.max(0, finalAmount - paid),
+      durasi_tunggu: Number(o.durasi_tunggu || 0),
+      catatan: getManualNote(o.notes),
+      tempo_date: last?.tempo_active && last?.tempo_date ? last.tempo_date : null,
+    };
+  }), [displayData]);
+
+  const fmtID = (d: string) => new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+  const rekapPeriodeLabel = allPending
+    ? `Semua belum lunas${earliestPendingDate ? ` (${fmtID(earliestPendingDate)} s/d ${fmtID(todayStr())})` : ''}`
+    : `Periode ${fmtID(startDate)} s/d ${fmtID(endDate)}`;
+  const rekapFilterLabel = [
+    emptyNotesOnly ? 'keterangan kosong' : '',
+    searchTerm.trim() ? `pencarian "${searchTerm.trim()}"` : '',
+  ].filter(Boolean).join(', ');
+
   const handleRekap = () => {
-    showSuccess('Melakukan rekap data penjualan tertunda.');
-    console.log('Rekap pending sales data');
+    if (displayData.length === 0) {
+      showError('Tidak ada data untuk direkap.');
+      return;
+    }
+    setShowRekap(true);
   };
 
   // Jangan return full halaman saat loading → biarkan tabel yang menunjukkan loading overlay
@@ -390,7 +455,7 @@ const HistoryPendingSales: React.FC = () => {
         <p>Error: {error}</p>
         <button
           type="button"
-          onClick={() => fetchPendingSales({ searchTerm, startDate, endDate })}
+          onClick={() => fetchPendingSales({ searchTerm, startDate, endDate, mode, force: true })}
           className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
         >
           Coba Lagi
@@ -409,7 +474,8 @@ const HistoryPendingSales: React.FC = () => {
       </div>
 
       <HistoryPendingSalesTable
-        data={data}
+        data={displayData}
+        totalCount={data.length}
         loading={loading}
         searchTerm={searchTerm}
         onSearchChange={handleSearchChange}
@@ -417,13 +483,28 @@ const HistoryPendingSales: React.FC = () => {
         endDate={endDate}
         onStartDateChange={(v) => handleStartDateChange(v)}
         onEndDateChange={(v) => handleEndDateChange(v)}
-        onRefresh={() => fetchPendingSales({ searchTerm, startDate, endDate })}
+        allPending={allPending}
+        onToggleAllPending={handleToggleAllPending}
+        allFetchedAt={allFetchedAt}
+        earliestPendingDate={earliestPendingDate}
+        emptyNotesOnly={emptyNotesOnly}
+        onToggleEmptyNotesOnly={() => setEmptyNotesOnly(v => !v)}
+        onRefresh={() => fetchPendingSales({ searchTerm, startDate, endDate, mode, force: true })}
         onContinue={handleContinue}
         onDelete={handleDelete}
         onRekap={handleRekap}
         onSendWhatsApp={handleSendWhatsApp}     // << NEW
         waSendingId={waSendingId} 
       />
+
+      {showRekap && (
+        <RekapPendingModal
+          rows={rekapRows}
+          periodeLabel={rekapPeriodeLabel}
+          filterLabel={rekapFilterLabel || undefined}
+          onClose={() => setShowRekap(false)}
+        />
+      )}
     </div>
   );
 };

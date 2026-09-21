@@ -348,7 +348,6 @@ const StatusOrderProcess: React.FC = () => {
     try {
       setSaving(true);
 
-      // saat mulai PROSES CETAK, set operator_id = user login
       const updates: Partial<OrderRow> = { order_status: next };
 
       // kalau status berubah dari NEW -> PROSES CETAK, set proses_cetak_at
@@ -356,19 +355,29 @@ const StatusOrderProcess: React.FC = () => {
         updates.proses_cetak_at = new Date().toISOString();
       }
 
-      // set operator id
-      if (!isProsesCetak && currentUserId) {
-        updates.operator_id = currentUserId;
-      }
-
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('orders')
         .update(updates)
-        .eq('id', order.id)
-        .select('id, order_status, operator_id')
-        .maybeSingle();
-
+        .eq('id', order.id);
       if (error) throw error;
+
+      // Operator diisi user login HANYA jika masih kosong di database
+      // (staff yang sudah tercatat tidak boleh ditimpa).
+      if (!isProsesCetak && currentUserId) {
+        const { error: opErr } = await supabase
+          .from('orders')
+          .update({ operator_id: currentUserId })
+          .eq('id', order.id)
+          .is('operator_id', null);
+        if (opErr) throw opErr;
+      }
+
+      const { data, error: reErr } = await supabase
+        .from('orders')
+        .select('id, order_status, operator_id')
+        .eq('id', order.id)
+        .maybeSingle();
+      if (reErr) throw reErr;
 
       setOrder(prev => prev
         ? { ...prev,
@@ -398,19 +407,30 @@ const StatusOrderProcess: React.FC = () => {
     try {
       setSaving(true);
 
-      const updates: Partial<OrderRow> = { 
+      const updates: Partial<OrderRow> = {
         order_status: 'siap_ambil',
         siap_ambil_at: new Date().toISOString(),
       };
-      
+
+      const { error } = await supabase
+        .from('orders')
+        .update(updates)
+        .eq('id', order.id);
+      if (error) throw error;
+
+      // Finishing diisi user login HANYA jika masih kosong di database
+      // (staff yang sudah tercatat tidak boleh ditimpa).
       if (currentUserId) {
-        updates.finishing_id = currentUserId;
+        const { error: finErr } = await supabase
+          .from('orders')
+          .update({ finishing_id: currentUserId })
+          .eq('id', order.id)
+          .is('finishing_id', null);
+        if (finErr) throw finErr;
       }
 
-      const { data, error } = await supabase
+      const { data, error: reErr } = await supabase
       .from('orders')
-      .update(updates)
-      .eq('id', order.id)
       .select(`
         id,
         order_status,
@@ -421,9 +441,9 @@ const StatusOrderProcess: React.FC = () => {
         customer_display_name,
         customer_display_phone
       `)
+      .eq('id', order.id)
       .maybeSingle();
-
-      if (error) throw error;
+      if (reErr) throw reErr;
 
       setOrder(prev => prev
         ? { ...prev,

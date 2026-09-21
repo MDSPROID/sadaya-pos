@@ -9,6 +9,8 @@ import Pagination from '../../components/Pagination';
 import SalesTable from '../../components/laporan/SalesTable';
 import { SalesItem, PendingOrderItem } from '../../types/orderTypes';
 import { useSession } from '../../components/SessionContextProvider';
+import { useProfileNames } from '../../hooks/useProfileNames';
+import { collectStaffIds, makeOrderFilter, buildStaffOptions, SalesReportFilters } from '../../utils/salesReportFilters';
 import { fetchCompanyInfo, printTandaTerimaWindow, TandaTerimaRow } from '../../utils/printTandaTerima';
 
 type CombinedSalesItem = SalesItem | PendingOrderItem;
@@ -86,93 +88,6 @@ const LaporanPenjualan: React.FC = () => {
     return allSalesData;
   }, [hasLoadedOnce, loadingSales, snapshotData, allSalesData]);
 
-  // --- Helpers: extract IDs dari order/order_items ---
-  const extractDesignerIdsFromOrder = (order: any): { id: string; name: string }[] => {
-    const out = new Map<string, string>();
-    const directId = order?.designer_id || order?.designerId;
-    const directName =
-      order?.designer_name ||
-      order?.designerName ||
-      order?.designer?.name ||
-      (order?.designer?.first_name
-        ? `${order.designer.first_name}${order?.designer?.last_name ? ` ${order.designer.last_name}` : ''}`
-        : '');
-    if (directId) out.set(String(directId), String(directName || directId));
-
-    const items = Array.isArray(order?.order_items) ? order.order_items : [];
-    items.forEach((it: any) => {
-      const id = it?.designer_id || it?.designerId || it?.designer?.id;
-      const name =
-        it?.designer_name ||
-        it?.designerName ||
-        it?.designer?.name ||
-        (it?.designer?.first_name
-          ? `${it.designer.first_name}${it?.designer?.last_name ? ` ${it.designer.last_name}` : ''}`
-          : '');
-      if (id) out.set(String(id), String(name || id));
-    });
-    return Array.from(out, ([id, name]) => ({ id, name }));
-  };
-
-  const extractOperatorIdsFromOrder = (order: any): { id: string; name: string }[] => {
-    const out = new Map<string, string>();
-    const directId = order?.operator_id || order?.operatorId;
-    const directName =
-      order?.operator_name ||
-      order?.operatorName ||
-      order?.operator?.name ||
-      (order?.operator?.first_name
-        ? `${order.operator.first_name}${order?.operator?.last_name ? ` ${order.operator.last_name}` : ''}`
-        : '');
-    if (directId) out.set(String(directId), String(directName || directId));
-
-    const items = Array.isArray(order?.order_items) ? order.order_items : [];
-    items.forEach((it: any) => {
-      const id = it?.operator_id || it?.operatorId || it?.operator?.id;
-      const name =
-        it?.operator_name ||
-        it?.operatorName ||
-        it?.operator?.name ||
-        (it?.operator?.first_name
-          ? `${it.operator.first_name}${it?.operator?.last_name ? ` ${it.operator.last_name}` : ''}`
-          : '');
-      if (id) out.set(String(id), String(name || id));
-    });
-    return Array.from(out, ([id, name]) => ({ id, name }));
-  };
-
-  const extractFinishingIdsFromOrder = (order: any): { id: string; name: string }[] => {
-    const out = new Map<string, string>();
-    const items = Array.isArray(order?.order_items) ? order.order_items : [];
-    items.forEach((it: any) => {
-      const opts = it?.dimensions?.additional_options;
-      if (Array.isArray(opts)) {
-        opts.forEach((op: any) => {
-          const isFinishing =
-            op?.type === 'finishing' ||
-            op?.category === 'finishing' ||
-            /finishing/i.test(String(op?.name || op?.label || ''));
-          if (isFinishing) {
-            const id = op?.id || op?.value || op?.code || op?.slug || String(op?.name || op?.label || 'finishing');
-            const label = op?.label || op?.name || op?.text || String(id);
-            out.set(String(id), String(label));
-          }
-        });
-      }
-      const fid = it?.finishing_id || it?.finishingId;
-      const fname = it?.finishing_name || it?.finishingName;
-      if (fid) out.set(String(fid), String(fname || fid));
-    });
-    const ofid = order?.finishing_id || order?.finishingId;
-    const ofname = order?.finishing_name || order?.finishingName;
-    if (ofid) out.set(String(ofid), String(ofname || ofid));
-    return Array.from(out, ([id, name]) => ({ id, name }));
-  };
-
-  // Hanya order yang benar-benar "sudah jadi transaksi" yang masuk laporan:
-  // sudah lunas, atau pending dengan metode pembayaran terisi (ada DP/pembayaran).
-  // Order batal / belum ada pembayaran sama sekali tidak dihitung — supaya
-  // "Total Transaksi", tabel, pagination, dan hasil cetak semuanya konsisten.
   const reportableData = useMemo(
     () =>
       effectiveData.filter(
@@ -183,64 +98,36 @@ const LaporanPenjualan: React.FC = () => {
     [effectiveData]
   );
 
+  // --- Nama staff (kasir/operator/finishing dari order, designer dari item) ---
+  const staffIds = useMemo(() => collectStaffIds(reportableData), [reportableData]);
+  const nameById = useProfileNames(staffIds);
+
+  // --- Satu aturan filter untuk tabel, cetak, dan opsi dropdown ---
+  const filters: SalesReportFilters = {
+    searchTerm,
+    paymentStatusFilter,
+    selectedPaymentMethod,
+    selectedCustomerId,
+    selectedKasirId,
+    selectedDesignerId,
+    selectedOperatorId,
+    selectedFinishingId,
+  };
+  const passes = useMemo(
+    () => makeOrderFilter(filters, nameById),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [searchTerm, paymentStatusFilter, selectedPaymentMethod, selectedCustomerId, selectedKasirId, selectedDesignerId, selectedOperatorId, selectedFinishingId, nameById]
+  );
+
+  // Opsi dropdown: dari data yang lolos semua filter lain (kecuali dimensinya sendiri), tanpa duplikat
+  const staffOptions = useMemo(
+    () => buildStaffOptions(reportableData, passes, nameById),
+    [reportableData, passes, nameById]
+  );
+
   // --- Pipeline filter + sort (client-side) ---
   const filteredAndSortedData = useMemo(() => {
-    const filteredByPaymentStatus = reportableData.filter(item => {
-      if (paymentStatusFilter === 'all') return true;
-      return item.payment_status === paymentStatusFilter;
-    });
-
-    const filteredByPaymentMethod = filteredByPaymentStatus.filter(item => {
-      if (selectedPaymentMethod === 'all') return true;
-      return item.payment_method === selectedPaymentMethod;
-    });
-
-    const filteredByKasir = filteredByPaymentMethod.filter(item => {
-      if (!selectedKasirId) return true;
-      return item.kasir_id === selectedKasirId;
-    });
-
-    const filteredByCustomer = filteredByKasir.filter(item => {
-      if (!selectedCustomerId) return true;
-      return item.customer_id === selectedCustomerId;
-    });
-
-    const filteredByDesigner = filteredByCustomer.filter(order => {
-      if (!selectedDesignerId) return true;
-      const candidates = extractDesignerIdsFromOrder(order).map(x => x.id);
-      return candidates.includes(selectedDesignerId);
-    });
-
-    const filteredByOperator = filteredByDesigner.filter(order => {
-      if (!selectedOperatorId) return true;
-      const candidates = extractOperatorIdsFromOrder(order).map(x => x.id);
-      return candidates.includes(selectedOperatorId);
-    });
-
-    const filteredByFinishing = filteredByOperator.filter(order => {
-      if (!selectedFinishingId) return true;
-      const candidates = extractFinishingIdsFromOrder(order).map(x => x.id);
-      return candidates.includes(selectedFinishingId);
-    });
-
-    const filteredBySearch = filteredByFinishing.filter(item => {
-      const customerName = item.customer_display_name || item.pelanggan?.[0]?.nama_pelanggan || '';
-      const customerPhone = item.customer_display_phone || item.pelanggan?.[0]?.telepon || '';
-      const kasirName = item.profiles?.first_name || '';
-
-      return (
-        (item.invoice_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customerPhone.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.notes?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        kasirName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.order_items &&
-          Array.isArray(item.order_items) &&
-          item.order_items.some((oi: any) =>
-            String(oi.product_name || '').toLowerCase().includes(searchTerm.toLowerCase())
-          ))
-      );
-    });
+    const filteredBySearch = reportableData.filter((o) => passes(o));
 
     const sortedData = [...filteredBySearch].sort((a, b) => {
       let compareValue = 0;
@@ -277,19 +164,7 @@ const LaporanPenjualan: React.FC = () => {
     });
 
     return sortedData;
-  }, [
-    reportableData,
-    searchTerm,
-    paymentStatusFilter,
-    selectedPaymentMethod,
-    selectedKasirId,
-    selectedCustomerId,
-    selectedDesignerId,
-    selectedOperatorId,
-    selectedFinishingId,
-    sortColumn,
-    sortDirection,
-  ]);
+  }, [reportableData, passes, sortColumn, sortDirection]);
 
   // --- Pagination (client-side) ---
   const paginatedCombinedData = useMemo(() => {
@@ -570,7 +445,12 @@ const LaporanPenjualan: React.FC = () => {
           <SalesTable
             data={paginatedCombinedData}
             printData={filteredAndSortedData}
-            optionsData={reportableData}
+            nameById={nameById}
+            customerOptions={staffOptions.customer}
+            kasirOptions={staffOptions.kasir}
+            designerOptions={staffOptions.designer}
+            operatorOptions={staffOptions.operator}
+            finishingOptions={staffOptions.finishing}
             numberOffset={(currentPage - 1) * pageSize}
             toolbar={selectionActions}
             searchTerm={searchTerm}

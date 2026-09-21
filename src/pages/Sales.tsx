@@ -1161,8 +1161,11 @@ const Sales: React.FC = () => {
 
   const [existingPayments, setExistingPayments] = useState<ExistingPayment[]>([]);
 
-  // Helper: pastikan designer_id terisi user yang input pertama
+  // Helper: pastikan designer_id terisi user yang input pertama.
+  // Hanya untuk transaksi BARU — saat melanjutkan transaksi pending, info staff yang
+  // sudah tersimpan (termasuk designer kosong) tidak boleh diubah.
   const ensureDesignerId = async () => {
+    if (loadOrderId) return;
     if (!orderFormData?.designer_id && currentUserId) {
       dbg('ensureDesignerId -> set designer_id =', currentUserId);
       setOrderFormData((prev: any) => ({ ...prev, designer_id: currentUserId }));

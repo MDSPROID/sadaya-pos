@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, RefreshCcw, Play, Trash2, Send } from 'lucide-react';
+import { Search, RefreshCcw, Play, Trash2, Send, FileBarChart2 } from 'lucide-react';
 
 interface PendingOrderItem {
   id: string;
@@ -46,6 +46,19 @@ interface HistoryPendingSalesTableProps {
   onStartDateChange: (v: string) => void;
   onEndDateChange: (v: string) => void;
 
+  /** jumlah data sebelum filter "keterangan kosong" (untuk info "N dari M") */
+  totalCount?: number;
+
+  /** mode "Semua Belum Lunas" (abaikan tanggal, pakai cache) */
+  allPending: boolean;
+  onToggleAllPending: () => void;
+  allFetchedAt?: number | null;
+  earliestPendingDate?: string | null;
+
+  /** filter: hanya order yang Keterangan-nya kosong */
+  emptyNotesOnly: boolean;
+  onToggleEmptyNotesOnly: () => void;
+
   onRefresh: () => void;
   onContinue: (orderId: string) => void;
   onDelete: (orderId: string) => void;
@@ -71,10 +84,11 @@ const formatDateID = (iso?: string | null) => {
 const ucfirst = (s: string | null | undefined) =>
   (s && s.length) ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '';
 
-function renderNotes(raw: string | null) {
-  if (!raw) return <span>-</span>;
+/** Baris-baris yang ditampilkan di kolom Keterangan; kosong = tampil "-". */
+function notesLines(raw: string | null | undefined): Array<[string, string]> {
+  if (!raw) return [];
 
-  // sesuai versi semula: cari "Payment Details: {...}" atau JSON penuh
+  // cari "Payment Details: {...}" atau JSON penuh
   const match = /Payment Details:\s*({[\s\S]*})/i.exec(raw);
   let before = raw.trim();
   let details: any | null = null;
@@ -94,9 +108,7 @@ function renderNotes(raw: string | null) {
     } catch {}
   }
 
-  if (!details) {
-    return <span className="whitespace-pre-line break-words">{before || '-'}</span>;
-  }
+  if (!details) return before ? [['Catatan', before]] : [];
 
   const {
     dp_amount = 0,
@@ -139,7 +151,24 @@ function renderNotes(raw: string | null) {
     lines.push(['Tempo', 'Non-aktif']);
   }
 
+  return lines;
+}
+
+/** true kalau kolom Keterangan tampil "-" (belum ada catatan/detail pembayaran). Dipakai filter "Keterangan kosong". */
+export const isKeteranganEmpty = (raw: string | null | undefined) => notesLines(raw).length === 0;
+
+/** Catatan manual saja (teks di luar blok Payment Details), untuk rekap/export. */
+export const getManualNote = (raw: string | null | undefined) =>
+  notesLines(raw).find(([k]) => k === 'Catatan')?.[1] || '';
+
+function renderNotes(raw: string | null) {
+  const lines = notesLines(raw);
   if (lines.length === 0) return <span>-</span>;
+
+  // catatan manual saja (tanpa detail pembayaran) -> tampil sebagai teks biasa seperti semula
+  if (lines.length === 1 && lines[0][0] === 'Catatan' && !/Payment Details:/i.test(raw || '')) {
+    return <span className="whitespace-pre-line break-words">{lines[0][1]}</span>;
+  }
 
   return (
     <div className="whitespace-pre-line break-words">
@@ -164,6 +193,14 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
   onStartDateChange,
   onEndDateChange,
 
+  totalCount,
+  allPending,
+  onToggleAllPending,
+  allFetchedAt,
+  earliestPendingDate,
+  emptyNotesOnly,
+  onToggleEmptyNotesOnly,
+
   onRefresh,
   onContinue,
   onDelete,
@@ -172,6 +209,8 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
   waSendingId,
   error,
 }) => {
+  const fmtCacheTime = (ts?: number | null) =>
+    ts ? new Date(ts).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '';
 
   const ucfirstLocal = (s?: string | null): string => {
     const str = (s ?? '').toString().trim();
@@ -219,16 +258,46 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
             type="date"
             value={startDate}
             onChange={(e) => onStartDateChange(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={allPending}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
           />
           <span className="text-gray-500">s/d</span>
           <input
             type="date"
             value={endDate}
             onChange={(e) => onEndDateChange(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={allPending}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
           />
         </div>
+
+        {/* Semua Belum Lunas (abaikan tanggal) */}
+        <button
+          type="button"
+          onClick={onToggleAllPending}
+          disabled={loading}
+          aria-pressed={allPending}
+          className={`flex items-center px-4 py-2 rounded-lg border transition-colors w-full md:w-auto justify-center whitespace-nowrap
+            ${allPending
+              ? 'bg-amber-500 border-amber-500 text-white hover:bg-amber-600'
+              : 'bg-white border-amber-400 text-amber-700 hover:bg-amber-50'}
+            ${loading ? 'opacity-60 cursor-not-allowed' : ''}
+          `}
+          title="Tampilkan semua transaksi belum lunas dari yang paling lama sampai hari ini (abaikan tanggal)"
+        >
+          {allPending ? 'Semua Belum Lunas: AKTIF' : 'Semua Belum Lunas'}
+        </button>
+
+        {/* Keterangan kosong */}
+        <label className="flex items-center gap-2 text-sm text-gray-700 whitespace-nowrap cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={emptyNotesOnly}
+            onChange={onToggleEmptyNotesOnly}
+            className="h-4 w-4"
+          />
+          Keterangan kosong
+        </label>
 
         {/* Search */}
         <div className="relative flex-1 w-full md:w-auto">
@@ -255,6 +324,36 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
             <RefreshCcw className={`h-5 w-5 mr-2 ${loading ? 'animate-spin' : ''}`} />
             {loading ? 'Memuat…' : 'Refresh'}
           </button>
+          <button
+            type="button"
+            onClick={onRekap}
+            disabled={loading || data.length === 0}
+            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors w-full md:w-auto justify-center"
+            title="Rekap data yang sedang tampil (export PDF / Excel)"
+          >
+            <FileBarChart2 className="h-5 w-5 mr-2" />
+            Rekap
+          </button>
+        </div>
+      </div>
+
+      {/* Info mode & jumlah */}
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600 px-1">
+        <div>
+          {allPending ? (
+            <>
+              Menampilkan <span className="font-semibold text-gray-900">semua</span> transaksi belum lunas
+              {earliestPendingDate && <> dari <span className="font-semibold text-gray-900">{formatDateID(earliestPendingDate)}</span> s/d hari ini</>}
+              {allFetchedAt && <span className="text-gray-400"> · data diambil {fmtCacheTime(allFetchedAt)} (cache 10 menit, klik Refresh untuk ambil ulang)</span>}
+            </>
+          ) : (
+            <>Periode <span className="font-semibold text-gray-900">{formatDateID(startDate)}</span> s/d <span className="font-semibold text-gray-900">{formatDateID(endDate)}</span></>
+          )}
+        </div>
+        <div>
+          <span className="font-semibold text-gray-900">{data.length}</span>
+          {typeof totalCount === 'number' && totalCount !== data.length ? ` dari ${totalCount}` : ''} transaksi
+          {emptyNotesOnly ? ' (keterangan kosong)' : ''}
         </div>
       </div>
 
@@ -392,8 +491,11 @@ const HistoryPendingSalesTable: React.FC<HistoryPendingSalesTableProps> = ({
         <button
           type="button"
           onClick={onRekap}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          disabled={loading || data.length === 0}
+          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          title="Rekap data yang sedang tampil (export PDF / Excel)"
         >
+          <FileBarChart2 className="h-5 w-5 mr-2" />
           Rekap
         </button>
       </div>

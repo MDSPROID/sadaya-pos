@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, RefreshCw, Shield, Mail, Trash2 } from 'lucide-react';
+import { Plus, Search, RefreshCw, Shield, Mail, Trash2, Pencil } from 'lucide-react';
 import { supabase } from '../../integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '../../utils/toast';
 import { indoAuthError } from '../../utils/translateAuthError';
@@ -14,16 +14,29 @@ interface UserAccessItem {
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  username: string | null;
   role_id: string | null;
   roles: { nama: string } | null;
   is_active: boolean | null;
 }
+
+// Sama dengan constraint di database (profiles_username_format_chk)
+const USERNAME_RE = /^[a-z0-9._-]{3,30}$/;
+const normalizeUsername = (v: string) => v.toLowerCase().replace(/\s+/g, '');
+const usernameError = (u: string): string | null => {
+  const v = (u || '').trim();
+  if (!v) return 'Username wajib diisi (dipakai untuk login).';
+  if (!USERNAME_RE.test(v)) return 'Username 3-30 karakter: huruf kecil, angka, titik, underscore, atau strip.';
+  return null;
+};
+const isUsernameTakenError = (err: any) => /profiles_username_unique_idx|duplicate key/i.test(err?.message || '');
 
 interface EmployeeOption {
   id: string;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  username: string | null;
   role_id: string | null;
   role_name: string | null;
   is_active: boolean | null;
@@ -40,10 +53,12 @@ const UserAkses: React.FC = () => {
 
     const [form, setForm] = useState<{
         profile_id: string;
+        username: string;
         password: string;
         is_active: string;
         }>({
         profile_id: '',
+        username: '',
         password: '',
         is_active: 'true',
     });
@@ -51,6 +66,7 @@ const UserAkses: React.FC = () => {
     const resetForm = () =>
     setForm({
         profile_id: '',
+        username: '',
         password: '',
         is_active: 'true',
     });
@@ -66,7 +82,7 @@ const UserAkses: React.FC = () => {
         setError(null);
         const { data: profilesList, error } = await supabase
         .from('profiles')
-        .select('id, first_name, last_name, email, is_active, role_id, roles(nama)')
+        .select('id, first_name, last_name, email, username, is_active, role_id, roles(nama)')
         .neq('roles.nama', 'User') // kalau mau semua role, hapus baris ini
         .is('deleted_at', null) // sembunyikan yang sudah dihapus (soft delete)
         .order('first_name', { ascending: true });
@@ -81,6 +97,7 @@ const UserAkses: React.FC = () => {
                 first_name: r.first_name,
                 last_name: r.last_name,
                 email: r.email ?? null,
+                username: r.username ?? null,
                 is_active: r.is_active,
                 role_id: r.role_id,
                 roles: Array.isArray(r.roles) ? (r.roles[0] ?? null) : (r.roles ?? null),
@@ -91,6 +108,7 @@ const UserAkses: React.FC = () => {
                 first_name: r.first_name,
                 last_name: r.last_name,
                 email: r.email ?? null,
+                username: r.username ?? null,
                 role_id: r.role_id ?? null,
                 role_name: Array.isArray(r.roles) ? (r.roles[0]?.nama ?? null) : (r.roles?.nama ?? null),
                 is_active: r.is_active,
@@ -125,18 +143,38 @@ const UserAkses: React.FC = () => {
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setForm(prev => ({ ...prev, [name]: value }));
+        setForm(prev => ({ ...prev, [name]: name === 'username' ? normalizeUsername(value) : value }));
+    };
+
+    // Cek username belum dipakai profil lain (selain excludeId)
+    const isUsernameAvailable = async (username: string, excludeId?: string) => {
+        let q = supabase.from('profiles').select('id').ilike('username', username).limit(1);
+        if (excludeId) q = q.neq('id', excludeId);
+        const { data: rows } = await q;
+        return !(rows && rows.length > 0);
     };
 
     // === Tambah user akses baru (buat akun ke Supabase Auth) ===
     const handleCreateUser = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        const { profile_id, password, is_active } = form;
+        const { profile_id, username, password, is_active } = form;
         const toastId = showLoading('Membuat user akses...');
 
         if (!profile_id || !password) {
             showError('Karyawan dan Password wajib diisi.');
+            dismissToast(toastId);
+            return;
+        }
+
+        const uErr = usernameError(username);
+        if (uErr) {
+            showError(uErr);
+            dismissToast(toastId);
+            return;
+        }
+        if (!(await isUsernameAvailable(username))) {
+            showError('Username sudah dipakai user lain.');
             dismissToast(toastId);
             return;
         }
@@ -208,13 +246,18 @@ const UserAkses: React.FC = () => {
                 last_name,
                 email,
                 role_id,
+                username,
                 is_active: is_active === 'true',
             })
             .eq('id', userId);
 
             if (profileError) {
             console.error(profileError);
-            showError('User dibuat, tapi gagal menyimpan data profil.');
+            showError(
+                isUsernameTakenError(profileError)
+                    ? 'User dibuat, tapi username sudah dipakai. Ubah username lewat tombol pensil di daftar.'
+                    : 'User dibuat, tapi gagal menyimpan data profil.'
+            );
             return;
             }
 
@@ -246,7 +289,7 @@ const UserAkses: React.FC = () => {
             .from('profiles')
             .update({ is_active: newVal })
             .eq('id', user.id)
-            .select('id, first_name, last_name, email, is_active, role_id, roles(nama)')
+            .select('id, first_name, last_name, email, username, is_active, role_id, roles(nama)')
             .single();
 
         if (error) {
@@ -260,6 +303,7 @@ const UserAkses: React.FC = () => {
             first_name: updated.first_name,
             last_name: updated.last_name,
             email: updated.email,
+            username: updated.username ?? null,
             is_active: updated.is_active,
             role_id: updated.role_id,
             roles: Array.isArray(updated.roles) ? (updated.roles[0] ?? null) : (updated.roles ?? null),
@@ -275,6 +319,58 @@ const UserAkses: React.FC = () => {
         showError(err.message || 'Terjadi kesalahan saat mengubah status akses.');
         } finally {
         dismissToast(toastId);
+        }
+    };
+
+    // === Ubah username (dipakai untuk login) ===
+    const [usernameTarget, setUsernameTarget] = useState<UserAccessItem | null>(null);
+    const [usernameInput, setUsernameInput] = useState('');
+    const [savingUsername, setSavingUsername] = useState(false);
+
+    const openUsernameModal = (user: UserAccessItem) => {
+        setUsernameTarget(user);
+        setUsernameInput(user.username || '');
+    };
+
+    const handleUsernameSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!usernameTarget) return;
+
+        const uErr = usernameError(usernameInput);
+        if (uErr) {
+            showError(uErr);
+            return;
+        }
+
+        setSavingUsername(true);
+        const toastId = showLoading('Menyimpan username...');
+        try {
+            if (!(await isUsernameAvailable(usernameInput, usernameTarget.id))) {
+                showError('Username sudah dipakai user lain.');
+                return;
+            }
+            const { error } = await supabase
+                .from('profiles')
+                .update({ username: usernameInput })
+                .eq('id', usernameTarget.id);
+
+            if (error) {
+                const msg = /column .*username.* does not exist/i.test(error.message)
+                    ? 'Kolom username belum ada di database. Jalankan file supabase/sql/username_login.sql di Supabase SQL Editor.'
+                    : isUsernameTakenError(error) ? 'Username sudah dipakai user lain.' : error.message;
+                showError('Gagal menyimpan username: ' + msg);
+                return;
+            }
+            setData(prev => prev.map(row => (row.id === usernameTarget.id ? { ...row, username: usernameInput } : row)));
+            setEmployees(prev => prev.map(row => (row.id === usernameTarget.id ? { ...row, username: usernameInput } : row)));
+            showSuccess('Username berhasil disimpan.');
+            setUsernameTarget(null);
+        } catch (err: any) {
+            console.error(err);
+            showError(err.message || 'Terjadi kesalahan saat menyimpan username.');
+        } finally {
+            setSavingUsername(false);
+            dismissToast(toastId);
         }
     };
 
@@ -359,8 +455,9 @@ const UserAkses: React.FC = () => {
         if (!q) return true;
         const name = `${item.first_name || ''} ${item.last_name || ''}`.toLowerCase();
         const email = (item.email || '').toLowerCase();
+        const username = (item.username || '').toLowerCase();
         const role = (item.roles?.nama || '').toLowerCase();
-        return name.includes(q) || email.includes(q) || role.includes(q);
+        return name.includes(q) || email.includes(q) || username.includes(q) || role.includes(q);
     });
 
     if (loading && !data.length) {
@@ -435,6 +532,7 @@ const UserAkses: React.FC = () => {
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No.</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
               <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -444,7 +542,7 @@ const UserAkses: React.FC = () => {
           <tbody className="bg-white divide-y divide-gray-200">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-4 text-center text-sm text-gray-500">
+                <td colSpan={7} className="px-4 py-4 text-center text-sm text-gray-500">
                   Tidak ada data user akses.
                 </td>
               </tr>
@@ -456,6 +554,22 @@ const UserAkses: React.FC = () => {
                   <tr key={user.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm text-gray-900">{idx + 1}</td>
                     <td className="px-4 py-3 text-sm text-gray-900">{name}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono">
+                          {user.username || <span className="italic text-red-500 font-sans">belum diisi</span>}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => openUsernameModal(user)}
+                          className="p-1 text-gray-400 hover:text-blue-600"
+                          title="Ubah username"
+                          aria-label="Ubah username"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-sm text-gray-900 flex items-center gap-2">
                       <Mail className="h-4 w-4 text-gray-400" />
                       {user.email || <span className="italic text-gray-400">Belum diisi</span>}
@@ -562,6 +676,28 @@ const UserAkses: React.FC = () => {
                 )}
                 </div>
 
+                {/* Username */}
+                <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Username *
+                </label>
+                <input
+                    type="text"
+                    name="username"
+                    value={form.username}
+                    onChange={handleChange}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    placeholder="mis. lukman"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    required
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                    Dipakai untuk login. 3-30 karakter: huruf kecil, angka, titik, underscore, strip.
+                </p>
+                </div>
+
                 {/* Password */}
                 <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -576,7 +712,7 @@ const UserAkses: React.FC = () => {
                     required
                 />
                 <p className="mt-1 text-xs text-gray-500">
-                    User dapat mengubah password sendiri melalui fitur lupa password.
+                    Login memakai username (atau email) dan password ini. Password bisa direset admin dari daftar user.
                 </p>
                 </div>
 
@@ -617,6 +753,56 @@ const UserAkses: React.FC = () => {
     </div>
   </div>
 )}
+
+      {/* Modal Ubah Username */}
+      {usernameTarget && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6">
+            <h2 className="text-lg font-semibold mb-1">Ubah Username</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              {`${usernameTarget.first_name || ''} ${usernameTarget.last_name || ''}`.trim() || '-'}
+              {usernameTarget.email ? ` — ${usernameTarget.email}` : ''}
+            </p>
+            <form onSubmit={handleUsernameSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Username *</label>
+                <input
+                  type="text"
+                  value={usernameInput}
+                  onChange={e => setUsernameInput(normalizeUsername(e.target.value))}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  placeholder="mis. lukman"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  autoFocus
+                  required
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Dipakai untuk login. 3-30 karakter: huruf kecil, angka, titik, underscore, strip.
+                </p>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setUsernameTarget(null)}
+                  disabled={savingUsername}
+                  className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingUsername}
+                  className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Simpan Username
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal Reset Password */}
       {resetTarget && (
