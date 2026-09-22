@@ -96,7 +96,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
           onClick={() => setOpen(true)}
           onChange={(e) => { setQuery(e.target.value); if (!open) setOpen(true); }}
           onKeyDown={onKeyDown}
-          className="w-full pl-3 pr-14 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full pl-3 pr-14 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
         <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
           {value && (

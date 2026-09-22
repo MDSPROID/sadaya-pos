@@ -143,6 +143,9 @@ const SalesTable: React.FC<SalesTableProps> = ({
     return null;
   };
 
+  const labelCls = 'block text-xs font-medium text-gray-600 mb-1';
+  const inputCls = 'w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+
   const formatPaymentMethod = (method: string | null | undefined) => {
     if (!method) return 'N/A';
     return method.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -362,180 +365,123 @@ const SalesTable: React.FC<SalesTableProps> = ({
   return (
     <div className="space-y-6">
 
-      {/* TOP CONTROLS (no-print) */}
-      <div className="no-print bg-white rounded-lg shadow-sm p-6 grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
-        <div className="relative md:col-span-2">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
-          <input
-            type="text"
-            placeholder="Cari penjualan (faktur, pelanggan, kasir/designer/operator/finishing)..."
-            value={searchTerm}
-            onChange={onSearchChange}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <label htmlFor="startDate" className="text-sm font-medium text-gray-700">Dari:</label>
-          <input
-            type="date"
-            id="startDate"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <label htmlFor="endDate" className="text-sm font-medium text-gray-700">Sampai:</label>
-          <input
-            type="date"
-            id="endDate"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
-          />
-        </div>
-      </div>
-
-      {/* FILTER BAR — ROW 1 (no-print) */}
-      <div className="no-print bg-white rounded-lg shadow-sm p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="flex items-center gap-2">
-          <label htmlFor="paymentStatusFilter" className="text-sm font-medium text-gray-700">Status Pembayaran:</label>
-          <select
-            id="paymentStatusFilter"
-            value={paymentStatusFilter}
-            onChange={onPaymentStatusFilterChange}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
-          >
-            <option value="all">Semua Status</option>
-            <option value="paid">Lunas</option>
-            <option value="pending">Belum Lunas</option>
-          </select>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <label htmlFor="paymentMethodFilter" className="text-sm font-medium text-gray-700">Metode:</label>
-          <select
-            id="paymentMethodFilter"
-            value={selectedPaymentMethod}
-            onChange={onPaymentMethodChange}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
-          >
-            <option value="all">Semua Metode</option>
-            <option value="cash">Tunai</option>
-            <option value="bank_transfer">Transfer Bank</option>
-          </select>
-        </div>
-
-        {/* CUSTOMER FILTER — value = order.customer_id, bisa diketik untuk mencari */}
-        <div className="flex items-center gap-2">
-          <label htmlFor="customerFilter" className="text-sm font-medium text-gray-700">Customer:</label>
-          <SearchableSelect
-            id="customerFilter"
-            options={customerOptions}
-            value={selectedCustomerId}
-            onChange={onCustomerChange}
-            allLabel="Semua Customer"
-            placeholder="Ketik nama customer..."
-          />
-        </div>
-      </div>
-
-      {/* FILTER BAR — ROW 2 (no-print) */}
-      <div className="no-print bg-white rounded-lg shadow-sm p-6 grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-        <div className="flex items-center gap-2">
-          <label htmlFor="kasirFilter" className="text-sm font-medium text-gray-700">Kasir:</label>
-          <select
-            id="kasirFilter"
-            value={selectedKasirId || ''}
-            onChange={onKasirChange}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
-          >
-            <option value="">Semua Kasir</option>
-            {kasirOptions.map(opt => (
-              <option key={opt.id} value={opt.id}>{opt.name}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <label htmlFor="designerFilter" className="text-sm font-medium text-gray-700">Designer:</label>
-          <select
-            id="designerFilter"
-            value={selectedDesignerId || ''}
-            onChange={onDesignerChange}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
-          >
-            <option value="">Semua Designer</option>
-            {designerOptions.map(opt => (
-              <option key={opt.id} value={opt.id}>{opt.name}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <label htmlFor="operatorFilter" className="text-sm font-medium text-gray-700">Operator:</label>
-          <select
-            id="operatorFilter"
-            value={selectedOperatorId || ''}
-            onChange={onOperatorChange}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
-          >
-            <option value="">Semua Operator</option>
-            {operatorOptions.map(opt => (
-              <option key={opt.id} value={opt.id}>{opt.name}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <label htmlFor="finishingFilter" className="text-sm font-medium text-gray-700">Finishing:</label>
-          <select
-            id="finishingFilter"
-            value={selectedFinishingId || ''}
-            onChange={onFinishingChange}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
-          >
-            <option value="">Semua Finishing</option>
-            {finishingOptions.map(opt => (
-              <option key={opt.id} value={opt.id}>{opt.name}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="md:justify-self-end flex flex-col md:flex-row gap-2">
-          <button
-            onClick={onPrint}
-            className="no-print w-full md:w-auto flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-          >
-            <Printer className="h-5 w-5 mr-2" />
-            {hasSelection ? `Cetak Data yang Dipilih (${selectedIds!.length})` : 'Cetak'}
-          </button>
-          <button
-            onClick={handleExportExcel}
-            disabled={exporting}
-            className="no-print w-full md:w-auto flex items-center justify-center px-4 py-2 bg-emerald-700 text-white rounded-lg hover:bg-emerald-800 disabled:opacity-50 transition-colors"
-            title="Export ke Excel (.xlsx) — data sama dengan yang dicetak"
-          >
-            <FileDown className="h-5 w-5 mr-2" />
-            {exporting ? 'Menyiapkan…' : hasSelection ? `Export Excel (${selectedIds!.length})` : 'Export Excel'}
-          </button>
-        </div>
-
-        {isRefreshing && (
-          <div className="no-print col-span-1 md:col-span-5 flex justify-center pt-1">
-            <span className="inline-flex items-center text-xs text-gray-500" aria-live="polite" aria-busy="true">
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Memperbarui data…
-            </span>
+      {/* ====== FILTER (no-print) ====== */}
+      <div className="no-print bg-white rounded-lg shadow-sm p-4 sm:p-6 space-y-4">
+        {/* Baris 1: pencarian + rentang tanggal */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="sm:col-span-2">
+            <label htmlFor="salesSearch" className={labelCls}>Cari</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
+              <input
+                id="salesSearch"
+                type="text"
+                placeholder="Faktur, pelanggan, HP, produk, nama staff..."
+                value={searchTerm}
+                onChange={onSearchChange}
+                className={`${inputCls} pl-10`}
+              />
+            </div>
           </div>
-        )}
-      </div>
+          <div>
+            <label htmlFor="startDate" className={labelCls}>Dari</label>
+            <input type="date" id="startDate" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label htmlFor="endDate" className={labelCls}>Sampai</label>
+            <input type="date" id="endDate" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={inputCls} />
+          </div>
+        </div>
 
-      {/* TOTAL (no-print) */}
-      <div className="no-print bg-white rounded-lg shadow-sm p-6 text-right">
-        <h2 className="text-xl font-bold text-gray-900">
-          Total Penjualan: {formatCurrency(totalSalesAmount)}
-        </h2>
+        {/* Baris 2: filter */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div>
+            <label htmlFor="paymentStatusFilter" className={labelCls}>Status Pembayaran</label>
+            <select id="paymentStatusFilter" value={paymentStatusFilter} onChange={onPaymentStatusFilterChange} className={inputCls}>
+              <option value="all">Semua Status</option>
+              <option value="paid">Lunas</option>
+              <option value="pending">Belum Lunas</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="paymentMethodFilter" className={labelCls}>Metode</label>
+            <select id="paymentMethodFilter" value={selectedPaymentMethod} onChange={onPaymentMethodChange} className={inputCls}>
+              <option value="all">Semua Metode</option>
+              <option value="cash">Tunai</option>
+              <option value="bank_transfer">Transfer Bank</option>
+            </select>
+          </div>
+          <div className="sm:col-span-2">
+            <label htmlFor="customerFilter" className={labelCls}>Customer</label>
+            <SearchableSelect
+              id="customerFilter"
+              options={customerOptions}
+              value={selectedCustomerId}
+              onChange={onCustomerChange}
+              allLabel="Semua Customer"
+              placeholder="Ketik nama customer..."
+            />
+          </div>
+          <div>
+            <label htmlFor="kasirFilter" className={labelCls}>Kasir</label>
+            <select id="kasirFilter" value={selectedKasirId || ''} onChange={onKasirChange} className={inputCls}>
+              <option value="">Semua Kasir</option>
+              {kasirOptions.map(opt => <option key={opt.id} value={opt.id}>{opt.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="designerFilter" className={labelCls}>Designer</label>
+            <select id="designerFilter" value={selectedDesignerId || ''} onChange={onDesignerChange} className={inputCls}>
+              <option value="">Semua Designer</option>
+              {designerOptions.map(opt => <option key={opt.id} value={opt.id}>{opt.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="operatorFilter" className={labelCls}>Operator</label>
+            <select id="operatorFilter" value={selectedOperatorId || ''} onChange={onOperatorChange} className={inputCls}>
+              <option value="">Semua Operator</option>
+              {operatorOptions.map(opt => <option key={opt.id} value={opt.id}>{opt.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="finishingFilter" className={labelCls}>Finishing</label>
+            <select id="finishingFilter" value={selectedFinishingId || ''} onChange={onFinishingChange} className={inputCls}>
+              <option value="">Semua Finishing</option>
+              {finishingOptions.map(opt => <option key={opt.id} value={opt.id}>{opt.name}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* Baris 3: total + aksi */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 pt-4 border-t border-gray-100">
+          <div className="text-base sm:text-lg font-bold text-gray-900">
+            Total Penjualan: {formatCurrency(totalSalesAmount)}
+            {isRefreshing && (
+              <span className="ml-3 inline-flex items-center text-xs font-normal text-gray-500" aria-live="polite" aria-busy="true">
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                Memperbarui data…
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:flex md:gap-2">
+            <button
+              onClick={onPrint}
+              className="flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap"
+            >
+              <Printer className="h-5 w-5 mr-2" />
+              {hasSelection ? `Cetak Data yang Dipilih (${selectedIds!.length})` : 'Cetak'}
+            </button>
+            <button
+              onClick={handleExportExcel}
+              disabled={exporting}
+              className="flex items-center justify-center px-4 py-2 bg-emerald-700 text-white rounded-lg hover:bg-emerald-800 disabled:opacity-50 transition-colors whitespace-nowrap"
+              title="Export ke Excel (.xlsx) — data sama dengan yang dicetak"
+            >
+              <FileDown className="h-5 w-5 mr-2" />
+              {exporting ? 'Menyiapkan…' : hasSelection ? `Export Excel (${selectedIds!.length})` : 'Export Excel'}
+            </button>
+          </div>
+        </div>
       </div>
 
       {toolbar && <div className="no-print">{toolbar}</div>}

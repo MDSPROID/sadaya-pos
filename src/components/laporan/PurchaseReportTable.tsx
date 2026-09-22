@@ -95,6 +95,9 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
     return null;
   };
 
+  const labelCls = 'block text-xs font-medium text-gray-600 mb-1';
+  const inputCls = 'w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+
   // Skeleton row component
   const RowSkeleton = ({ idx }: { idx: number }) => (
     <tr key={`s-${idx}`}>
@@ -228,112 +231,96 @@ const PurchaseReportTable: React.FC<PurchaseReportTableProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Filter bar */}
-      <div className="bg-white rounded-lg shadow-sm p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-start no-print">
-        <div className="relative sm:col-span-2 lg:col-span-2 xl:col-span-2">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-          <input
-            type="text"
-            placeholder="Cari pembelian (faktur, supplier, petugas)..."
-            value={searchTerm}
-            onChange={onSearchChange}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
+      {/* ====== FILTER (no-print) ====== */}
+      <div className="no-print bg-white rounded-lg shadow-sm p-4 sm:p-6 space-y-4">
+        {/* Baris 1: pencarian + rentang tanggal */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="sm:col-span-2">
+            <label htmlFor="purchaseSearch" className={labelCls}>Cari</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
+              <input
+                id="purchaseSearch"
+                type="text"
+                placeholder="Faktur, supplier, petugas, nama barang..."
+                value={searchTerm}
+                onChange={onSearchChange}
+                className={`${inputCls} pl-10`}
+              />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="startDate" className={labelCls}>Dari</label>
+            <input type="date" id="startDate" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label htmlFor="endDate" className={labelCls}>Sampai</label>
+            <input type="date" id="endDate" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={inputCls} />
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <label htmlFor="startDate" className="text-sm font-medium text-gray-700">Dari:</label>
-          <input
-            type="date"
-            id="startDate"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <label htmlFor="endDate" className="text-sm font-medium text-gray-700">Sampai:</label>
-          <input
-            type="date"
-            id="endDate"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <label htmlFor="paymentStatusFilter" className="text-sm font-medium text-gray-700">Status:</label>
-          <select
-            id="paymentStatusFilter"
-            value={paymentStatusFilter}
-            onChange={onPaymentStatusFilterChange}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
-          >
-            <option value="all">Semua Status</option>
-            <option value="paid">Lunas</option>
-            <option value="due">Belum Lunas</option>
-          </select>
-        </div>
-        <div className="flex items-center gap-2">
-          <label htmlFor="paymentMethodFilter" className="text-sm font-medium text-gray-700">Metode:</label>
-          <select
-            id="paymentMethodFilter"
-            value={paymentMethodFilter}
-            onChange={onPaymentMethodChange}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
-          >
-            <option value="all">Semua Metode</option>
-            <option value="cash">Tunai</option>
-            <option value="bank_transfer">Transfer Bank</option>
-          </select>
-        </div>
-        <div className="flex items-center gap-2">
-          <label htmlFor="supplierFilter" className="text-sm font-medium text-gray-700">Supplier:</label>
-          <SearchableSelect
-            id="supplierFilter"
-            options={supplierOptions}
-            value={selectedSupplierId}
-            onChange={onSupplierChange}
-            allLabel="Semua Supplier"
-            placeholder="Ketik nama supplier..."
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <label htmlFor="recordedByFilter" className="text-sm font-medium text-gray-700">Petugas:</label>
-          <select
-            id="recordedByFilter"
-            value={selectedRecordedById}
-            onChange={onRecordedByChange}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="">Semua Petugas</option>
-            {recordedByOptions.map(u => (
-              <option key={u.id} value={u.id}>{u.name}</option>
-            ))}
-          </select>
-        </div>
-        <button
-          onClick={onPrint}
-          className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors w-full sm:col-span-2 lg:col-span-1 xl:col-span-1"
-        >
-          <Printer className="h-5 w-5 mr-2" />
-          {hasSelection ? `Cetak Data yang Dipilih (${selectedIds!.length})` : 'Cetak'}
-        </button>
-        <button
-          onClick={handleExportExcel}
-          disabled={exporting}
-          className="flex items-center px-4 py-2 bg-emerald-700 text-white rounded-lg hover:bg-emerald-800 disabled:opacity-50 transition-colors w-full sm:col-span-2 lg:col-span-1 xl:col-span-1"
-          title="Export ke Excel (.xlsx) — data sama dengan yang dicetak"
-        >
-          <FileDown className="h-5 w-5 mr-2" />
-          {exporting ? 'Menyiapkan…' : hasSelection ? `Export Excel (${selectedIds!.length})` : 'Export Excel'}
-        </button>
-      </div>
 
-      {/* Summary total - juga JANGAN ikut dicetak */}
-      <div className="bg-white rounded-lg shadow-sm p-6 text-right no-print">
-        <h2 className="text-xl font-bold text-gray-900">
-          Total Pembelian: {formatCurrency(totalPurchaseAmount)}
-        </h2>
+        {/* Baris 2: filter */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div>
+            <label htmlFor="paymentStatusFilter" className={labelCls}>Status</label>
+            <select id="paymentStatusFilter" value={paymentStatusFilter} onChange={onPaymentStatusFilterChange} className={inputCls}>
+              <option value="all">Semua Status</option>
+              <option value="paid">Lunas</option>
+              <option value="due">Belum Lunas</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="paymentMethodFilter" className={labelCls}>Metode</label>
+            <select id="paymentMethodFilter" value={paymentMethodFilter} onChange={onPaymentMethodChange} className={inputCls}>
+              <option value="all">Semua Metode</option>
+              <option value="cash">Tunai</option>
+              <option value="bank_transfer">Transfer Bank</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="supplierFilter" className={labelCls}>Supplier</label>
+            <SearchableSelect
+              id="supplierFilter"
+              options={supplierOptions}
+              value={selectedSupplierId}
+              onChange={onSupplierChange}
+              allLabel="Semua Supplier"
+              placeholder="Ketik nama supplier..."
+            />
+          </div>
+          <div>
+            <label htmlFor="recordedByFilter" className={labelCls}>Petugas</label>
+            <select id="recordedByFilter" value={selectedRecordedById} onChange={onRecordedByChange} className={inputCls}>
+              <option value="">Semua Petugas</option>
+              {recordedByOptions.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* Baris 3: total + aksi */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 pt-4 border-t border-gray-100">
+          <div className="text-base sm:text-lg font-bold text-gray-900">
+            Total Pembelian: {formatCurrency(totalPurchaseAmount)}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:flex md:gap-2">
+            <button
+              onClick={onPrint}
+              className="flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap"
+            >
+              <Printer className="h-5 w-5 mr-2" />
+              {hasSelection ? `Cetak Data yang Dipilih (${selectedIds!.length})` : 'Cetak'}
+            </button>
+            <button
+              onClick={handleExportExcel}
+              disabled={exporting}
+              className="flex items-center justify-center px-4 py-2 bg-emerald-700 text-white rounded-lg hover:bg-emerald-800 disabled:opacity-50 transition-colors whitespace-nowrap"
+              title="Export ke Excel (.xlsx) — data sama dengan yang dicetak"
+            >
+              <FileDown className="h-5 w-5 mr-2" />
+              {exporting ? 'Menyiapkan…' : hasSelection ? `Export Excel (${selectedIds!.length})` : 'Export Excel'}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* === INI AREA YANG AKAN DICETAK === */}
