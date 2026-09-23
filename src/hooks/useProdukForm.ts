@@ -20,6 +20,7 @@ export const useProdukForm = (jenisMemberOptions: JenisMemberOption[]) => {
     harga_jual_umum: 0,
     harga_jual_khusus: 0,
     stok: 1,
+    stok_minimum: 0,
     barcode_1: '',
     barcode_2: '',
     keterangan: '',

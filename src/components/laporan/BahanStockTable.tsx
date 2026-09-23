@@ -2,6 +2,7 @@ import React from 'react';
 import { BahanStockItem } from '../../hooks/useBahanStockData';
 import { formatCurrency } from '../../utils/formatters';
 import ReportTable, { ReportColumn } from './ReportTable';
+import StokBadge, { StokPeringatan, statusStok } from './StokBadge';
 
 interface BahanStockTableProps {
   data: BahanStockItem[];
@@ -16,17 +17,9 @@ interface BahanStockTableProps {
   selectedIds: string[];
   onToggleRow: (id: string) => void;
   onToggleAllPage: (checked: boolean) => void;
+  /** Kontrol filter tambahan yang ditaruh di baris filter ReportTable. */
+  extraFilters?: React.ReactNode;
 }
-
-const stokBadge = (stok: number) => (
-  <span
-    className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-      stok > 50 ? 'bg-green-100 text-green-800' : stok > 20 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
-    }`}
-  >
-    {stok}
-  </span>
-);
 
 const columns: ReportColumn<BahanStockItem>[] = [
   { key: 'id', header: 'Kode Bahan', cell: b => b.id, excel: b => b.id, width: 16 },
@@ -38,10 +31,22 @@ const columns: ReportColumn<BahanStockItem>[] = [
   {
     key: 'stok',
     header: 'Stok',
-    cell: b => stokBadge(b.stok),
+    cell: b => <StokBadge stok={b.stok} stokMinimum={b.stok_minimum} />,
     printCell: b => b.stok,
     excel: b => Number(b.stok ?? 0),
     width: 10,
+  },
+  {
+    key: 'stok_minimum',
+    header: 'Stok Min.',
+    cell: b => <StokPeringatan stok={b.stok} stokMinimum={b.stok_minimum} />,
+    printCell: b => {
+      const st = statusStok(b.stok, b.stok_minimum);
+      const ket = st === 'habis' ? ' (Habis)' : st === 'menipis' ? ' (Perlu dipesan)' : '';
+      return `${Number(b.stok_minimum ?? 0).toLocaleString('id-ID')}${ket}`;
+    },
+    excel: b => Number(b.stok_minimum ?? 0),
+    width: 16,
   },
 ];
 

@@ -66,7 +66,9 @@ const Produk: React.FC = () => {
     e.preventDefault();
     const toastId = showLoading(modalMode === 'add' ? 'Menambah produk...' : 'Menyimpan perubahan...');
 
-    const { kategori, satuan, bahan, mesin, ...restOfItemToSave } = selectedItem;
+    // stok_menipis dihitung sendiri oleh database (kolom generated). Ikut terbawa
+    // karena data diambil dengan select('*'), tapi tidak boleh ikut dikirim balik.
+    const { kategori, satuan, bahan, mesin, stok_menipis: _turunan, ...restOfItemToSave } = selectedItem;
 
     const itemToSave = {
       ...restOfItemToSave,

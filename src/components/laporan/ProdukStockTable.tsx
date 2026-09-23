@@ -2,6 +2,7 @@ import React from 'react';
 import { ProdukStockItem } from '../../hooks/useProdukStockData';
 import { formatCurrency } from '../../utils/formatters';
 import ReportTable, { ReportColumn } from './ReportTable';
+import StokBadge, { StokPeringatan, statusStok } from './StokBadge';
 
 interface ProdukStockTableProps {
   data: ProdukStockItem[];
@@ -16,17 +17,9 @@ interface ProdukStockTableProps {
   selectedIds: string[];
   onToggleRow: (id: string) => void;
   onToggleAllPage: (checked: boolean) => void;
+  /** Kontrol filter tambahan yang ditaruh di baris filter ReportTable. */
+  extraFilters?: React.ReactNode;
 }
-
-const stokBadge = (stok: number) => (
-  <span
-    className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-      stok > 50 ? 'bg-green-100 text-green-800' : stok > 20 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
-    }`}
-  >
-    {stok}
-  </span>
-);
 
 const columns: ReportColumn<ProdukStockItem>[] = [
   { key: 'id', header: 'Kode Produk', cell: p => p.id, excel: p => p.id, width: 16 },
@@ -36,10 +29,22 @@ const columns: ReportColumn<ProdukStockItem>[] = [
   {
     key: 'stok',
     header: 'Stok',
-    cell: p => stokBadge(p.stok),
+    cell: p => <StokBadge stok={p.stok} stokMinimum={p.stok_minimum} />,
     printCell: p => p.stok,
     excel: p => Number(p.stok ?? 0),
     width: 10,
+  },
+  {
+    key: 'stok_minimum',
+    header: 'Stok Min.',
+    cell: p => <StokPeringatan stok={p.stok} stokMinimum={p.stok_minimum} />,
+    printCell: p => {
+      const st = statusStok(p.stok, p.stok_minimum);
+      const ket = st === 'habis' ? ' (Habis)' : st === 'menipis' ? ' (Perlu dipesan)' : '';
+      return `${Number(p.stok_minimum ?? 0).toLocaleString('id-ID')}${ket}`;
+    },
+    excel: p => Number(p.stok_minimum ?? 0),
+    width: 16,
   },
   { key: 'harga_pokok', header: 'Harga Pokok', cell: p => formatCurrency(p.harga_pokok), excel: p => Number(p.harga_pokok ?? 0), width: 16 },
   { key: 'harga_jual', header: 'Harga Jual', cell: p => formatCurrency(p.harga_jual_umum), excel: p => Number(p.harga_jual_umum ?? 0), width: 16 },

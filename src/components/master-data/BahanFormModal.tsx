@@ -25,6 +25,10 @@ interface BahanItem {
   stok: number;
   supplier_id: string | null;
   supplier: { nama: string; jenis_supplier: string } | null;
+  /** Batas peringatan stok menipis di Laporan Stok. 0 = tidak dipantau. */
+  stok_minimum?: number;
+  /** Kolom turunan di database (stok <= stok_minimum). Hanya dibaca, jangan ikut dikirim saat simpan. */
+  stok_menipis?: boolean;
 }
 
 interface BahanFormModalProps {
@@ -203,6 +207,26 @@ const BahanFormModal: React.FC<BahanFormModalProps> = ({
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
                 required
               />
+            </div>
+
+            <div>
+              <label htmlFor="stok_minimum" className="block text-sm font-medium text-gray-700 mb-1">
+                Stok Minimum
+              </label>
+              <input
+                type="number"
+                min="0"
+                id="stok_minimum"
+                name="stok_minimum"
+                value={item?.stok_minimum ?? ''}
+                onChange={onChange}
+                disabled={mode === 'view'}
+                placeholder="0"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Bahan ditandai "perlu dipesan" di Laporan Stok saat stoknya turun sampai angka ini. Isi 0 kalau tidak perlu dipantau.
+              </p>
             </div>
 
             <div>

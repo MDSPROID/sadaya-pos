@@ -7,6 +7,8 @@ import Pagination from '../../components/Pagination';
 
 const LaporanStok: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'bahan' | 'produk'>('bahan');
+  // Disaring di database, bukan di browser, supaya hitungan halaman tetap benar.
+  const [hanyaMenipis, setHanyaMenipis] = useState(false);
 
   // State for Bahan Stock tab
   const [bahanSearchTerm, setBahanSearchTerm] = useState('');
@@ -34,6 +36,7 @@ const LaporanStok: React.FC = () => {
     currentPage: bahanCurrentPage,
     pageSize: bahanPageSize,
     fetchAll: activeTab === 'bahan',
+    hanyaMenipis,
   });
 
   // Fetch data for Produk Stock (allData hanya diambil saat tabnya aktif)
@@ -50,6 +53,7 @@ const LaporanStok: React.FC = () => {
     currentPage: produkCurrentPage,
     pageSize: produkPageSize,
     fetchAll: activeTab === 'produk',
+    hanyaMenipis,
   });
 
   // Centang direset saat pencarian berubah agar tidak menyisakan pilihan di luar hasil pencarian
@@ -72,6 +76,28 @@ const LaporanStok: React.FC = () => {
 
   const bahanTotalPages = Math.ceil(bahanTotalCount / bahanPageSize);
   const produkTotalPages = Math.ceil(produkTotalCount / produkPageSize);
+
+  const filterMenipis = (
+    <label className="flex items-center gap-2 text-sm text-gray-700 whitespace-nowrap">
+      <input
+        type="checkbox"
+        checked={hanyaMenipis}
+        onChange={(e) => {
+          setHanyaMenipis(e.target.checked);
+          setBahanCurrentPage(1);
+          setProdukCurrentPage(1);
+        }}
+        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+      />
+      Hanya stok menipis
+      <span
+        className="text-gray-400 cursor-help"
+        title="Menampilkan barang yang stoknya sudah di bawah atau sama dengan Stok Minimum-nya. Barang yang Stok Minimum-nya masih 0 tidak dipantau."
+      >
+        (?)
+      </span>
+    </label>
+  );
 
   return (
     <div className="space-y-6">
@@ -135,6 +161,7 @@ const LaporanStok: React.FC = () => {
             selectedIds={bahanSelectedIds}
             onToggleRow={toggleId(setBahanSelectedIds)}
             onToggleAllPage={toggleAllOnPage(setBahanSelectedIds, bahanPageIds)}
+            extraFilters={filterMenipis}
           />
           <div className="no-print">
             <Pagination
@@ -166,6 +193,7 @@ const LaporanStok: React.FC = () => {
             selectedIds={produkSelectedIds}
             onToggleRow={toggleId(setProdukSelectedIds)}
             onToggleAllPage={toggleAllOnPage(setProdukSelectedIds, produkPageIds)}
+            extraFilters={filterMenipis}
           />
           <div className="no-print">
             <Pagination

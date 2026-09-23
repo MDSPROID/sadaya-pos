@@ -33,6 +33,10 @@ interface BahanItem {
   stok: number;
   supplier_id: string | null;
   supplier: { nama: string; jenis_supplier: string } | null;
+  /** Batas peringatan stok menipis di Laporan Stok. 0 = tidak dipantau. */
+  stok_minimum?: number;
+  /** Kolom turunan di database (stok <= stok_minimum). Hanya dibaca, jangan ikut dikirim saat simpan. */
+  stok_menipis?: boolean;
 }
 
 const Bahan: React.FC = () => {
@@ -56,6 +60,7 @@ const Bahan: React.FC = () => {
     ukuran_lebar: 1,
     harga_beli: 0,
     stok: 1,
+    stok_minimum: 0,
     supplier_id: '',
   };
 
@@ -154,7 +159,8 @@ const Bahan: React.FC = () => {
     e.preventDefault();
     const toastId = showLoading(modalMode === 'add' ? 'Menambah bahan...' : 'Menyimpan perubahan...');
 
-    const { satuan, supplier, ...itemToSave } = selectedItem;
+    // stok_menipis dihitung sendiri oleh database (kolom generated), jangan ikut dikirim.
+    const { satuan, supplier, stok_menipis: _turunan, ...itemToSave } = selectedItem;
 
     if (modalMode === 'add') {
       const { data: newBahan, error } = await supabase

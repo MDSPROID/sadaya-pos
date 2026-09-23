@@ -10,6 +10,8 @@ export interface BahanStockItem {
   isi: number;
   harga_beli: number;
   stok: number;
+  /** Batas peringatan stok menipis. 0 = tidak dipantau. */
+  stok_minimum: number;
   supplier: { nama: string } | null;
 }
 
@@ -19,11 +21,37 @@ interface UseBahanStockDataProps {
   pageSize: number;
   /** Ambil juga seluruh baris (tanpa pagination) untuk cetak/export. */
   fetchAll?: boolean;
+  /** Hanya tampilkan barang yang stoknya sudah di bawah/sama dengan batas minimum. */
+  hanyaMenipis?: boolean;
 }
 
 const ALL_PAGE_SIZE = 1000; // batas default PostgREST per request
 
-const SELECT_COLS = 'id, nama, isi, harga_beli, stok, satuan(nama), supplier(nama)';
+const SELECT_COLS = 'id, nama, isi, harga_beli, stok, stok_minimum, satuan(nama), supplier(nama)';
+const SELECT_COLS_LEGACY = 'id, nama, isi, harga_beli, stok, satuan(nama), supplier(nama)';
+
+/**
+ * Kolom stok minimum baru ada setelah `supabase/sql/stok_minimum.sql` dijalankan.
+ * Kalau aplikasi terlanjur di-deploy lebih dulu, query diulang tanpa kolom itu
+ * supaya halaman tetap tampil (batasnya dianggap 0 / tidak dipantau) — bukan
+ * gagal total dengan pesan "column does not exist".
+ */
+let kolomMinimumAda = true;
+
+const kolomHilang = (e: any) =>
+  /stok_minimum|stok_menipis/.test(String(e?.message ?? '')) &&
+  /does not exist|schema cache/i.test(String(e?.message ?? ''));
+
+const jalankan = async <T,>(build: (cols: string, pakaiMinimum: boolean) => any): Promise<T> => {
+  if (kolomMinimumAda) {
+    const res = await build(SELECT_COLS, true);
+    if (!res.error) return res as T;
+    if (!kolomHilang(res.error)) return res as T;
+    kolomMinimumAda = false;
+  }
+  return (await build(SELECT_COLS_LEGACY, false)) as T;
+};
+
 const SEARCH_COLS = (term: string) =>
   `nama.ilike.%${term}%,id.ilike.%${term}%,satuan.nama.ilike.%${term}%,supplier.nama.ilike.%${term}%`;
 
@@ -33,7 +61,7 @@ const mapBahan = (bahan: any): BahanStockItem => ({
   supplier: getSingleRelatedObject<{ nama: string }>(bahan.supplier),
 });
 
-export const useBahanStockData = ({ searchTerm, currentPage, pageSize, fetchAll = false }: UseBahanStockDataProps) => {
+export const useBahanStockData = ({ searchTerm, currentPage, pageSize, fetchAll = false, hanyaMenipis = false }: UseBahanStockDataProps) => {
   const [data, setData] = useState<BahanStockItem[]>([]);
   const [allData, setAllData] = useState<BahanStockItem[]>([]);
   const [loadingAll, setLoadingAll] = useState(false);
@@ -48,18 +76,15 @@ export const useBahanStockData = ({ searchTerm, currentPage, pageSize, fetchAll 
     const from = (currentPage - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    let query = supabase
-      .from('bahan')
-      .select(SELECT_COLS, { count: 'exact' })
-      .order('nama', { ascending: true });
-
-    if (searchTerm) {
-      query = query.or(SEARCH_COLS(searchTerm));
-    }
-
-    query = query.range(from, to);
-
-    const { data: bahanList, error, count } = await query;
+    const { data: bahanList, error, count } = await jalankan<any>((cols, pakaiMinimum) => {
+      let q = supabase
+        .from('bahan')
+        .select(cols, { count: 'exact' })
+        .order('nama', { ascending: true });
+      if (searchTerm) q = q.or(SEARCH_COLS(searchTerm));
+      if (hanyaMenipis && pakaiMinimum) q = q.eq('stok_menipis', true);
+      return q.range(from, to);
+    });
 
     if (error) {
       console.error('Error fetching bahan stock:', error);
@@ -70,7 +95,7 @@ export const useBahanStockData = ({ searchTerm, currentPage, pageSize, fetchAll 
       setTotalCount(count || 0);
     }
     setLoading(false);
-  }, [searchTerm, currentPage, pageSize]);
+  }, [searchTerm, currentPage, pageSize, hanyaMenipis]);
 
   // Seluruh baris hasil pencarian (dipaging per 1000) - untuk cetak & export Excel
   const fetchAllBahanStock = useCallback(async () => {
@@ -79,17 +104,16 @@ export const useBahanStockData = ({ searchTerm, currentPage, pageSize, fetchAll 
       const rows: any[] = [];
       let from = 0;
       for (;;) {
-        let q = supabase
-          .from('bahan')
-          .select(SELECT_COLS)
-          .order('nama', { ascending: true })
-          .range(from, from + ALL_PAGE_SIZE - 1);
-
-        if (searchTerm) {
-          q = q.or(SEARCH_COLS(searchTerm));
-        }
-
-        const { data: page, error: pageErr } = await q;
+        const { data: page, error: pageErr } = await jalankan<any>((cols, pakaiMinimum) => {
+          let q = supabase
+            .from('bahan')
+            .select(cols)
+            .order('nama', { ascending: true })
+            .range(from, from + ALL_PAGE_SIZE - 1);
+          if (searchTerm) q = q.or(SEARCH_COLS(searchTerm));
+          if (hanyaMenipis && pakaiMinimum) q = q.eq('stok_menipis', true);
+          return q;
+        });
         if (pageErr) throw pageErr;
         rows.push(...(page || []));
         if (!page || page.length < ALL_PAGE_SIZE) break;
@@ -103,7 +127,7 @@ export const useBahanStockData = ({ searchTerm, currentPage, pageSize, fetchAll 
     } finally {
       setLoadingAll(false);
     }
-  }, [searchTerm]);
+  }, [searchTerm, hanyaMenipis]);
 
   useEffect(() => {
     fetchBahanStock();

@@ -68,6 +68,10 @@ export interface ProdukItem {
   harga_jual_umum: number;
   harga_jual_khusus: number;
   stok: number;
+  /** Batas peringatan stok menipis di Laporan Stok. 0 = tidak dipantau. */
+  stok_minimum: number;
+  /** Kolom turunan di database (stok <= stok_minimum). Hanya dibaca, jangan ikut dikirim saat simpan. */
+  stok_menipis?: boolean;
   barcode_1: string;
   barcode_2: string;
   keterangan: string;

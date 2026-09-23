@@ -14,6 +14,10 @@ interface BahanItem {
   stok: number;
   supplier_id: string | null;
   supplier: { nama: string; jenis_supplier: string } | null;
+  /** Batas peringatan stok menipis di Laporan Stok. 0 = tidak dipantau. */
+  stok_minimum?: number;
+  /** Kolom turunan di database (stok <= stok_minimum). Hanya dibaca, jangan ikut dikirim saat simpan. */
+  stok_menipis?: boolean;
 }
 
 interface BahanTableProps {

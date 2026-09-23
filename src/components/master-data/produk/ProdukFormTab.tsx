@@ -275,6 +275,26 @@ const ProdukFormTab: React.FC<ProdukFormTabProps> = ({
       </div>
 
       <div>
+        <label htmlFor="stok_minimum" className="block text-sm font-medium text-gray-700 mb-1">
+          Stok Minimum
+        </label>
+        <input
+          type="number"
+          min="0"
+          id="stok_minimum"
+          name="stok_minimum"
+          value={selectedItem?.stok_minimum ?? ''}
+          onChange={handleChange}
+          disabled={modalMode === 'view'}
+          placeholder="0"
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50"
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          Produk ditandai "perlu dipesan" di Laporan Stok saat stoknya turun sampai angka ini. Isi 0 kalau tidak perlu dipantau.
+        </p>
+      </div>
+
+      <div>
         <label htmlFor="harga_jual_umum" className="block text-sm font-medium text-gray-700 mb-1">
           Harga Jual (Umum)
         </label>
