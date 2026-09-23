@@ -1670,15 +1670,15 @@ const Sales: React.FC = () => {
   // =============================================
 
   return (
-    <div className="h-full w-full space-y-6 p-6 bg-gray-100 flex flex-col">
-      <div className="flex items-center justify-between mb-6 flex-shrink-0">
-        <h1 className="text-3xl font-bold text-gray-900">Transaksi Penjualan</h1>
+    <div className="w-full lg:h-full space-y-4 sm:space-y-6 p-4 sm:p-6 bg-gray-100 flex flex-col">
+      <div className="flex items-center justify-between mb-2 sm:mb-6 flex-shrink-0">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Transaksi Penjualan</h1>
         {/* <PrinterStatusBadge /> */}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 flex-1 min-h-0 lg:overflow-hidden">
         {/* Left Column */}
-        <div className="lg:col-span-1 flex flex-col space-y-6 overflow-y-auto">
+        <div className="lg:col-span-1 flex flex-col space-y-4 sm:space-y-6 lg:min-h-0 lg:overflow-y-auto">
           <CustomerForm
             formData={orderFormData}
             onFormChange={(e: any) => { dbg('CustomerForm.onFormChange name=', e?.target?.name, 'value=', e?.target?.value); handleFormChange(e); }}
@@ -1701,7 +1701,7 @@ const Sales: React.FC = () => {
         </div>
 
         {/* Right Column */}
-        <div className="lg:col-span-2 flex flex-col space-y-6 overflow-y-auto">
+        <div className="lg:col-span-2 flex flex-col space-y-4 sm:space-y-6 lg:min-h-0 lg:overflow-y-auto">
           <OrderItemsTable
             items={orderFormData.items}
             designerOptions={designerOptions}
