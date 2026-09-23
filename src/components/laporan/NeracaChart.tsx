@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import { NeracaDataPoint } from '../../hooks/useNeracaData';
 import { formatCurrency } from '../../utils/formatters';
@@ -19,23 +19,6 @@ const seriesConfig = [
 ];
 
 const NeracaChart: React.FC<NeracaChartProps> = ({ data, selectedSeriesKeys, loading }) => {
-  const renderCustomizedLabel = (props: any) => {
-    const { x, y, width, height, value } = props;
-    const isNegative = value < 0;
-    return (
-      <text
-        x={x + width / 2}
-        y={y + (isNegative ? height + 15 : -5)}
-        fill={isNegative ? '#ef4444' : '#4a5568'}
-        textAnchor="middle"
-        dominantBaseline="middle"
-        fontSize={12}
-      >
-        {formatCurrency(value)}
-      </text>
-    );
-  };
-
   const seriesToDisplay = selectedSeriesKeys
     ? seriesConfig.filter(s => selectedSeriesKeys.includes(s.key))
     : seriesConfig;
@@ -48,22 +31,6 @@ const NeracaChart: React.FC<NeracaChartProps> = ({ data, selectedSeriesKeys, loa
   // Recharts kadang tidak re-render meski props berubah jika array length-nya sama
   const chartKey = safeData.reduce((sum, d) => sum + d.Omset + d['Total Pengeluaran'], 0);
 
-  const allSelectedSeriesZero = (payload: any) =>
-    seriesToDisplay.every(s => Number(payload?.[s.key] ?? 0) === 0);
-
-  const primaryKey = seriesToDisplay[0]?.key;
-
-  const labelContentFor = (seriesKey: string) => (props: any) => {
-    const { payload, value } = props;
-    const isAllZero = allSelectedSeriesZero(payload);
-    if (isAllZero) {
-      if (seriesKey === primaryKey) return renderCustomizedLabel({ ...props, value: 0 });
-      return null;
-    }
-    if (!value) return null;
-    return renderCustomizedLabel(props);
-  };
-
   return (
     <div className="relative">
       <div className="bg-white rounded-lg shadow-sm p-6">
@@ -74,10 +41,9 @@ const NeracaChart: React.FC<NeracaChartProps> = ({ data, selectedSeriesKeys, loa
             <YAxis tickFormatter={(value) => formatCurrency(value)} />
             <Tooltip formatter={(value: number) => formatCurrency(value)} />
             <Legend />
+            {/* Tanpa label angka di atas batang — nilainya dibaca lewat tooltip saat kursor diarahkan ke batang. */}
             {seriesToDisplay.map(series => (
-              <Bar key={series.key} dataKey={series.key} fill={series.color}>
-                <LabelList dataKey={series.key} content={labelContentFor(series.key)} />
-              </Bar>
+              <Bar key={series.key} dataKey={series.key} fill={series.color} />
             ))}
           </BarChart>
         </ResponsiveContainer>
