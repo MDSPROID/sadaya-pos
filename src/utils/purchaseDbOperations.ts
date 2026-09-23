@@ -1,4 +1,5 @@
 import { supabase } from '../integrations/supabase/client';
+import { insertWithUniqueInvoice } from './invoiceGenerator';
 import {
   PurchaseOrderDataToSave,
   ItemToInsert,
@@ -24,14 +25,21 @@ export const savePurchaseOrder = async (
   paymentStatus: 'paid' | 'due',
   paymentDetails?: PaymentDetails,
 ): Promise<string> => {
-  // 1) Insert purchase order (return only id to reduce payload)
-  const { data: poRow, error: purchaseOrderError } = await supabase
-    .from('purchase_orders')
-    .insert([purchaseOrderData])
-    .select('id')
-    .single();
+  // 1) Insert purchase order (return only id to reduce payload). Kalau nomor
+  //    faktur bentrok, nomornya dinaikkan lalu dicoba lagi.
+  const poRow = await insertWithUniqueInvoice(
+    String((purchaseOrderData as any).invoice_number ?? ''),
+    async (invoice) => {
+      const { data, error } = await supabase
+        .from('purchase_orders')
+        .insert([{ ...purchaseOrderData, invoice_number: invoice }])
+        .select('id')
+        .single();
+      if (error) throw error;
+      return data;
+    }
+  );
 
-  if (purchaseOrderError) throw purchaseOrderError;
   const purchaseOrderId = poRow.id as string;
 
   // 2) Insert items

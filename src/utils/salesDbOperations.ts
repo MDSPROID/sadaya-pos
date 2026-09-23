@@ -1,6 +1,7 @@
 // src/utils/salesDbOperations.ts
 import { supabase } from '../integrations/supabase/client';
 import { sendPrintRequest } from './printAgent';
+import { insertWithUniqueInvoice } from './invoiceGenerator';
 
 import {
   OrderDataToSave,
@@ -169,13 +170,20 @@ export const saveSalesOrder = async (
   paymentDetails?: PaymentDetails,
   options?: { skipPrint?: boolean }
 ) => {
-  // 1) Insert order
-  const { data: newOrder, error: orderError } = await supabase
-    .from('orders')
-    .insert([{ ...orderData }])
-    .select()
-    .single();
-  if (orderError) throw orderError;
+  // 1) Insert order. Kalau nomor faktur bentrok (dua kasir menyimpan bersamaan),
+  //    nomornya dinaikkan lalu dicoba lagi supaya order tidak gagal disimpan.
+  const newOrder = await insertWithUniqueInvoice(
+    String(orderData.invoice_number ?? ''),
+    async (invoice) => {
+      const { data, error } = await supabase
+        .from('orders')
+        .insert([{ ...orderData, invoice_number: invoice }])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
+  );
 
   // 2) Insert items (isi stock_deducted mengikuti aturan baru)
   const itemsWithOrderId = itemsToInsert.map((item) => {
