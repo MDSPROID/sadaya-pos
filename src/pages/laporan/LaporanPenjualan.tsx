@@ -301,6 +301,27 @@ const LaporanPenjualan: React.FC = () => {
     }
   };
 
+  /** Ambil rincian item (qty & ukuran) hanya untuk order yang akan dicetak. */
+  const fetchTandaTerimaItems = async (orderIds: string[]) => {
+    const byOrder = new Map<string, any[]>();
+    if (!orderIds.length) return byOrder;
+
+    const CHUNK = 100; // jaga panjang URL tetap aman
+    for (let i = 0; i < orderIds.length; i += CHUNK) {
+      const { data, error } = await supabase
+        .from('order_items')
+        .select('order_id, product_name, quantity, dimensions')
+        .in('order_id', orderIds.slice(i, i + CHUNK));
+      if (error) throw error;
+      (data || []).forEach((it: any) => {
+        const list = byOrder.get(it.order_id) || [];
+        list.push(it);
+        byOrder.set(it.order_id, list);
+      });
+    }
+    return byOrder;
+  };
+
   // === CETAK TANDA TERIMA (untuk baris yang dicentang, bisa lintas halaman) ===
   const [printingTandaTerima, setPrintingTandaTerima] = useState(false);
   const handlePrintTandaTerima = async () => {
@@ -317,7 +338,13 @@ const LaporanPenjualan: React.FC = () => {
 
     setPrintingTandaTerima(true);
     try {
-      const company = await fetchCompanyInfo();
+      // Rincian item (qty & ukuran) sengaja tidak ikut saat memuat daftar karena
+      // ukurannya besar; diambil di sini hanya untuk baris yang dicentang.
+      const [company, itemsByOrder] = await Promise.all([
+        fetchCompanyInfo(),
+        fetchTandaTerimaItems(selectedOrders.map((o: any) => o.id)),
+      ]);
+
       const rows: TandaTerimaRow[] = selectedOrders.map((o: any) => {
         const finalAmount = Number(o.final_amount || 0);
         const paid = o.payment_status === 'paid'
@@ -329,7 +356,7 @@ const LaporanPenjualan: React.FC = () => {
           pickup_date: o.pickup_date,
           customer_name: o.customer_display_name || o.pelanggan?.[0]?.nama_pelanggan || 'Umum',
           customer_phone: o.customer_display_phone || o.pelanggan?.[0]?.telepon || '',
-          items: (Array.isArray(o.order_items) ? o.order_items : []).map((it: any) => ({
+          items: (itemsByOrder.get(o.id) || []).map((it: any) => ({
             product_name: it.product_name || '-',
             quantity: Number(it.quantity || 0),
             dimensions: it.dimensions,

@@ -28,14 +28,20 @@ export interface BaseOrder {
   bank_name?: string | null;
 }
 
+/**
+ * Rincian item order. Di halaman Laporan Penjualan hanya sebagian kolom yang
+ * diambil saat memuat daftar (kolom berat seperti `dimensions` menyusul hanya
+ * untuk baris yang dicetak tanda terimanya), jadi kolom itu opsional.
+ */
 export interface OrderItemDetail {
-  product_id: string;
+  product_id?: string;
   product_name: string;
-  quantity: number;
-  unit_price: number;
-  subtotal_per_item: number;
-  dimensions: any;
-  notes_per_item: string;
+  designer_id?: string | null;
+  quantity?: number;
+  unit_price?: number;
+  subtotal_per_item?: number;
+  dimensions?: any;
+  notes_per_item?: string;
 }
 
 export interface SalesItem extends BaseOrder {

@@ -70,20 +70,10 @@ export const useSalesReports = ({ startDate, endDate }: UseSalesReportsProps) =>
     setLoading(true);
     setError(null);
     try {
-      // === 1) Harga pokok produk untuk hitung laba
-      const { data: allProducts, error: productsError } = await supabase
-        .from('produk')
-        .select('id, harga_pokok');
-      if (productsError) throw productsError;
-
-      const productPricesMap = new Map<string, number>();
-      (allProducts || []).forEach(p => {
-        if (p.id && p.harga_pokok !== null) {
-          productPricesMap.set(p.id, p.harga_pokok);
-        }
-      });
-
-      // === 2) Ambil orders (tanpa embed profiles untuk hindari ambiguity)
+      // === 1) Ambil orders (tanpa embed profiles untuk hindari ambiguity)
+      // Hanya kolom yang dipakai tabel, filter, pencarian, dan export. Kolom berat
+      // seperti order_items.dimensions diambil belakangan hanya untuk baris yang
+      // dicetak tanda terimanya — lihat fetchOrderItemDetails di bawah.
       let ordersQuery = supabase
         .from('orders')
         .select(
@@ -96,22 +86,16 @@ export const useSalesReports = ({ startDate, endDate }: UseSalesReportsProps) =>
           customer_id,
           customer_display_name,
           customer_display_phone,
-          pelanggan(id, nama_pelanggan, telepon, alamat, catatan),
+          pelanggan(nama_pelanggan, telepon),
           kasir_id,
           operator_id,
           finishing_id,
           designer_id,
-          total_amount,
-          discount_amount,
-          tax_amount,
           final_amount,
           payment_status,
-          order_status,
           notes,
-          priority,
           payment_method,
-          bank_name,
-          order_items(designer_id, product_id, product_name, quantity, unit_price, subtotal_per_item, dimensions, notes_per_item)
+          order_items(designer_id, product_name)
         `,
           { count: 'exact' }
         )
@@ -167,63 +151,26 @@ export const useSalesReports = ({ startDate, endDate }: UseSalesReportsProps) =>
       setData(formattedSalesList);
       setTotalCount(count || 0);
 
-      // === 5) Summary: Omset
-      const { data: allOrdersForOmset, error: allOrdersForOmsetError } = await supabase
-        .from('orders')
-        .select('final_amount')
-        .gte('order_date', startDate)
-        .lte('order_date', endDate);
-      if (allOrdersForOmsetError) throw allOrdersForOmsetError;
-      const currentOmset = (allOrdersForOmset || []).reduce((sum, item) => sum + item.final_amount, 0);
+      // === 5) Ringkasan dihitung dari daftar yang SUDAH diambil di atas.
+      //     Sebelumnya omset & piutang di-query ulang ke tabel orders padahal
+      //     barisnya persis sama — tiga permintaan besar untuk data yang identik.
+      const currentOmset = (salesList || []).reduce(
+        (sum: number, o: any) => sum + Number(o.final_amount || 0),
+        0
+      );
 
-      // === 6) Summary: Laba (hanya dari paid dalam rentang tanggal)
-      let totalLaba = 0;
-      const { data: allOrderItemsForProfit, error: profitItemsError } = await supabase
-        .from('order_items')
-        .select('product_id, quantity, unit_price, order:orders(payment_status, order_date)')
-        .eq('order.payment_status', 'paid')
-        .gte('order.order_date', startDate)
-        .lte('order.order_date', endDate);
-      if (profitItemsError) throw profitItemsError;
-
-      for (const item of allOrderItemsForProfit || []) {
-        const hargaPokok = productPricesMap.get(item.product_id) || 0;
-        const profitPerItem = (item.unit_price - hargaPokok) * item.quantity;
-        totalLaba += profitPerItem;
-      }
-
-      // === 7) Summary: Piutang (pending dalam rentang tanggal)
-      // const { data: pendingOrders, error: pendingError } = await supabase
-      //   .from('orders')
-      //   .select('final_amount')
-      //   .eq('payment_status', 'pending')
-      //   .gte('order_date', startDate)
-      //   .lte('order_date', endDate);
-      // if (pendingError) throw pendingError;
-      // const totalPiutang = (pendingOrders || []).reduce((sum, order) => sum + order.final_amount, 0);
-
-      const { data: pendingOrders, error: pendingError } = await supabase
-        .from('orders')
-        .select('final_amount, notes, payment_method') // Tambah notes & payment_method
-        .eq('payment_status', 'pending')
-        .gte('order_date', startDate)
-        .lte('order_date', endDate);
-      if (pendingError) throw pendingError;
-
-      // ✅ BENAR: Dikurangi DP, konsisten dengan Neraca
-      const totalPiutang = (pendingOrders || []).reduce((sum, o) => {
-        // Skip jika tidak ada payment method (belum fix order)
+      const totalPiutang = (salesList || []).reduce((sum: number, o: any) => {
+        if (o?.payment_status !== 'pending') return sum;
+        // Lewati order yang belum ada metode pembayaran (belum fix order)
         const method = (o?.payment_method ?? '').toString().trim();
         if (!method) return sum;
 
         const finalAmount = Number(o?.final_amount || 0);
         const dpAmount = getDpFromNotes(o?.notes) || 0;
-        const remaining = Math.max(0, finalAmount - Number(dpAmount || 0));
-        
-        return sum + remaining;
+        return sum + Math.max(0, finalAmount - Number(dpAmount || 0));
       }, 0);
 
-      // === 8) Summary: Transaksi hari ini (paid)
+      // === 6) Transaksi hari ini (paid) — hitungan ringan di server
       const today = new Date().toISOString().split('T')[0];
       const { count: transactionsTodayCount, error: countError } = await supabase
         .from('orders')
@@ -234,7 +181,10 @@ export const useSalesReports = ({ startDate, endDate }: UseSalesReportsProps) =>
 
       setSummary({
         omset: currentOmset,
-        laba: totalLaba,
+        // Laba belum ditampilkan di halaman mana pun. Perhitungannya dulu menarik
+        // seluruh tabel produk + seluruh order_items pada rentang, jadi dilepas
+        // sampai laporan labanya benar-benar dibuat.
+        laba: 0,
         piutang: totalPiutang,
         transactionsToday: transactionsTodayCount || 0,
       });
