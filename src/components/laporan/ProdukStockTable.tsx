@@ -1,148 +1,60 @@
 import React from 'react';
-import { Search, Printer } from 'lucide-react';
 import { ProdukStockItem } from '../../hooks/useProdukStockData';
 import { formatCurrency } from '../../utils/formatters';
+import StockReportTable, { StockColumn } from './StockReportTable';
 
 interface ProdukStockTableProps {
   data: ProdukStockItem[];
+  allData: ProdukStockItem[];
+  loadingAll?: boolean;
   searchTerm: string;
   onSearchChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onPrint: () => void;
   loading: boolean;
   error: string | null;
   onFetchData: () => void;
+  numberOffset?: number;
+  selectedIds: string[];
+  onToggleRow: (id: string) => void;
+  onToggleAllPage: (checked: boolean) => void;
 }
 
-const ProdukStockTable: React.FC<ProdukStockTableProps> = ({
-  data,
-  searchTerm,
-  onSearchChange,
-  onPrint,
-  loading,
-  error,
-  onFetchData,
-}) => {
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <p className="text-gray-600">Memuat data stok produk...</p>
-      </div>
-    );
-  }
+const stokBadge = (stok: number) => (
+  <span
+    className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+      stok > 50 ? 'bg-green-100 text-green-800' : stok > 20 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
+    }`}
+  >
+    {stok}
+  </span>
+);
 
-  if (error) {
-    return (
-      <div className="text-center p-4 text-red-600">
-        <p>Error: {error}</p>
-        <button onClick={onFetchData} className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-          Coba Lagi
-        </button>
-      </div>
-    );
-  }
+const columns: StockColumn<ProdukStockItem>[] = [
+  { key: 'id', header: 'Kode Produk', cell: p => p.id, excel: p => p.id, width: 16 },
+  { key: 'nama', header: 'Nama', cell: p => p.nama_produk, excel: p => p.nama_produk, width: 32 },
+  { key: 'kategori', header: 'Kategori', cell: p => p.kategori?.nama || 'N/A', excel: p => p.kategori?.nama || '', width: 20 },
+  { key: 'satuan', header: 'Satuan', cell: p => p.satuan?.nama || 'N/A', excel: p => p.satuan?.nama || '', width: 14 },
+  {
+    key: 'stok',
+    header: 'Stok',
+    cell: p => stokBadge(p.stok),
+    printCell: p => p.stok,
+    excel: p => Number(p.stok ?? 0),
+    width: 10,
+  },
+  { key: 'harga_pokok', header: 'Harga Pokok', cell: p => formatCurrency(p.harga_pokok), excel: p => Number(p.harga_pokok ?? 0), width: 16 },
+  { key: 'harga_jual', header: 'Harga Jual', cell: p => formatCurrency(p.harga_jual_umum), excel: p => Number(p.harga_jual_umum ?? 0), width: 16 },
+];
 
-  return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow-sm p-6 flex flex-col md:flex-row gap-4 items-center">
-        <div className="relative flex-1 w-full md:w-auto">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-          <input
-            type="text"
-            placeholder="Cari produk..."
-            value={searchTerm}
-            onChange={onSearchChange}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-        </div>
-        <button
-          onClick={onPrint}
-          className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-        >
-          <Printer className="h-5 w-5 mr-2" />
-          Cetak
-        </button>
-      </div>
-
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  No.
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Kode Produk
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Nama
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Kategori
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Satuan
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Stok
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Harga Pokok
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Harga Jual
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {data.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
-                    Tidak ada data stok produk.
-                  </td>
-                </tr>
-              ) : (
-                data.map((item, index) => (
-                  <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {index + 1}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {item.id}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {item.nama_produk}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {item.kategori?.nama || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {item.satuan?.nama || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        item.stok > 50 ? 'bg-green-100 text-green-800' :
-                        item.stok > 20 ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {item.stok}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatCurrency(item.harga_pokok)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatCurrency(item.harga_jual_umum)}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-};
+const ProdukStockTable: React.FC<ProdukStockTableProps> = (props) => (
+  <StockReportTable
+    title="Laporan Stok Produk"
+    columns={columns}
+    getId={(p) => p.id}
+    searchPlaceholder="Cari produk (kode, nama, kategori)..."
+    emptyText="Tidak ada data stok produk."
+    fileBaseName="laporan-stok-produk"
+    {...props}
+  />
+);
 
 export default ProdukStockTable;
