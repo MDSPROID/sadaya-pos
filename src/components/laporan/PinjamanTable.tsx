@@ -1,6 +1,6 @@
 import React from 'react';
-import { Search, Printer } from 'lucide-react';
 import { PinjamanKaryawanItem } from '../../hooks/usePinjamanKaryawanData';
+import ReportTable, { ReportColumn } from './ReportTable';
 
 interface PinjamanTableProps {
   data: PinjamanKaryawanItem[];
@@ -11,10 +11,87 @@ interface PinjamanTableProps {
   endDate: string;
   setEndDate: (date: string) => void;
   totalPiutang: number;
-  onPrint: () => void;
-  // ⬇️ baru: indikator loading khusus tabel
   loading?: boolean;
+  error: string | null;
+  onFetchData: () => void;
+  selectedIds: string[];
+  onToggleRow: (id: string) => void;
+  onToggleAllPage: (checked: boolean) => void;
 }
+
+const rp = (n: number) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
+
+const namaOf = (p: { first_name: string; last_name: string } | null) =>
+  p ? `${p.first_name} ${p.last_name || ''}`.trim() : 'N/A';
+
+const statusLabel = (status: string) =>
+  status === 'active' ? 'Aktif' : status === 'completed' ? 'Lunas' : 'Macet';
+
+const columns: ReportColumn<PinjamanKaryawanItem>[] = [
+  {
+    key: 'tanggal',
+    header: 'Tanggal Pinjam',
+    cell: i => new Date(i.tanggal_pinjam).toLocaleDateString('id-ID'),
+    excel: i => new Date(i.tanggal_pinjam).toLocaleDateString('id-ID'),
+    width: 16,
+  },
+  {
+    key: 'karyawan',
+    header: 'Nama Karyawan',
+    cell: i => <span className="font-medium text-gray-900">{namaOf(i.profiles_karyawan)}</span>,
+    excel: i => namaOf(i.profiles_karyawan),
+    width: 24,
+  },
+  {
+    key: 'jumlah',
+    header: 'Jumlah Pinjaman',
+    cell: i => rp(i.jumlah_pinjaman),
+    excel: i => Number(i.jumlah_pinjaman ?? 0),
+    width: 18,
+  },
+  {
+    key: 'sisa',
+    header: 'Sisa Pinjaman',
+    cell: i => rp(i.sisa_pinjaman),
+    excel: i => Number(i.sisa_pinjaman ?? 0),
+    width: 18,
+  },
+  {
+    key: 'status',
+    header: 'Status',
+    cell: i => (
+      <span
+        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+          i.status === 'active'
+            ? 'bg-yellow-100 text-yellow-800'
+            : i.status === 'completed'
+            ? 'bg-green-100 text-green-800'
+            : 'bg-red-100 text-red-800'
+        }`}
+      >
+        {statusLabel(i.status)}
+      </span>
+    ),
+    printCell: i => statusLabel(i.status),
+    excel: i => statusLabel(i.status),
+    width: 12,
+  },
+  {
+    key: 'keterangan',
+    header: 'Keterangan',
+    cell: i => i.keterangan || '-',
+    excel: i => i.keterangan || '',
+    width: 36,
+    wrap: true,
+  },
+  {
+    key: 'dicatat',
+    header: 'Dicatat Oleh',
+    cell: i => namaOf(i.profiles_dicatat_oleh),
+    excel: i => namaOf(i.profiles_dicatat_oleh),
+    width: 22,
+  },
+];
 
 const PinjamanTable: React.FC<PinjamanTableProps> = ({
   data,
@@ -25,137 +102,66 @@ const PinjamanTable: React.FC<PinjamanTableProps> = ({
   endDate,
   setEndDate,
   totalPiutang,
-  onPrint,
   loading = false,
+  error,
+  onFetchData,
+  selectedIds,
+  onToggleRow,
+  onToggleAllPage,
 }) => {
+  const inputCls =
+    'w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+  const labelCls = 'block text-xs font-medium text-gray-600 mb-1';
+
+  const dateFilters = (
+    <>
+      <div>
+        <label htmlFor="startDate" className={labelCls}>Dari</label>
+        <input
+          type="date"
+          id="startDate"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className={inputCls}
+        />
+      </div>
+      <div>
+        <label htmlFor="endDate" className={labelCls}>Sampai</label>
+        <input
+          type="date"
+          id="endDate"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          className={inputCls}
+        />
+      </div>
+    </>
+  );
+
+  const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('id-ID') : '-');
+
   return (
-    <div className="space-y-6">
-      {/* Search and Date Filter */}
-      <div className="bg-white rounded-lg shadow-sm p-6 flex flex-col md:flex-row gap-4 items-center">
-        <div className="relative flex-1 w-full md:w-auto">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-          <input
-            type="text"
-            placeholder="Cari pinjaman..."
-            value={searchTerm}
-            onChange={onSearchChange}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-        </div>
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <label htmlFor="startDate" className="text-sm font-medium text-gray-700">Dari:</label>
-          <input
-            type="date"
-            id="startDate"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-        </div>
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <label htmlFor="endDate" className="text-sm font-medium text-gray-700">Sampai:</label>
-          <input
-            type="date"
-            id="endDate"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-        </div>
-        <button
-          onClick={onPrint}
-          className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-        >
-          <Printer className="h-5 w-5 mr-2" />
-          Cetak
-        </button>
-      </div>
-
-      {/* Total Piutang Section */}
-      <div className="bg-white rounded-lg shadow-sm p-6 text-right">
-        <h2 className="text-xl font-bold text-gray-900">
-          Piutang: Rp {totalPiutang.toLocaleString('id-ID')}
-        </h2>
-      </div>
-
-      {/* Table */}
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No.</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tanggal Pinjam</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Karyawan</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Jumlah Pinjaman</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sisa Pinjaman</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Keterangan</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dicatat Oleh</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {loading ? (
-                <tr>
-                  <td colSpan={8} className="px-6 py-6 whitespace-nowrap text-sm text-gray-500 text-center">
-                    Memuat laporan pinjaman...
-                  </td>
-                </tr>
-              ) : data.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
-                    Tidak ada data pinjaman karyawan.
-                  </td>
-                </tr>
-              ) : (
-                data.map((item, index) => (
-                  <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{index + 1}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {new Date(item.tanggal_pinjam).toLocaleDateString('id-ID')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        {item.profiles_karyawan
-                          ? `${item.profiles_karyawan.first_name} ${item.profiles_karyawan.last_name || ''}`
-                          : 'N/A'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      Rp {item.jumlah_pinjaman.toLocaleString('id-ID')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      Rp {item.sisa_pinjaman.toLocaleString('id-ID')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span
-                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          item.status === 'active'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : item.status === 'completed'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}
-                      >
-                        {item.status === 'active' ? 'Aktif' : item.status === 'completed' ? 'Lunas' : 'Macet'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900">{item.keterangan || '-'}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {item.profiles_dicatat_oleh
-                        ? `${item.profiles_dicatat_oleh.first_name} ${item.profiles_dicatat_oleh.last_name || ''}`
-                        : 'N/A'}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+    <ReportTable
+      title="Laporan Pinjaman Karyawan"
+      data={data}
+      allData={data}          /* halaman ini tidak dipaginasi: tabel = seluruh data */
+      getId={(i) => i.id}
+      columns={columns}
+      searchPlaceholder="Cari nama karyawan atau keterangan..."
+      searchTerm={searchTerm}
+      onSearchChange={onSearchChange}
+      loading={loading}
+      error={error}
+      onFetchData={onFetchData}
+      selectedIds={selectedIds}
+      onToggleRow={onToggleRow}
+      onToggleAllPage={onToggleAllPage}
+      emptyText="Tidak ada data pinjaman karyawan."
+      fileBaseName="laporan-pinjaman"
+      extraFilters={dateFilters}
+      summary={`Piutang: ${rp(totalPiutang)}`}
+      meta={[{ k: 'Periode', v: `${fmtDate(startDate)} s/d ${fmtDate(endDate)}` }]}
+    />
   );
 };
 

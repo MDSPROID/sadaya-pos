@@ -3,7 +3,7 @@ import { Search, Printer, FileDown, Loader2 } from 'lucide-react';
 import { downloadXlsx, XlsxCell } from '../../utils/exportXlsx';
 import { showError } from '../../utils/toast';
 
-export interface StockColumn<T> {
+export interface ReportColumn<T> {
   key: string;
   header: string;
   /** Tampilan di layar (boleh JSX, mis. badge stok). */
@@ -14,9 +14,11 @@ export interface StockColumn<T> {
   excel: (item: T) => XlsxCell;
   /** Lebar kolom Excel (karakter). */
   width?: number;
+  /** Izinkan teks membungkus (untuk kolom panjang seperti keterangan). */
+  wrap?: boolean;
 }
 
-interface StockReportTableProps<T> {
+interface ReportTableProps<T> {
   /** Judul laporan, dipakai di header cetak & file Excel. */
   title: string;
   /** Baris halaman aktif. */
@@ -25,7 +27,7 @@ interface StockReportTableProps<T> {
   allData: T[];
   loadingAll?: boolean;
   getId: (item: T) => string;
-  columns: StockColumn<T>[];
+  columns: ReportColumn<T>[];
 
   searchPlaceholder: string;
   searchTerm: string;
@@ -45,9 +47,16 @@ interface StockReportTableProps<T> {
   emptyText: string;
   /** Nama dasar file Excel, mis. "laporan-stok-bahan". */
   fileBaseName: string;
+
+  /** Field filter tambahan (mis. rentang tanggal) di samping kolom pencarian. */
+  extraFilters?: React.ReactNode;
+  /** Ringkasan di baris aksi (mis. total piutang). */
+  summary?: React.ReactNode;
+  /** Info filter aktif; tampil di header cetak & bagian atas file Excel. */
+  meta?: { k: string; v: string }[];
 }
 
-const StockReportTable = <T,>({
+const ReportTable = <T,>({
   title,
   data,
   allData,
@@ -66,7 +75,10 @@ const StockReportTable = <T,>({
   onToggleAllPage,
   emptyText,
   fileBaseName,
-}: StockReportTableProps<T>) => {
+  extraFilters,
+  summary,
+  meta = [],
+}: ReportTableProps<T>) => {
   const masterRef = useRef<HTMLInputElement | null>(null);
 
   const pageIds = useMemo(() => data.map(getId), [data, getId]);
@@ -110,6 +122,7 @@ const StockReportTable = <T,>({
         name: title.slice(0, 31),
         preface: [
           [title.toUpperCase()],
+          ...meta.map(m => [m.k, m.v] as XlsxCell[]),
           ['Pencarian', searchTerm.trim() ? `"${searchTerm.trim()}"` : '-'],
           ['Jumlah data', rowsToPrint.length],
           ['Dicetak', d.toLocaleString('id-ID')],
@@ -151,23 +164,27 @@ const StockReportTable = <T,>({
     <div className="space-y-6">
       {/* ====== FILTER & AKSI (no-print) ====== */}
       <div className="no-print bg-white rounded-lg shadow-sm p-4 sm:p-6 space-y-4">
-        <div>
-          <label htmlFor="stockSearch" className="block text-xs font-medium text-gray-600 mb-1">Cari</label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
-            <input
-              id="stockSearch"
-              type="text"
-              placeholder={searchPlaceholder}
-              value={searchTerm}
-              onChange={onSearchChange}
-              className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className={extraFilters ? 'sm:col-span-2' : 'sm:col-span-2 lg:col-span-4'}>
+            <label htmlFor="reportSearch" className="block text-xs font-medium text-gray-600 mb-1">Cari</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
+              <input
+                id="reportSearch"
+                type="text"
+                placeholder={searchPlaceholder}
+                value={searchTerm}
+                onChange={onSearchChange}
+                className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
           </div>
+          {extraFilters}
         </div>
 
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 pt-4 border-t border-gray-100">
           <div className="text-sm text-gray-600">
+            {summary && <div className="text-base sm:text-lg font-bold text-gray-900 mb-1">{summary}</div>}
             {hasSelection ? (
               <>Terpilih <span className="font-semibold text-gray-900">{selectedIds.length}</span> dari {allData.length} data</>
             ) : (
@@ -210,6 +227,12 @@ const StockReportTable = <T,>({
           <div className="print-title">{title}</div>
           <div className="print-divider" />
           <div className="print-filter-grid">
+            {meta.map(m => (
+              <div className="print-filter-row" key={m.k}>
+                <div className="print-k">{m.k}</div>
+                <div className="print-v">{m.v}</div>
+              </div>
+            ))}
             <div className="print-filter-row">
               <div className="print-k">Pencarian</div>
               <div className="print-v">{searchTerm.trim() ? `"${searchTerm.trim()}"` : '-'}</div>
@@ -269,7 +292,7 @@ const StockReportTable = <T,>({
                           {numberOffset + index + 1}
                         </td>
                         {columns.map(c => (
-                          <td key={c.key} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <td key={c.key} className={`px-6 py-4 text-sm text-gray-900 ${c.wrap ? 'whitespace-normal break-words' : 'whitespace-nowrap'}`}>
                             {c.cell(item)}
                           </td>
                         ))}
@@ -284,7 +307,7 @@ const StockReportTable = <T,>({
 
         {/* Tabel cetak (SELURUH data / baris terpilih) — hanya tampil saat cetak */}
         <div className="print-only bg-white rounded-lg shadow-sm overflow-x-auto print-table-wrap">
-          <table className="min-w-full divide-y divide-gray-200 print-w-full">
+          <table className="min-w-full divide-y divide-gray-200 print-table">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No.</th>
@@ -307,7 +330,7 @@ const StockReportTable = <T,>({
                   <tr key={getId(item)} className="avoid-break">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{index + 1}</td>
                     {columns.map(c => (
-                      <td key={c.key} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td key={c.key} className={`px-6 py-4 text-sm text-gray-900 ${c.wrap ? 'whitespace-normal break-words wrap-cell' : 'whitespace-nowrap'}`}>
                         {(c.printCell ?? c.cell)(item)}
                       </td>
                     ))}
@@ -323,4 +346,4 @@ const StockReportTable = <T,>({
   );
 };
 
-export default StockReportTable;
+export default ReportTable;

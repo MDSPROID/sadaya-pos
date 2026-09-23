@@ -51,6 +51,18 @@
       max-width: 100% !important;
       overflow: visible !important;
     }
+
+    /* Tabel cetak laporan (ReportTable): lebar penuh kertas, tapi lebar tiap
+       kolom mengikuti isinya — tanpa ini kolom "No." ikut melebar karena
+       aturan .print-w-full * memaksa semua sel width:100%. */
+    .print-table-wrap {
+      overflow: visible !important;
+    }
+    table.print-table {
+      width: 100% !important;
+      max-width: 100% !important;
+      table-layout: auto !important;
+    }
   
     /* Hindari baris terbelah antar halaman */
     tr.avoid-break,

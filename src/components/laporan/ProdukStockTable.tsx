@@ -1,7 +1,7 @@
 import React from 'react';
 import { ProdukStockItem } from '../../hooks/useProdukStockData';
 import { formatCurrency } from '../../utils/formatters';
-import StockReportTable, { StockColumn } from './StockReportTable';
+import ReportTable, { ReportColumn } from './ReportTable';
 
 interface ProdukStockTableProps {
   data: ProdukStockItem[];
@@ -28,7 +28,7 @@ const stokBadge = (stok: number) => (
   </span>
 );
 
-const columns: StockColumn<ProdukStockItem>[] = [
+const columns: ReportColumn<ProdukStockItem>[] = [
   { key: 'id', header: 'Kode Produk', cell: p => p.id, excel: p => p.id, width: 16 },
   { key: 'nama', header: 'Nama', cell: p => p.nama_produk, excel: p => p.nama_produk, width: 32 },
   { key: 'kategori', header: 'Kategori', cell: p => p.kategori?.nama || 'N/A', excel: p => p.kategori?.nama || '', width: 20 },
@@ -46,7 +46,7 @@ const columns: StockColumn<ProdukStockItem>[] = [
 ];
 
 const ProdukStockTable: React.FC<ProdukStockTableProps> = (props) => (
-  <StockReportTable
+  <ReportTable
     title="Laporan Stok Produk"
     columns={columns}
     getId={(p) => p.id}
