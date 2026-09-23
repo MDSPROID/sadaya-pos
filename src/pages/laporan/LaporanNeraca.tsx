@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Printer, Info } from 'lucide-react';
 import { useNeracaData } from '../../hooks/useNeracaData';
 import NeracaChart from '../../components/laporan/NeracaChart';
+import NeracaSumberModal from '../../components/laporan/NeracaSumberModal';
+import { NeracaRowKey } from '../../utils/neracaDrilldown';
 
 const InfoTip: React.FC<{ text: string }> = ({ text }) => {
   // Ikon selalu terlihat; bubble tooltip hanya untuk hover (disembunyikan saat print)
@@ -58,6 +60,9 @@ const LaporanNeraca: React.FC = () => {
     filterPeriod: appliedFilterPeriod,
     autoFetch: false,
   });
+
+  // Baris yang sedang dilihat sumbernya (null = modal tertutup)
+  const [sumberRow, setSumberRow] = useState<NeracaRowKey | null>(null);
 
   // Data dimulai dari ZERO_SUMMARY (sudah default di useState), tidak perlu reset manual
 
@@ -130,6 +135,22 @@ const LaporanNeraca: React.FC = () => {
 
   // Bulatkan ke Rupiah (integer) lalu format ribuan — menghindari floating point dari DB
   const rp = (val: number) => `Rp ${Math.round(val).toLocaleString('id-ID')}`;
+
+  // Angka bisa diklik untuk melihat dari mana asalnya
+  const Nilai: React.FC<{ rowKey: NeracaRowKey; value: number; bold?: boolean }> = ({ rowKey, value, bold }) => (
+    <ValueOrSkeleton>
+      <button
+        type="button"
+        onClick={() => setSumberRow(rowKey)}
+        className={`no-print text-blue-700 hover:text-blue-900 hover:underline decoration-dotted underline-offset-2 ${bold ? 'font-semibold' : ''}`}
+        title="Klik untuk lihat sumber angka ini"
+      >
+        {rp(value)}
+      </button>
+      {/* Saat dicetak, tampilkan angka biasa tanpa gaya tautan */}
+      <span className="print-only">{rp(value)}</span>
+    </ValueOrSkeleton>
+  );
 
   if (error) {
     return (
@@ -275,6 +296,21 @@ const LaporanNeraca: React.FC = () => {
           </button>
         </div>
 
+        {/* Catatan ringkas: cara memakai & kenapa angka bisa beda dengan Laporan Penjualan */}
+        <div className="no-print mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 space-y-1">
+          <p><span className="font-semibold">Klik angka</span> untuk melihat asalnya dan membuka menu sumbernya (filter periode ikut terpasang).</p>
+          <p>
+            <span className="font-semibold">Omset, Non Realisasi, dan Jumlah Piutang</span> di sini menghitung <span className="font-semibold">semua</span> order periode ini,
+            termasuk yang batal / belum ada pembayaran. Laporan Penjualan normalnya menyembunyikan order seperti itu, jadi saat dibuka dari sini
+            opsi <span className="font-semibold">"Sertakan order batal / belum ada pembayaran"</span> otomatis aktif supaya angkanya sama.
+          </p>
+          <p>
+            <span className="font-semibold">(Periode Ini)</span> = hanya order/pembelian yang tanggalnya di dalam periode filter.{' '}
+            <span className="font-semibold">(Total)</span> = seluruh tunggakan yang belum lunas s/d tanggal akhir periode, termasuk dari bulan sebelumnya.
+            Karena <span className="font-semibold">Saldo Awal</span> membuat saldo kas bersifat kumulatif, <span className="font-semibold">Saldo Seharusnya</span> memakai angka yang (Total).
+          </p>
+        </div>
+
         {/* Summary + tooltips (table with lines) */}
         <div className="overflow-visible border border-gray-300 mb-6">
         <table className="w-full border border-gray-300 border-collapse">
@@ -288,7 +324,7 @@ const LaporanNeraca: React.FC = () => {
                   Omset <InfoTip text="Total penjualan fix yang sudah lunas maupun belum lunas" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right font-medium">
-                  <ValueOrSkeleton>{rp(summary.omset)}</ValueOrSkeleton>
+                  <Nilai rowKey="omset" value={summary.omset} />
                 </td>
               </tr>
 
@@ -297,7 +333,7 @@ const LaporanNeraca: React.FC = () => {
                   Realisasi Tunai <InfoTip text="Jumlah uang masuk yang sudah fix order dengan metode pembayaran tunai" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
-                  <ValueOrSkeleton>{rp(summary.order_paid_cash)}</ValueOrSkeleton>
+                  <Nilai rowKey="order_paid_cash" value={summary.order_paid_cash} />
                 </td>
               </tr>
 
@@ -306,7 +342,7 @@ const LaporanNeraca: React.FC = () => {
                   Realisasi Transfer <InfoTip text="Jumlah uang masuk yang sudah fix order dengan metode pembayaran transfer" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
-                  <ValueOrSkeleton>{rp(summary.order_paid_transfer)}</ValueOrSkeleton>
+                  <Nilai rowKey="order_paid_transfer" value={summary.order_paid_transfer} />
                 </td>
               </tr>
 
@@ -315,7 +351,7 @@ const LaporanNeraca: React.FC = () => {
                   Non Realisasi <InfoTip text="Jumlah fix order yang belum bayar" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
-                  <ValueOrSkeleton>{rp(summary.order_not_paid)}</ValueOrSkeleton>
+                  <Nilai rowKey="order_not_paid" value={summary.order_not_paid} />
                 </td>
               </tr>
 
@@ -324,7 +360,7 @@ const LaporanNeraca: React.FC = () => {
                   Kas Masuk Tunai <InfoTip text="Total dari pemasukan menu 'Kas masuk' tunai" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
-                  <ValueOrSkeleton>{rp(summary.kas_masuk_tunai)}</ValueOrSkeleton>
+                  <Nilai rowKey="kas_masuk_tunai" value={summary.kas_masuk_tunai} />
                 </td>
               </tr>
 
@@ -333,7 +369,7 @@ const LaporanNeraca: React.FC = () => {
                   Kas Masuk Transfer <InfoTip text="Total dari pemasukan menu 'Kas masuk' transfer" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
-                  <ValueOrSkeleton>{rp(summary.kas_masuk_transfer)}</ValueOrSkeleton>
+                  <Nilai rowKey="kas_masuk_transfer" value={summary.kas_masuk_transfer} />
                 </td>
               </tr>
 
@@ -342,7 +378,7 @@ const LaporanNeraca: React.FC = () => {
                   Kas Keluar Tunai <InfoTip text="Total dari pengeluaran menu 'Kas keluar' tunai" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
-                  <ValueOrSkeleton>{rp(summary.kas_keluar_tunai)}</ValueOrSkeleton>
+                  <Nilai rowKey="kas_keluar_tunai" value={summary.kas_keluar_tunai} />
                 </td>
               </tr>
 
@@ -351,25 +387,43 @@ const LaporanNeraca: React.FC = () => {
                   Kas Keluar Transfer <InfoTip text="Total dari pengeluaran menu 'Kas keluar' transfer" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
-                  <ValueOrSkeleton>{rp(summary.kas_keluar_transfer)}</ValueOrSkeleton>
+                  <Nilai rowKey="kas_keluar_transfer" value={summary.kas_keluar_transfer} />
                 </td>
               </tr>
 
               <tr>
                 <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top">
-                  Jumlah Saldo Tunai / Cash <InfoTip text="Total jumlah realisasi tunai + kas masuk tunai - kas keluar tunai" />
+                  Saldo Awal Tunai <InfoTip text="Sisa kas tunai dari seluruh transaksi SEBELUM tanggal awal periode. Ikut dijumlahkan ke Jumlah Saldo Tunai." />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
-                  <ValueOrSkeleton>{rp(summary.jumlah_saldo_tunai)}</ValueOrSkeleton>
+                  <Nilai rowKey="saldo_awal_tunai" value={summary.saldo_awal_tunai ?? 0} />
                 </td>
               </tr>
 
               <tr>
                 <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top">
-                  Jumlah Saldo Transfer <InfoTip text="Total jumlah realisasi transfer + kas masuk transfer - kas keluar transfer" />
+                  Saldo Awal Transfer <InfoTip text="Sisa saldo transfer dari seluruh transaksi SEBELUM tanggal awal periode. Ikut dijumlahkan ke Jumlah Saldo Transfer." />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right">
-                  <ValueOrSkeleton>{rp(summary.jumlah_saldo_non_tunai)}</ValueOrSkeleton>
+                  <Nilai rowKey="saldo_awal_non_tunai" value={summary.saldo_awal_non_tunai ?? 0} />
+                </td>
+              </tr>
+
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top">
+                  Jumlah Saldo Tunai / Cash <InfoTip text="Saldo awal tunai + realisasi tunai + kas masuk tunai - kas keluar tunai" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right">
+                  <Nilai rowKey="jumlah_saldo_tunai" value={summary.jumlah_saldo_tunai} />
+                </td>
+              </tr>
+
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top">
+                  Jumlah Saldo Transfer <InfoTip text="Saldo awal transfer + realisasi transfer + kas masuk transfer - kas keluar transfer" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right">
+                  <Nilai rowKey="jumlah_saldo_non_tunai" value={summary.jumlah_saldo_non_tunai} />
                 </td>
               </tr>
 
@@ -378,7 +432,7 @@ const LaporanNeraca: React.FC = () => {
                   Total Jumlah Saldo <InfoTip text="Jumlah saldo tunai + non tunai" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right font-semibold">
-                  <ValueOrSkeleton>{rp(summary.total_jumlah_saldo)}</ValueOrSkeleton>
+                  <Nilai rowKey="total_jumlah_saldo" value={summary.total_jumlah_saldo} bold />
                 </td>
               </tr>
 
@@ -387,34 +441,52 @@ const LaporanNeraca: React.FC = () => {
                   Total Pengeluaran <InfoTip text="Penjumlahan dari kas keluar" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right font-semibold">
-                  <ValueOrSkeleton>{rp(summary.total_pengeluaran)}</ValueOrSkeleton>
+                  <Nilai rowKey="total_pengeluaran" value={summary.total_pengeluaran} bold />
                 </td>
               </tr>
 
               <tr>
                 <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top font-semibold">
-                  Jumlah Hutang <InfoTip text="Total hutang ke supplier (periode ini + hutang lama yang belum lunas)" />
+                  Jumlah Hutang (Periode Ini) <InfoTip text="Sisa tagihan pembelian yang TANGGALNYA di dalam periode ini saja" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right font-semibold">
-                  <ValueOrSkeleton>{rp(summary.jumlah_hutang)}</ValueOrSkeleton>
+                  <Nilai rowKey="jumlah_hutang" value={summary.jumlah_hutang} bold />
                 </td>
               </tr>
 
               <tr>
                 <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top font-semibold">
-                  Jumlah Piutang <InfoTip text="Total piutang dari pelanggan (periode ini + piutang lama yang belum lunas)" />
+                  Jumlah Hutang (Total) <InfoTip text="Seluruh sisa tagihan ke supplier s/d tanggal akhir periode, termasuk pembelian lama yang belum lunas" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right font-semibold">
-                  <ValueOrSkeleton>{rp(summary.jumlah_piutang)}</ValueOrSkeleton>
+                  <Nilai rowKey="jumlah_hutang_total" value={summary.jumlah_hutang_total} bold />
+                </td>
+              </tr>
+
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top font-semibold">
+                  Jumlah Piutang (Periode Ini) <InfoTip text="Sisa tagihan pelanggan yang TANGGALNYA di dalam periode ini saja" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right font-semibold">
+                  <Nilai rowKey="jumlah_piutang" value={summary.jumlah_piutang} bold />
+                </td>
+              </tr>
+
+              <tr>
+                <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top font-semibold">
+                  Jumlah Piutang (Total) <InfoTip text="Seluruh sisa tagihan pelanggan s/d tanggal akhir periode, termasuk order lama yang belum lunas" />
+                </td>
+                <td className="border border-gray-300 px-3 py-2 text-right font-semibold">
+                  <Nilai rowKey="jumlah_piutang_total" value={summary.jumlah_piutang_total} bold />
                 </td>
               </tr>
 
               <tr>
                 <td className="border border-gray-300 px-3 py-2 text-gray-700 align-top font-bold">
-                  Saldo Seharusnya <InfoTip text="Total saldo kas + total piutang (periode ini + carry-over) - total hutang (periode ini + carry-over)" />
+                  Saldo Seharusnya <InfoTip text="Total Jumlah Saldo + Jumlah Piutang (Total) - Jumlah Hutang (Total)" />
                 </td>
                 <td className="border border-gray-300 px-3 py-2 text-right font-bold">
-                  <ValueOrSkeleton>{rp(summary.saldo_seharusnya)}</ValueOrSkeleton>
+                  <Nilai rowKey="saldo_seharusnya" value={summary.saldo_seharusnya} bold />
                 </td>
               </tr>
             </tbody>
@@ -467,6 +539,19 @@ const LaporanNeraca: React.FC = () => {
           loading={loading} 
         />
       </div>
+
+      {sumberRow && (
+        <NeracaSumberModal
+          rowKey={sumberRow}
+          value={summary[sumberRow] ?? 0}
+          summary={summary}
+          startDate={appliedStartDate}
+          endDate={appliedEndDate}
+          periodeLabel={periodeLabel}
+          onClose={() => setSumberRow(null)}
+          onOpenRow={(k) => setSumberRow(k)}
+        />
+      )}
 
       {/* CSS PRINT HARUS berada di dalam JSX agar aktif */}
       <style>

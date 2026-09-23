@@ -10,16 +10,23 @@ import SalesTable from '../../components/laporan/SalesTable';
 import { SalesItem, PendingOrderItem } from '../../types/orderTypes';
 import { useSession } from '../../components/SessionContextProvider';
 import { useProfileNames } from '../../hooks/useProfileNames';
-import { collectStaffIds, makeOrderFilter, buildStaffOptions, SalesReportFilters } from '../../utils/salesReportFilters';
+import { collectStaffIds, makeOrderFilter, buildStaffOptions, SalesReportFilters, sumPaidAndRemaining } from '../../utils/salesReportFilters';
 import { fetchCompanyInfo, printTandaTerimaWindow, TandaTerimaRow } from '../../utils/printTandaTerima';
+import { useLocation } from 'react-router-dom';
+import { readReportParams } from '../../utils/reportQueryParams';
+import DrilldownBanner from '../../components/laporan/DrilldownBanner';
 
 type CombinedSalesItem = SalesItem | PendingOrderItem;
 
 const LaporanPenjualan: React.FC = () => {
   const { profile } = useSession();
+
+  // Filter awal bisa datang dari URL (dipakai saat menelusuri angka di Laporan Neraca)
+  const qp = readReportParams(useLocation().search);
+
   const [searchTerm, setSearchTerm] = useState('');
-  const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState<string>(qp.start ?? new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState<string>(qp.end ?? new Date().toISOString().split('T')[0]);
   const [selectedSalesItem, setSelectedSalesItem] = useState<CombinedSalesItem | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -30,8 +37,11 @@ const LaporanPenjualan: React.FC = () => {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Filters
-  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>('all');
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('all');
+  // Default laporan hanya menampilkan order yang sudah jadi transaksi. Dibuka dari
+  // Laporan Neraca (include=all) berarti semua order ikut, agar angkanya bisa dicocokkan.
+  const [includeAllOrders, setIncludeAllOrders] = useState<boolean>(qp.include === 'all');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>(qp.status ?? 'all');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>(qp.method ?? 'all');
   const [selectedKasirId, setSelectedKasirId] = useState<string>('');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [selectedDesignerId, setSelectedDesignerId] = useState<string>('');
@@ -80,7 +90,7 @@ const LaporanPenjualan: React.FC = () => {
   // Reset ke halaman 1 saat filter/pencarian berubah agar hasil filter tidak "kosong" di halaman lanjutan
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, paymentStatusFilter, selectedPaymentMethod, selectedKasirId, selectedCustomerId, selectedDesignerId, selectedOperatorId, selectedFinishingId]);
+  }, [searchTerm, paymentStatusFilter, selectedPaymentMethod, selectedKasirId, selectedCustomerId, selectedDesignerId, selectedOperatorId, selectedFinishingId, includeAllOrders]);
 
   // Gunakan snapshot saat refetch agar UI tidak kosong
   const effectiveData: CombinedSalesItem[] = useMemo(() => {
@@ -90,12 +100,14 @@ const LaporanPenjualan: React.FC = () => {
 
   const reportableData = useMemo(
     () =>
-      effectiveData.filter(
-        (item: any) =>
-          item.payment_status === 'paid' ||
-          (item.payment_status === 'pending' && item.payment_method !== null && item.payment_method !== '')
-      ),
-    [effectiveData]
+      includeAllOrders
+        ? effectiveData
+        : effectiveData.filter(
+            (item: any) =>
+              item.payment_status === 'paid' ||
+              (item.payment_status === 'pending' && item.payment_method !== null && item.payment_method !== '')
+          ),
+    [effectiveData, includeAllOrders]
   );
 
   // --- Nama staff (kasir/operator/finishing dari order, designer dari item) ---
@@ -165,6 +177,18 @@ const LaporanPenjualan: React.FC = () => {
 
     return sortedData;
   }, [reportableData, passes, sortColumn, sortDirection]);
+
+  // Angka pembanding bila halaman dibuka dari Laporan Neraca
+  const { totalDibayar, totalKekurangan } = useMemo(
+    () => sumPaidAndRemaining(filteredAndSortedData),
+    [filteredAndSortedData]
+  );
+  const totalPenjualan = useMemo(
+    () => filteredAndSortedData.reduce((sum, it: any) => sum + Number(it.final_amount || 0), 0),
+    [filteredAndSortedData]
+  );
+  const bandingLabel = qp.focus === 'dibayar' ? 'Dibayar' : qp.focus === 'kekurangan' ? 'Kekurangan' : 'Total Penjualan';
+  const bandingValue = qp.focus === 'dibayar' ? totalDibayar : qp.focus === 'kekurangan' ? totalKekurangan : totalPenjualan;
 
   // --- Pagination (client-side) ---
   const paginatedCombinedData = useMemo(() => {
@@ -401,6 +425,15 @@ const LaporanPenjualan: React.FC = () => {
         )}
       </div>
 
+      {qp.from === 'neraca' && qp.label && typeof qp.value === 'number' && (
+        <DrilldownBanner
+          label={qp.label}
+          neracaValue={qp.value}
+          pageValue={bandingValue}
+          fieldLabel={bandingLabel}
+        />
+      )}
+
       {/* KARTU RINGKASAN */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-lg shadow-sm p-6 flex items-center">
@@ -478,6 +511,8 @@ const LaporanPenjualan: React.FC = () => {
             onDesignerChange={(e) => setSelectedDesignerId(e.target.value)}
             selectedOperatorId={selectedOperatorId}
             onOperatorChange={(e) => setSelectedOperatorId(e.target.value)}
+            includeAllOrders={includeAllOrders}
+            onIncludeAllOrdersChange={setIncludeAllOrders}
             selectedFinishingId={selectedFinishingId}
             onFinishingChange={(e) => setSelectedFinishingId(e.target.value)}
             isRefreshing={isRefreshing}

@@ -8,14 +8,20 @@ import { supabase } from '../../integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '../../utils/toast';
 import Pagination from '../../components/Pagination';
 import { PurchaseReportItem } from '../../types/purchaseOrderTypes';
+import { useLocation } from 'react-router-dom';
+import { readReportParams } from '../../utils/reportQueryParams';
+import DrilldownBanner from '../../components/laporan/DrilldownBanner';
 
 interface SupplierOption { id: string; name: string; }
 interface RecordedByOption { id: string; name: string; }
 
 const LaporanPembelian: React.FC = () => {
+  // Filter awal bisa datang dari URL (dipakai saat menelusuri angka di Laporan Neraca)
+  const qp = readReportParams(useLocation().search);
+
   const [searchTerm, setSearchTerm] = useState('');
-  const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState<string>(qp.start ?? new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState<string>(qp.end ?? new Date().toISOString().split('T')[0]);
   const [selectedPurchaseItem, setSelectedPurchaseItem] = useState<PurchaseReportItem | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -24,8 +30,8 @@ const LaporanPembelian: React.FC = () => {
   const [sortColumn, setSortColumn] = useState<string>('order_date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
-  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>('all');
-  const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>('all');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>(qp.status ?? 'all');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>(qp.method ?? 'all');
 
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
   const [selectedRecordedById, setSelectedRecordedById] = useState<string>('');
@@ -129,6 +135,9 @@ const LaporanPembelian: React.FC = () => {
       .sort((a, b) => a.name.localeCompare(b.name, 'id'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allPurchaseData, searchTerm, paymentStatusFilter, paymentMethodFilter, selectedSupplierId]);
+
+  // Angka pembanding bila halaman dibuka dari Laporan Neraca
+  const bandingLabel = qp.focus === 'hutang' ? 'Jumlah Hutang (Periode Ini)' : 'Total Pembelian (Periode Ini)';
 
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
@@ -276,6 +285,15 @@ const LaporanPembelian: React.FC = () => {
           <p className="text-gray-600">Lihat dan cetak laporan pembelian.</p>
         </div>
       </div>
+
+      {qp.from === 'neraca' && qp.label && typeof qp.value === 'number' && (
+        <DrilldownBanner
+          label={qp.label}
+          neracaValue={qp.value}
+          pageValue={qp.focus === 'hutang' ? filteredSummary.totalDueAmount : filteredSummary.totalPurchaseAmount}
+          fieldLabel={bandingLabel}
+        />
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white rounded-lg shadow-sm p-6 flex items-center">

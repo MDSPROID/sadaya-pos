@@ -1,6 +1,7 @@
 import React from 'react';
 import { KasKeluarItem } from '../../hooks/useKasKeluarData';
 import ReportTable, { ReportColumn } from './ReportTable';
+import { formatPaymentMethod } from '../../utils/formatters';
 
 interface PengeluaranTableProps {
   data: KasKeluarItem[];
@@ -10,6 +11,8 @@ interface PengeluaranTableProps {
   setStartDate: (date: string) => void;
   endDate: string;
   setEndDate: (date: string) => void;
+  methodFilter: string;
+  setMethodFilter: (v: string) => void;
   totalJumlah: number;
   loading?: boolean;
   error: string | null;
@@ -23,6 +26,9 @@ const rp = (n: number) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
 
 const namaOf = (p: { first_name: string; last_name: string } | null) =>
   p ? `${p.first_name} ${p.last_name || ''}`.trim() : 'N/A';
+
+const metodeOf = (i: { payment_method?: string | null; bank?: { nama_bank: string } | null }) =>
+  `${formatPaymentMethod(i.payment_method)}${i.bank?.nama_bank ? ` (${i.bank.nama_bank})` : ''}`;
 
 const jamOf = (iso: string) =>
   new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -45,6 +51,13 @@ const columns: ReportColumn<KasKeluarItem>[] = [
   },
   { key: 'keterangan', header: 'Keterangan', cell: i => i.keterangan || '-', excel: i => i.keterangan || '', width: 36, wrap: true },
   { key: 'petugas', header: 'Petugas', cell: i => namaOf(i.profiles), excel: i => namaOf(i.profiles), width: 22 },
+  {
+    key: 'metode',
+    header: 'Metode',
+    cell: i => metodeOf(i),
+    excel: i => metodeOf(i),
+    width: 20,
+  },
   { key: 'jumlah', header: 'Jumlah', cell: i => rp(i.jumlah), excel: i => Number(i.jumlah ?? 0), width: 18 },
 ];
 
@@ -56,6 +69,8 @@ const PengeluaranTable: React.FC<PengeluaranTableProps> = ({
   setStartDate,
   endDate,
   setEndDate,
+  methodFilter,
+  setMethodFilter,
   totalJumlah,
   loading = false,
   error,
@@ -77,6 +92,14 @@ const PengeluaranTable: React.FC<PengeluaranTableProps> = ({
       <div>
         <label htmlFor="endDate" className={labelCls}>Sampai</label>
         <input type="date" id="endDate" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={inputCls} />
+      </div>
+      <div>
+        <label htmlFor="methodFilter" className={labelCls}>Metode</label>
+        <select id="methodFilter" value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)} className={inputCls}>
+          <option value="all">Semua Metode</option>
+          <option value="cash">Tunai</option>
+          <option value="bank_transfer">Transfer Bank</option>
+        </select>
       </div>
     </>
   );
@@ -103,7 +126,10 @@ const PengeluaranTable: React.FC<PengeluaranTableProps> = ({
       fileBaseName="laporan-pengeluaran"
       extraFilters={dateFilters}
       summary={`Total: ${rp(totalJumlah)}`}
-      meta={[{ k: 'Periode', v: `${fmtDate(startDate)} s/d ${fmtDate(endDate)}` }]}
+      meta={[
+        { k: 'Periode', v: `${fmtDate(startDate)} s/d ${fmtDate(endDate)}` },
+        { k: 'Metode', v: methodFilter === 'all' ? 'Semua Metode' : formatPaymentMethod(methodFilter) },
+      ]}
     />
   );
 };

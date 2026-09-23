@@ -48,6 +48,47 @@ export const petugasOf = (o: any, nameById: Record<string, string>) => {
   };
 };
 
+/** DP yang tercatat di kolom notes order. */
+const dpFromNotes = (notes: any): number => {
+  try {
+    if (!notes) return 0;
+    if (typeof notes === 'object') {
+      if (typeof notes.dp_amount === 'number') return notes.dp_amount || 0;
+      if (typeof notes.PaymentDetails?.dp_amount === 'number') return notes.PaymentDetails.dp_amount || 0;
+    }
+    const str = String(notes).trim();
+    const prefix = 'Payment Details:';
+    const jsonPart = str.startsWith(prefix) ? str.slice(prefix.length).trim() : str;
+    const parsed = JSON.parse(jsonPart);
+    if (typeof parsed?.dp_amount === 'number') return parsed.dp_amount || 0;
+    if (typeof parsed?.PaymentDetails?.dp_amount === 'number') return parsed.PaymentDetails.dp_amount || 0;
+    return 0;
+  } catch {
+    return 0;
+  }
+};
+
+/** Sudah dibayar & sisa tagihan satu order — satu sumber untuk tabel, ringkasan, dan tanda terima. */
+export const paidAndRemainingOf = (o: any) => {
+  const finalAmount = Number(o.final_amount || 0);
+  if (o.payment_status === 'paid') return { paid: finalAmount, remaining: 0 };
+  const eligible = o.payment_status === 'pending' && o.payment_method !== null && o.payment_method !== '';
+  const paid = Math.min(finalAmount, Number(eligible ? dpFromNotes(o.notes) : 0));
+  return { paid, remaining: Math.max(0, finalAmount - paid) };
+};
+
+/** Total dibayar & kekurangan dari sekumpulan order. */
+export const sumPaidAndRemaining = (orders: any[]) =>
+  orders.reduce(
+    (acc, o) => {
+      const { paid, remaining } = paidAndRemainingOf(o);
+      acc.totalDibayar += paid;
+      acc.totalKekurangan += remaining;
+      return acc;
+    },
+    { totalDibayar: 0, totalKekurangan: 0 }
+  );
+
 export const customerLabelOf = (o: any): string =>
   (o.customer_display_name
     ? o.customer_display_name.charAt(0).toUpperCase() + o.customer_display_name.slice(1)

@@ -2,30 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Printer, ArrowUp, ArrowDown, Loader2, FileDown } from 'lucide-react';
 import { SalesItem, PendingOrderItem } from '../../types/orderTypes';
 import { formatCurrency } from '../../utils/formatters';
-import { IdName, customerLabelOf, petugasOf } from '../../utils/salesReportFilters';
+import { IdName, customerLabelOf, petugasOf, paidAndRemainingOf, sumPaidAndRemaining } from '../../utils/salesReportFilters';
 import SearchableSelect from './SearchableSelect';
 import { downloadXlsx } from '../../utils/exportXlsx';
 import { showError } from '../../utils/toast';
-
-const getDpFromNotes = (notes: any): number => {
-  try {
-    if (!notes) return 0;
-    if (typeof notes === 'object' && notes !== null) {
-      if (typeof notes.dp_amount === 'number') return notes.dp_amount || 0;
-      if (typeof (notes as any).PaymentDetails?.dp_amount === 'number')
-        return (notes as any).PaymentDetails.dp_amount || 0;
-    }
-    const str = String(notes).trim();
-    const prefix = 'Payment Details:';
-    const jsonPart = str.startsWith(prefix) ? str.slice(prefix.length).trim() : str;
-    const parsed = JSON.parse(jsonPart);
-    if (typeof parsed?.dp_amount === 'number') return parsed.dp_amount || 0;
-    if (typeof parsed?.PaymentDetails?.dp_amount === 'number') return parsed.PaymentDetails.dp_amount || 0;
-    return 0;
-  } catch {
-    return 0;
-  }
-};
 
 type CombinedSalesItem = SalesItem | PendingOrderItem;
 
@@ -76,6 +56,10 @@ interface SalesTableProps {
   selectedFinishingId: string;
   onFinishingChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
 
+  /** Ikut sertakan order batal / belum ada pembayaran (dipakai saat menelusuri dari Neraca). */
+  includeAllOrders?: boolean;
+  onIncludeAllOrdersChange?: (v: boolean) => void;
+
   isRefreshing?: boolean;
 
   /* === tambahan untuk checkbox selection (opsional agar backward compatible) === */
@@ -125,6 +109,9 @@ const SalesTable: React.FC<SalesTableProps> = ({
   onOperatorChange,
   selectedFinishingId,
   onFinishingChange,
+
+  includeAllOrders = false,
+  onIncludeAllOrdersChange,
 
   isRefreshing = false,
 
@@ -186,21 +173,18 @@ const SalesTable: React.FC<SalesTableProps> = ({
     return printFilteredData.filter((it: any) => set.has(it.id));
   }, [printFilteredData, selectedIds, hasSelection]);
 
-  // ===== H) Hitung dibayar & kekurangan =====
-  const computePaidAndRemaining = (item: any) => {
-    const finalAmount = Number(item.final_amount || 0);
-    if (item.payment_status === 'paid') {
-      return { paid: finalAmount, remaining: 0 };
-    }
-    const eligible = item.payment_status === 'pending' && item.payment_method !== null && item.payment_method !== '';
-    const dpAmount = eligible ? getDpFromNotes((item as any).notes) : 0;
-    const paid = Math.min(finalAmount, Number(dpAmount || 0));
-    const remaining = Math.max(0, finalAmount - paid);
-    return { paid, remaining };
-  };
+  // ===== H) Hitung dibayar & kekurangan (util bersama dengan halaman induk) =====
+  const computePaidAndRemaining = paidAndRemainingOf;
 
   const fmtIDR0 = (n: number) =>
     n.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
+
+  // Total Dibayar & Kekurangan dari SELURUH hasil filter (bukan halaman aktif),
+  // supaya bisa dicocokkan dengan Realisasi / Non Realisasi di Laporan Neraca.
+  const { totalDibayar, totalKekurangan } = useMemo(
+    () => sumPaidAndRemaining(printFilteredData),
+    [printFilteredData]
+  );
 
   // Sel data satu baris (tanpa kolom checkbox) — dipakai bersama oleh tabel layar & tabel cetak
   const renderDataCells = (item: CombinedSalesItem, index: number) => {
@@ -289,6 +273,8 @@ const SalesTable: React.FC<SalesTableProps> = ({
     items.push({ k: 'Operator', v: selectedOperatorId ? labelFromOptions(selectedOperatorId, operatorOptions) : 'Semua Operator' });
     items.push({ k: 'Finishing', v: selectedFinishingId ? labelFromOptions(selectedFinishingId, finishingOptions) : 'Semua Finishing' });
 
+    items.push({ k: 'Cakupan', v: includeAllOrders ? 'Semua order (termasuk batal / belum ada pembayaran)' : 'Order yang sudah jadi transaksi' });
+
     items.push({
       k: 'Pencarian',
       v: (searchTerm?.trim() ? `"${searchTerm.trim()}"` : '-')
@@ -301,7 +287,7 @@ const SalesTable: React.FC<SalesTableProps> = ({
     paymentStatusFilter, selectedPaymentMethod,
     selectedCustomerId, selectedKasirId, selectedDesignerId, selectedOperatorId, selectedFinishingId,
     customerOptions, kasirOptions, designerOptions, operatorOptions, finishingOptions,
-    nameById, searchTerm
+    nameById, searchTerm, includeAllOrders
   ]);
 
   // ===== Export Excel (data sama dengan yang dicetak) =====
@@ -452,10 +438,32 @@ const SalesTable: React.FC<SalesTableProps> = ({
           </div>
         </div>
 
+        {/* Opsi cakupan data */}
+        {onIncludeAllOrdersChange && (
+          <label className="flex items-start gap-2 text-xs text-gray-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={includeAllOrders}
+              onChange={(e) => onIncludeAllOrdersChange(e.target.checked)}
+              className="h-4 w-4 mt-0.5"
+            />
+            <span>
+              Sertakan order batal / belum ada pembayaran
+              <span className="text-gray-400"> — biasanya tidak ditampilkan di laporan penjualan, tapi ikut dihitung di Laporan Neraca</span>
+            </span>
+          </label>
+        )}
+
         {/* Baris 3: total + aksi */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 pt-4 border-t border-gray-100">
           <div className="text-base sm:text-lg font-bold text-gray-900">
             Total Penjualan: {formatCurrency(totalSalesAmount)}
+            {/* Dibayar & Kekurangan ditampilkan agar bisa dicocokkan dengan
+                Realisasi / Non Realisasi di Laporan Neraca */}
+            <div className="mt-1 text-sm font-normal text-gray-600 flex flex-wrap gap-x-4 gap-y-1">
+              <span>Dibayar: <span className="font-semibold text-gray-900">{formatCurrency(totalDibayar)}</span></span>
+              <span>Kekurangan: <span className="font-semibold text-gray-900">{formatCurrency(totalKekurangan)}</span></span>
+            </div>
             {isRefreshing && (
               <span className="ml-3 inline-flex items-center text-xs font-normal text-gray-500" aria-live="polite" aria-busy="true">
                 <Loader2 className="h-4 w-4 mr-1 animate-spin" />

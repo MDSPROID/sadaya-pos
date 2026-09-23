@@ -1,11 +1,18 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useKasKeluarData } from '../../hooks/useKasKeluarData';
 import PengeluaranTable from '../../components/laporan/PengeluaranTable';
+import { useLocation } from 'react-router-dom';
+import { readReportParams } from '../../utils/reportQueryParams';
+import DrilldownBanner from '../../components/laporan/DrilldownBanner';
 
 const LaporanPengeluaran: React.FC = () => {
+  // Filter awal bisa datang dari URL (dipakai saat menelusuri angka di Laporan Neraca)
+  const qp = readReportParams(useLocation().search);
+
   const [searchTerm, setSearchTerm] = useState('');
-  const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState<string>(qp.start ?? new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState<string>(qp.end ?? new Date().toISOString().split('T')[0]);
+  const [methodFilter, setMethodFilter] = useState<string>(qp.method ?? 'all');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const {
@@ -23,8 +30,9 @@ const LaporanPengeluaran: React.FC = () => {
 
   const filteredData = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
-    if (!q) return data;
     return data.filter(item => {
+      if (methodFilter !== 'all' && (item.payment_method || '') !== methodFilter) return false;
+      if (!q) return true;
       const petugas = `${item.profiles?.first_name || ''} ${item.profiles?.last_name || ''}`.toLowerCase();
       return (
         item.nama_pengeluaran.toLowerCase().includes(q) ||
@@ -32,10 +40,10 @@ const LaporanPengeluaran: React.FC = () => {
         petugas.includes(q)
       );
     });
-  }, [data, searchTerm]);
+  }, [data, searchTerm, methodFilter]);
 
   // Centang direset saat filter berubah agar tidak menyisakan pilihan di luar hasil
-  useEffect(() => setSelectedIds([]), [searchTerm, startDate, endDate]);
+  useEffect(() => setSelectedIds([]), [searchTerm, startDate, endDate, methodFilter]);
 
   const totalJumlah = useMemo(() => {
     return filteredData.reduce((sum, item) => sum + (item.jumlah || 0), 0);
@@ -57,6 +65,10 @@ const LaporanPengeluaran: React.FC = () => {
         </div>
       </div>
 
+      {qp.from === 'neraca' && qp.label && typeof qp.value === 'number' && (
+        <DrilldownBanner label={qp.label} neracaValue={qp.value} pageValue={totalJumlah} fieldLabel="Total" />
+      )}
+
       <PengeluaranTable
         data={filteredData}
         searchTerm={searchTerm}
@@ -65,6 +77,8 @@ const LaporanPengeluaran: React.FC = () => {
         setStartDate={setStartDate}
         endDate={endDate}
         setEndDate={setEndDate}
+        methodFilter={methodFilter}
+        setMethodFilter={setMethodFilter}
         totalJumlah={totalJumlah}
         loading={loading}
         error={error}

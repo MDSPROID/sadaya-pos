@@ -27,6 +27,10 @@ export interface NeracaSummary {
   total_pengeluaran: number;
   jumlah_hutang: number;
   jumlah_piutang: number;
+  /** Seluruh tunggakan pelanggan s/d tanggal akhir periode (termasuk order lama). */
+  jumlah_piutang_total: number;
+  /** Seluruh tunggakan ke supplier s/d tanggal akhir periode (termasuk PO lama). */
+  jumlah_hutang_total: number;
   saldo_seharusnya: number;
   // Tambahan untuk transparansi
   saldo_awal_tunai?: number;
@@ -59,6 +63,8 @@ const ZERO_SUMMARY: NeracaSummary = {
   total_pengeluaran: 0,
   jumlah_hutang: 0,
   jumlah_piutang: 0,
+  jumlah_piutang_total: 0,
+  jumlah_hutang_total: 0,
   saldo_seharusnya: 0,
   saldo_awal_tunai: 0,
   saldo_awal_non_tunai: 0,
@@ -88,6 +94,22 @@ const getDpFromNotes = (notes: any): number => {
   } catch {
     return 0;
   }
+};
+
+/** Batas aman per request PostgREST; query besar diambil bertahap. */
+const PAGE_SIZE = 1000;
+
+/** Ambil seluruh baris hasil query secara bertahap agar tidak terpotong batas baris. */
+const fetchAllRows = async <T,>(build: () => any): Promise<T[]> => {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await build().range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    const rows = (data ?? []) as T[];
+    out.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+  }
+  return out;
 };
 
 export function useNeracaData({
@@ -156,13 +178,13 @@ export function useNeracaData({
       let saldoAwalNonTunai = 0;
 
       // 1. Kas Masuk sebelum periode (transaksi biasa, tidak termasuk SALDO AWAL)
-      const { data: kasMasukBefore, error: kmError } = await supabase
-        .from('kas_masuk')
-        .select('jumlah, payment_method')
-        .neq('nama_pemasukan', 'SALDO AWAL')
-        .lt('tanggal', beforeDate)
-        .limit(10000);
-      if (kmError) throw kmError;
+      const kasMasukBefore = await fetchAllRows<any>(() =>
+        supabase
+          .from('kas_masuk')
+          .select('jumlah, payment_method')
+          .neq('nama_pemasukan', 'SALDO AWAL')
+          .lt('tanggal', beforeDate)
+      );
 
       (kasMasukBefore || []).forEach(km => {
         if (km.payment_method === 'cash') {
@@ -171,17 +193,15 @@ export function useNeracaData({
           saldoAwalNonTunai += km.jumlah || 0;
         }
       });
-      console.log('🔍 DEBUG saldoAwal Step 1 - kasMasukBefore:', (kasMasukBefore||[]).length, 'rows, saldoAwalTunai=', saldoAwalTunai, 'detail:', JSON.stringify(kasMasukBefore));
-
       // 1b. SALDO AWAL entry — dicatat tepat di tanggal startDate, harus ikut ke saldo awal
       //     Gunakan .lte() + filter nama = 'SALDO AWAL' agar ambil entry di tanggal start
-      const { data: saldoAwalEntries, error: saError } = await supabase
-        .from('kas_masuk')
-        .select('jumlah, payment_method')
-        .eq('nama_pemasukan', 'SALDO AWAL')
-        .lte('tanggal', beforeDate)
-        .limit(100);
-      if (saError) throw saError;
+      const saldoAwalEntries = await fetchAllRows<any>(() =>
+        supabase
+          .from('kas_masuk')
+          .select('jumlah, payment_method')
+          .eq('nama_pemasukan', 'SALDO AWAL')
+          .lte('tanggal', beforeDate)
+      );
 
       (saldoAwalEntries || []).forEach(km => {
         if (km.payment_method === 'cash') {
@@ -190,16 +210,13 @@ export function useNeracaData({
           saldoAwalNonTunai += km.jumlah || 0;
         }
       });
-      console.log('🔍 DEBUG saldoAwal Step 1b - saldoAwalEntries:', (saldoAwalEntries||[]).length, 'rows, saldoAwalTunai=', saldoAwalTunai, 'detail:', JSON.stringify(saldoAwalEntries));
-
       // 2. Kas Keluar sebelum periode
-      const { data: kasKeluarBefore, error: kkError } = await supabase
-        .from('kas_keluar')
-        .select('jumlah, payment_method')
-        .lt('tanggal', beforeDate)
-        .limit(10000);
-
-      if (kkError) throw kkError;
+      const kasKeluarBefore = await fetchAllRows<any>(() =>
+        supabase
+          .from('kas_keluar')
+          .select('jumlah, payment_method')
+          .lt('tanggal', beforeDate)
+      );
 
       (kasKeluarBefore || []).forEach(kk => {
         if (kk.payment_method === 'cash') {
@@ -208,16 +225,13 @@ export function useNeracaData({
           saldoAwalNonTunai -= kk.jumlah || 0;
         }
       });
-      console.log('🔍 DEBUG saldoAwal Step 2 - kasKeluarBefore:', (kasKeluarBefore||[]).length, 'rows, saldoAwalTunai=', saldoAwalTunai);
-
       // 3. Orders sebelum periode (paid & pending dengan DP)
-      const { data: ordersBefore, error: ordersError } = await supabase
-        .from('orders')
-        .select('final_amount, payment_method, payment_status, notes')
-        .lt('order_date', beforeDate)
-        .limit(10000);
-
-      if (ordersError) throw ordersError;
+      const ordersBefore = await fetchAllRows<any>(() =>
+        supabase
+          .from('orders')
+          .select('final_amount, payment_method, payment_status, notes')
+          .lt('order_date', beforeDate)
+      );
 
       (ordersBefore || []).forEach(o => {
         const methodFromNotes = getPaymentMethodFromNotes(o.notes);
@@ -244,7 +258,6 @@ export function useNeracaData({
         }
       });
 
-      console.log('🔍 DEBUG saldoAwal Step 3 - ordersBefore:', (ordersBefore||[]).length, 'rows, saldoAwalTunai FINAL=', saldoAwalTunai, 'saldoAwalNonTunai FINAL=', saldoAwalNonTunai);
       return { saldoAwalTunai, saldoAwalNonTunai };
     } catch (err) {
       console.error('Error calculating opening balance:', err);
@@ -275,52 +288,71 @@ export function useNeracaData({
         // ====================================================================
 
         // Kas Masuk dalam periode (EXCLUDE SALDO AWAL agar tidak double-count dengan saldoAwal)
-        const { data: kasMasukPeriodData, error: kasMasukPeriodError } = await supabase
-          .from('kas_masuk')
-          .select('tanggal, jumlah, payment_method')
-          .neq('nama_pemasukan', 'SALDO AWAL')
-          .gte('tanggal', sDate)
-          .lte('tanggal', eDate)
-          .limit(10000);
-        if (kasMasukPeriodError) throw kasMasukPeriodError;
+        const kasMasukPeriodData = await fetchAllRows<any>(() =>
+          supabase
+            .from('kas_masuk')
+            .select('tanggal, jumlah, payment_method')
+            .neq('nama_pemasukan', 'SALDO AWAL')
+            .gte('tanggal', sDate)
+            .lte('tanggal', eDate)
+        );
 
         // Kas Keluar dalam periode
-        const { data: kasKeluarPeriodData, error: kasKeluarPeriodError } = await supabase
-          .from('kas_keluar')
-          .select('tanggal, jumlah, payment_method')
-          .gte('tanggal', sDate)
-          .lte('tanggal', eDate)
-          .limit(10000);
-        if (kasKeluarPeriodError) throw kasKeluarPeriodError;
+        const kasKeluarPeriodData = await fetchAllRows<any>(() =>
+          supabase
+            .from('kas_keluar')
+            .select('tanggal, jumlah, payment_method')
+            .gte('tanggal', sDate)
+            .lte('tanggal', eDate)
+        );
 
         // Orders dalam periode
-        const { data: allOrdersForOmsetPeriod, error: allOrdersForOmsetPeriodError } = await supabase
-          .from('orders')
-          .select('order_date, final_amount, payment_method, payment_status, notes, invoice_number')
-          .gte('order_date', sDate)
-          .lte('order_date', eDate)
-          .limit(10000);
-        if (allOrdersForOmsetPeriodError) throw allOrdersForOmsetPeriodError;
+        const allOrdersForOmsetPeriod = await fetchAllRows<any>(() =>
+          supabase
+            .from('orders')
+            .select('order_date, final_amount, payment_method, payment_status, notes, invoice_number')
+            .gte('order_date', sDate)
+            .lte('order_date', eDate)
+        );
 
         // Pending Orders dalam periode (untuk piutang)
-        const { data: pendingOrdersPeriodData, error: pendingOrdersPeriodError } = await supabase
-          .from('orders')
-          .select('order_date, final_amount, notes, payment_method')
-          .eq('payment_status', 'pending')
-          .gte('order_date', sDate)
-          .lte('order_date', eDate)
-          .limit(10000);
-        if (pendingOrdersPeriodError) throw pendingOrdersPeriodError;
+        const pendingOrdersPeriodData = await fetchAllRows<any>(() =>
+          supabase
+            .from('orders')
+            .select('order_date, final_amount, notes, payment_method')
+            .eq('payment_status', 'pending')
+            .gte('order_date', sDate)
+            .lte('order_date', eDate)
+        );
+
+        // Seluruh order belum lunas s/d akhir periode (termasuk tunggakan dari
+        // periode sebelumnya) — dipakai untuk "Jumlah Piutang (Total)".
+        const pendingOrdersAllData = await fetchAllRows<any>(() =>
+          supabase
+            .from('orders')
+            .select('final_amount, notes')
+            .eq('payment_status', 'pending')
+            .lte('order_date', eDate)
+        );
 
         // Purchase Orders (hutang)
-        const { data: hutangPeriodData, error: hutangPeriodError } = await supabase
-          .from('purchase_orders')
-          .select('order_date, final_amount, total_amount, paid_amount, payment_status')
-          .eq('payment_status', 'due')
-          .gte('order_date', sDate)
-          .lte('order_date', eDate)
-          .limit(10000);
-        if (hutangPeriodError) throw hutangPeriodError;
+        const hutangPeriodData = await fetchAllRows<any>(() =>
+          supabase
+            .from('purchase_orders')
+            .select('order_date, final_amount, total_amount, paid_amount, payment_status')
+            .eq('payment_status', 'due')
+            .gte('order_date', sDate)
+            .lte('order_date', eDate)
+        );
+
+        // Seluruh pembelian belum lunas s/d akhir periode — untuk "Jumlah Hutang (Total)".
+        const hutangAllData = await fetchAllRows<any>(() =>
+          supabase
+            .from('purchase_orders')
+            .select('final_amount, paid_amount')
+            .eq('payment_status', 'due')
+            .lte('order_date', eDate)
+        );
 
         // ====================================================================
         // STEP 3: PROSES DATA & HITUNG SUMMARY
@@ -378,23 +410,27 @@ export function useNeracaData({
           0
         );
 
-        // Piutang - FIX BUG #3: Hitung SEMUA pending order, termasuk payment_method = NULL
-        // Order dengan payment_method NULL tetap punya piutang (sisa tagihan yang belum dibayar)
-        const jumlahPiutangPeriod = (pendingOrdersPeriodData || []).reduce((s: number, o: any) => {
+        // Piutang — hitung SEMUA pending order, termasuk payment_method = NULL
+        // (order dengan payment_method NULL tetap punya sisa tagihan).
+        const sisaTagihan = (o: any) => {
           const finalAmount = Number(o?.final_amount || 0);
           const dpAmount = getDpFromNotes(o?.notes) || 0;
-          const remaining = Math.max(0, finalAmount - Number(dpAmount || 0));
-          return s + remaining;
-        }, 0);
+          return Math.max(0, finalAmount - Number(dpAmount || 0));
+        };
+        const sumSisaTagihan = (rows: any[]) =>
+          (rows || []).reduce((s: number, o: any) => s + sisaTagihan(o), 0);
+
+        const jumlahPiutangPeriod = sumSisaTagihan(pendingOrdersPeriodData);
+        // Termasuk tunggakan dari periode sebelumnya yang sampai sekarang belum lunas.
+        const jumlahPiutangTotal = sumSisaTagihan(pendingOrdersAllData);
 
         // Hutang
-        const jumlahHutang = (hutangPeriodData || []).reduce(
-          (s: number, po: any) => {
-            const unpaid = (po.final_amount || 0) - (po.paid_amount || 0);
-            return s + Math.max(0, unpaid);
-          },
-          0
-        );
+        const sisaHutang = (po: any) => Math.max(0, (po.final_amount || 0) - (po.paid_amount || 0));
+        const sumSisaHutang = (rows: any[]) =>
+          (rows || []).reduce((s: number, po: any) => s + sisaHutang(po), 0);
+
+        const jumlahHutang = sumSisaHutang(hutangPeriodData);
+        const jumlahHutangTotal = sumSisaHutang(hutangAllData);
 
         // ====================================================================
         // STEP 4: HITUNG SALDO FINAL (DENGAN SALDO AWAL - FIX BUG #2)
@@ -407,7 +443,9 @@ export function useNeracaData({
         const totalJumlahSaldo = jumlahSaldoTunai + jumlahSaldoNonTunai;
         
         const totalPengeluaran = kasKeluarTunai + kasKeluarTransfer;
-        const saldoSeharusnya = totalJumlahSaldo + jumlahPiutangPeriod - jumlahHutang;
+        // Saldo kas sudah kumulatif (termasuk saldo awal), jadi piutang & hutang yang
+        // dipakai di sini juga harus kumulatif supaya tidak campur aduk.
+        const saldoSeharusnya = totalJumlahSaldo + jumlahPiutangTotal - jumlahHutangTotal;
 
         // ====================================================================
         // STEP 5: LOGGING (DEVELOPMENT ONLY)
@@ -443,6 +481,8 @@ export function useNeracaData({
           total_pengeluaran: totalPengeluaran,
           jumlah_hutang: jumlahHutang,
           jumlah_piutang: jumlahPiutangPeriod,
+          jumlah_piutang_total: jumlahPiutangTotal,
+          jumlah_hutang_total: jumlahHutangTotal,
           saldo_seharusnya: saldoSeharusnya,
           saldo_awal_tunai: saldoAwalTunai,
           saldo_awal_non_tunai: saldoAwalNonTunai,
@@ -522,19 +562,13 @@ export function useNeracaData({
           const key = getKey(d);
           if (!grouped[key]) return;
 
-          const finalAmount = Number(o?.final_amount || 0);
-          const dpAmount = getDpFromNotes(o?.notes) || 0;
-          const remaining = Math.max(0, finalAmount - Number(dpAmount || 0));
-          grouped[key]['Jumlah Piutang'] += remaining;
+          grouped[key]['Jumlah Piutang'] += sisaTagihan(o);
         });
         (hutangPeriodData || []).forEach((po: any) => {
           if (!po.order_date) return;
           const d = parseLocalDate(po.order_date);
           const key = getKey(d);
-          if (grouped[key]) {
-            const unpaid = (po.final_amount || 0) - (po.paid_amount || 0);
-            grouped[key]['Jumlah Hutang'] += Math.max(0, unpaid);
-          }
+          if (grouped[key]) grouped[key]['Jumlah Hutang'] += sisaHutang(po);
         });
 
         const finalPeriodData = Object.values(grouped).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
