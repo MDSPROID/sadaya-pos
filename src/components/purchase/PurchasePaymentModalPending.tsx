@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../integrations/supabase/client';
 import { showError, showSuccess, showLoading, dismissToast } from '../../utils/toast';
+import { useSession } from '../SessionContextProvider';
 
 interface Props {
   purchaseId: string;
@@ -8,21 +9,30 @@ interface Props {
   onPaid: () => void; // callback setelah simpan sukses
 }
 
+interface BankOption {
+  id: string;
+  nama_bank: string;
+  nama_akun: string;
+  rekening: string;
+}
+
 const formatRp = (n: any) => `Rp ${(Number(n) || 0).toLocaleString('id-ID')}`;
 
 const PurchasePaymentModalPending: React.FC<Props> = ({ purchaseId, onClose, onPaid }) => {
+  const { session } = useSession();
+  const currentUserId = session?.user?.id ?? null;
+
   const [loading, setLoading] = useState<boolean>(false);
   const [po, setPo] = useState<any>(null);
   const [payments, setPayments] = useState<any[]>([]);
+  const [bankOptions, setBankOptions] = useState<BankOption[]>([]);
 
   // form
   const [payDate, setPayDate] = useState<string>(() => new Date().toISOString().slice(0,10));
   const [amountInput, setAmountInput] = useState<string>('');
   const typedAmount = amountInput === '' ? 0 : Number(amountInput)
   const [method, setMethod] = useState<'cash'|'bank_transfer'>('cash');
-  const [selectedBank, setSelectedBank] = useState<string>('');
-  const [accountName, setAccountName] = useState<string>('');
-  const [bankName, setBankName] = useState<string>('');
+  const [selectedBankId, setSelectedBankId] = useState<string>('');
   const [note, setNote] = useState<string>('');
 
   const tagihan = Number(po?.final_amount || po?.total_amount || 0);
@@ -52,7 +62,7 @@ const PurchasePaymentModalPending: React.FC<Props> = ({ purchaseId, onClose, onP
     try {
       const { data: order, error: e1 } = await supabase
         .from('purchase_orders')
-        .select('id, invoice_number, final_amount, total_amount, paid_amount, payment_status, supplier_id')
+        .select('id, invoice_number, final_amount, total_amount, paid_amount, payment_status, supplier_id, supplier_display_name, order_date, notes')
         .eq('id', purchaseId)
         .maybeSingle();
       if (e1) throw e1;
@@ -67,6 +77,14 @@ const PurchasePaymentModalPending: React.FC<Props> = ({ purchaseId, onClose, onP
       if (e2) throw e2;
 
       setPayments(pays || []);
+
+      const { data: banks, error: e3 } = await supabase
+        .from('bank')
+        .select('id, nama_bank, nama_akun, rekening')
+        .order('nama_bank', { ascending: true });
+      if (e3) throw e3;
+
+      setBankOptions((banks || []) as BankOption[]);
     } catch (e: any) {
       console.error(e);
       showError(e?.message || 'Gagal memuat data pembayaran.');
@@ -92,19 +110,18 @@ const PurchasePaymentModalPending: React.FC<Props> = ({ purchaseId, onClose, onP
     const toastId = showLoading('Menyimpan pembayaran...');
     try {
       const isCash = method === 'cash';
-  
-      // gabungkan BANK + NAMA AKUN jika non tunai
-      const combinedBank = !isCash
-        ? `${(bankName || '').trim()}${accountName ? ' - ' + accountName.trim() : ''}`.trim()
-        : null;
-  
-      // opsional: validasi bank jika non tunai
-      if (!isCash && !bankName) {
-        showError('Pilih / isi bank untuk pembayaran non tunai.');
+
+      if (!isCash && !selectedBankId) {
+        showError('Pilih bank untuk pembayaran non tunai.');
         dismissToast(toastId);
         return;
       }
-  
+
+      const selectedBank = bankOptions.find(b => b.id === selectedBankId);
+      const combinedBank = !isCash && selectedBank
+        ? `${selectedBank.nama_bank} - ${selectedBank.nama_akun}`
+        : null;
+
       const basePayload: any = {
         purchase_order_id: purchaseId,
         pay_date: payDate,
@@ -112,31 +129,10 @@ const PurchasePaymentModalPending: React.FC<Props> = ({ purchaseId, onClose, onP
         method,              // 'cash' | 'bank_transfer'
         note: note || null,
       };
-  
-      let insertErr: any = null;
-  
-      if (combinedBank) {
-        // coba kolom 'bank' dulu
-        const { error } = await supabase
-          .from('purchase_payments')
-          .insert({ ...basePayload, bank_name: combinedBank });
-        insertErr = error;
-  
-        if (insertErr && /column "bank" does not exist/i.test(insertErr.message || '')) {
-          // fallback ke 'bank_name'
-          const { error: err2 } = await supabase
-            .from('purchase_payments')
-            .insert({ ...basePayload, bank_name: combinedBank });
-          insertErr = err2;
-        }
-      } else {
-        // tunai → tanpa bank/bank_name
-        const { error } = await supabase
-          .from('purchase_payments')
-          .insert(basePayload);
-        insertErr = error;
-      }
-  
+
+      const { error: insertErr } = await supabase
+        .from('purchase_payments')
+        .insert(combinedBank ? { ...basePayload, bank_name: combinedBank } : basePayload);
       if (insertErr) throw insertErr;
 
       // === Recalculate total paid & update order status ===
@@ -160,6 +156,23 @@ const PurchasePaymentModalPending: React.FC<Props> = ({ purchaseId, onClose, onP
       if (updErr) throw updErr;
       // ===============================================
 
+      // === Catat kas keluar untuk pembayaran pelunasan hutang tempo ===
+      // Mirror flow di purchaseDbOperations.ts saat pembelian LANGSUNG dilunasi,
+      // supaya pelunasan pembelian tempo juga muncul di halaman Kas Keluar.
+      const supplierLabel = po?.supplier_display_name || 'Supplier';
+      const invoiceLabel = po?.invoice_number || purchaseId;
+      const { error: kasKeluarErr } = await supabase.from('kas_keluar').insert([{
+        tanggal: payDate,
+        nama_pengeluaran: `Pelunasan pembelian: ${supplierLabel} (Faktur: ${invoiceLabel})`,
+        jumlah: payAmount,
+        keterangan: note || `Pembayaran hutang pembelian ${invoiceLabel}`,
+        petugas_id: currentUserId,
+        payment_method: method,
+        bank_id: !isCash ? (selectedBankId || null) : null,
+      }]);
+      if (kasKeluarErr) throw kasKeluarErr;
+      // ===============================================
+
       showSuccess('Pembayaran berhasil disimpan.');
       onPaid(); // refresh/close sesuai props kamu
     } catch (e: any) {
@@ -168,7 +181,7 @@ const PurchasePaymentModalPending: React.FC<Props> = ({ purchaseId, onClose, onP
     } finally {
       dismissToast(toastId);
     }
-  };  
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -259,15 +272,33 @@ const PurchasePaymentModalPending: React.FC<Props> = ({ purchaseId, onClose, onP
             </label>
 
             {method === 'bank_transfer' && (
-              <label className="flex flex-col text-sm">
-                <span className="text-gray-700 mb-1">Nama Bank</span>
-                <input
-                  type="text"
-                  value={bankName}
-                  onChange={(e) => setBankName(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg"
-                />
-              </label>
+              <>
+                <label className="flex flex-col text-sm">
+                  <span className="text-gray-700 mb-1">Bank</span>
+                  <select
+                    value={selectedBankId}
+                    onChange={(e) => setSelectedBankId(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg"
+                    required
+                  >
+                    <option value="">Pilih Bank</option>
+                    {bankOptions.map(b => (
+                      <option key={b.id} value={b.id}>
+                        {b.nama_bank} ({b.rekening})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col text-sm">
+                  <span className="text-gray-700 mb-1">Nama Akun</span>
+                  <input
+                    type="text"
+                    value={bankOptions.find(b => b.id === selectedBankId)?.nama_akun || ''}
+                    disabled
+                    className="px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  />
+                </label>
+              </>
             )}
 
             <label className="flex flex-col text-sm sm:col-span-2">
