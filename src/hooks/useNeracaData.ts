@@ -99,6 +99,19 @@ const getDpFromNotes = (notes: any): number => {
 /** Batas aman per request PostgREST; query besar diambil bertahap. */
 const PAGE_SIZE = 1000;
 
+/**
+ * Hanya ORDER FIX yang boleh masuk hitungan penjualan.
+ *
+ * "Fix" ditandai kolom ready_status = 'ready', yang terisi saat order lunas,
+ * memakai pembayaran tempo, atau sudah ada DP (lihat useSalesOrder.ts).
+ * Order pending tanpa pembayaran dan bukan tempo berstatus 'not_ready' —
+ * itu belum jadi transaksi, jadi bukan omset dan bukan piutang.
+ *
+ * payment_status = 'paid' tetap diikutkan sebagai pengaman untuk data lama
+ * yang mungkin lunas tapi ready_status-nya belum terisi.
+ */
+const FILTER_ORDER_FIX = 'ready_status.eq.ready,payment_status.eq.paid';
+
 /** Ambil seluruh baris hasil query secara bertahap agar tidak terpotong batas baris. */
 const fetchAllRows = async <T,>(build: () => any): Promise<T[]> => {
   const out: T[] = [];
@@ -230,6 +243,7 @@ export function useNeracaData({
         supabase
           .from('orders')
           .select('final_amount, payment_method, payment_status, notes')
+          .or(FILTER_ORDER_FIX)
           .lt('order_date', beforeDate)
       );
 
@@ -311,6 +325,7 @@ export function useNeracaData({
           supabase
             .from('orders')
             .select('order_date, final_amount, payment_method, payment_status, notes, invoice_number')
+            .or(FILTER_ORDER_FIX)
             .gte('order_date', sDate)
             .lte('order_date', eDate)
         );
@@ -321,6 +336,7 @@ export function useNeracaData({
             .from('orders')
             .select('order_date, final_amount, notes, payment_method')
             .eq('payment_status', 'pending')
+            .eq('ready_status', 'ready')
             .gte('order_date', sDate)
             .lte('order_date', eDate)
         );
@@ -332,6 +348,7 @@ export function useNeracaData({
             .from('orders')
             .select('final_amount, notes')
             .eq('payment_status', 'pending')
+            .eq('ready_status', 'ready')
             .lte('order_date', eDate)
         );
 

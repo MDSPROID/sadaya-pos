@@ -448,8 +448,8 @@ const SalesTable: React.FC<SalesTableProps> = ({
               className="h-4 w-4 mt-0.5"
             />
             <span>
-              Sertakan order batal / belum ada pembayaran
-              <span className="text-gray-400"> — biasanya tidak ditampilkan di laporan penjualan, tapi ikut dihitung di Laporan Neraca</span>
+              Sertakan order belum fix (belum ada pembayaran)
+              <span className="text-gray-400"> — order yang belum ada pembayaran dan bukan tempo; tidak dihitung sebagai omset maupun piutang</span>
             </span>
           </label>
         )}

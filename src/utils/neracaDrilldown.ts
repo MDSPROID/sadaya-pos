@@ -71,13 +71,12 @@ const PEMASUKAN = '/dashboard/laporan/pemasukan';
 const PENGELUARAN = '/dashboard/laporan/pengeluaran';
 
 /**
- * Catatan selisih: Neraca menghitung SEMUA order pada periode, sedangkan Laporan
- * Penjualan hanya menampilkan order yang sudah jadi transaksi (lunas, atau belum
- * lunas tapi sudah ada metode pembayaran). Order batal / belum ada pembayaran
- * sama sekali tidak ikut di Laporan Penjualan.
+ * Neraca dan Laporan Penjualan memakai patokan yang sama: hanya ORDER FIX
+ * (ready_status = 'ready', yaitu lunas / tempo / sudah ada DP). Order yang belum
+ * ada pembayaran dan bukan tempo tidak dihitung di kedua tempat.
  */
 const CATATAN_ORDER =
-  'Neraca menghitung semua order periode ini, termasuk yang batal / belum ada pembayaran. Karena itu tombol di bawah membuka Laporan Penjualan dengan opsi "Sertakan order batal / belum ada pembayaran" sudah aktif, supaya angkanya bisa dicocokkan. Kalau opsi itu dimatikan, totalnya akan lebih kecil.';
+  'Yang dihitung hanya order fix: sudah lunas, memakai pembayaran tempo, atau sudah ada DP. Order yang belum ada pembayaran sama sekali tidak dihitung di sini maupun di Laporan Penjualan. Kalau opsi "Sertakan order belum fix" di halaman tujuan dicentang, totalnya akan lebih besar daripada angka ini.';
 
 export const getDrilldown = (key: NeracaRowKey, s: NeracaSummary): DrilldownInfo => {
   switch (key) {
@@ -88,7 +87,6 @@ export const getDrilldown = (key: NeracaRowKey, s: NeracaSummary): DrilldownInfo
         link: {
           path: PENJUALAN,
           menu: 'Laporan Penjualan',
-          params: { include: 'all' },
           focus: 'total',
           cocokkan: 'Bandingkan dengan angka "Total Penjualan" di ringkasan.',
         },
@@ -129,7 +127,7 @@ export const getDrilldown = (key: NeracaRowKey, s: NeracaSummary): DrilldownInfo
         link: {
           path: PENJUALAN,
           menu: 'Laporan Penjualan',
-          params: { status: 'pending', include: 'all' },
+          params: { status: 'pending' },
           focus: 'kekurangan',
           cocokkan: 'Bandingkan dengan angka "Kekurangan" di ringkasan.',
         },
@@ -217,7 +215,7 @@ export const getDrilldown = (key: NeracaRowKey, s: NeracaSummary): DrilldownInfo
         link: {
           path: PENJUALAN,
           menu: 'Laporan Penjualan',
-          params: { status: 'pending', include: 'all' },
+          params: { status: 'pending' },
           focus: 'kekurangan',
           sejakAwal: true,
           cocokkan: 'Bandingkan dengan angka "Kekurangan" di ringkasan.',

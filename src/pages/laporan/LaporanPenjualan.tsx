@@ -103,9 +103,12 @@ const LaporanPenjualan: React.FC = () => {
       includeAllOrders
         ? effectiveData
         : effectiveData.filter(
-            (item: any) =>
-              item.payment_status === 'paid' ||
-              (item.payment_status === 'pending' && item.payment_method !== null && item.payment_method !== '')
+            // Order fix = ready_status 'ready' (lunas / tempo / sudah ada DP).
+            // Dulu patokannya "ada metode pembayaran", padahal kasir bisa memilih
+            // metode tanpa uang masuk — order begitu ikut terhitung padahal belum
+            // jadi transaksi. payment_status 'paid' tetap dipakai sebagai pengaman
+            // untuk data lama yang ready_status-nya belum terisi.
+            (item: any) => item.ready_status === 'ready' || item.payment_status === 'paid'
           ),
     [effectiveData, includeAllOrders]
   );

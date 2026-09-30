@@ -93,6 +93,7 @@ export const useSalesReports = ({ startDate, endDate }: UseSalesReportsProps) =>
           designer_id,
           final_amount,
           payment_status,
+          ready_status,
           notes,
           payment_method,
           order_items(designer_id, product_name)

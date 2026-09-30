@@ -300,9 +300,9 @@ const LaporanNeraca: React.FC = () => {
         <div className="no-print mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 space-y-1">
           <p><span className="font-semibold">Klik angka</span> untuk melihat asalnya dan membuka menu sumbernya (filter periode ikut terpasang).</p>
           <p>
-            <span className="font-semibold">Omset, Non Realisasi, dan Jumlah Piutang</span> di sini menghitung <span className="font-semibold">semua</span> order periode ini,
-            termasuk yang batal / belum ada pembayaran. Laporan Penjualan normalnya menyembunyikan order seperti itu, jadi saat dibuka dari sini
-            opsi <span className="font-semibold">"Sertakan order batal / belum ada pembayaran"</span> otomatis aktif supaya angkanya sama.
+            <span className="font-semibold">Omset, Non Realisasi, dan Jumlah Piutang</span> hanya menghitung <span className="font-semibold">order fix</span>:
+            sudah lunas, memakai pembayaran tempo, atau sudah ada DP. Order yang belum ada pembayaran sama sekali tidak dihitung —
+            belum jadi transaksi, jadi bukan omset dan bukan piutang. Patokan ini sama persis dengan Laporan Penjualan.
           </p>
           <p>
             <span className="font-semibold">(Periode Ini)</span> = hanya order/pembelian yang tanggalnya di dalam periode filter.{' '}
